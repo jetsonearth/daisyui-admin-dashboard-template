@@ -88,162 +88,165 @@ function PortfolioOverview(){
 
             {/* Metrics Row */}
             <div className="grid grid-cols-8 gap-4 mb-6">
-                <div className="bg-base-100 p-4 rounded-lg shadow">
-                    <div className="text-sm text-gray-500">Current Capital</div>
-                    <div className="text-2xl font-bold">${metrics.currentCapital.toLocaleString()}</div>
-                    <div className="text-xs text-green-500">+12.5% from last month</div>
+                {/* Each metric card with better overflow handling */}
+                <div className="bg-base-100 p-4 rounded-lg shadow overflow-hidden">
+                    <div className="text-sm text-gray-500 truncate">Current Capital</div>
+                    <div className="text-xl lg:text-2xl font-bold truncate">${metrics.currentCapital.toLocaleString()}</div>
+                    <div className="text-xs text-green-500 truncate">+12.5% from last month</div>
                 </div>
-                <div className="bg-base-100 p-4 rounded-lg shadow">
-                    <div className="text-sm text-gray-500">Profit Factor</div>
-                    <div className="text-2xl font-bold">{metrics.profitFactor}</div>
-                    <div className="text-xs text-green-500">+8.1% from last</div>
+                <div className="bg-base-100 p-4 rounded-lg shadow overflow-hidden">
+                    <div className="text-sm text-gray-500 truncate">Profit Factor</div>
+                    <div className="text-xl lg:text-2xl font-bold truncate">{metrics.profitFactor}</div>
+                    <div className="text-xs text-green-500 truncate">+8.1% from last</div>
                 </div>
-                <div className="bg-base-100 p-4 rounded-lg shadow">
-                    <div className="text-sm text-gray-500">Win Rate</div>
-                    <div className="text-2xl font-bold">{metrics.winRate}%</div>
-                    <div className="text-xs text-red-500">-2.4% from last month</div>
+                <div className="bg-base-100 p-4 rounded-lg shadow overflow-hidden">
+                    <div className="text-sm text-gray-500 truncate">Win Rate</div>
+                    <div className="text-xl lg:text-2xl font-bold truncate">{metrics.winRate}%</div>
+                    <div className="text-xs text-red-500 truncate">-2.4% from last month</div>
                 </div>
-                <div className="bg-base-100 p-4 rounded-lg shadow">
-                    <div className="text-sm text-gray-500">RRR</div>
-                    <div className="text-2xl font-bold">{metrics.rrr}</div>
-                    <div className="text-xs text-green-500">+4.2% from last</div>
+                <div className="bg-base-100 p-4 rounded-lg shadow overflow-hidden">
+                    <div className="text-sm text-gray-500 truncate">RRR</div>
+                    <div className="text-xl lg:text-2xl font-bold truncate">{metrics.rrr}</div>
+                    <div className="text-xs text-green-500 truncate">+4.2% from last</div>
                 </div>
-                <div className="bg-base-100 p-4 rounded-lg shadow">
-                    <div className="text-sm text-gray-500">Avg Win</div>
-                    <div className="text-2xl font-bold text-green-500">${metrics.avgWin}</div>
+                <div className="bg-base-100 p-4 rounded-lg shadow overflow-hidden">
+                    <div className="text-sm text-gray-500 truncate">Avg Win</div>
+                    <div className="text-xl lg:text-2xl font-bold text-green-500 truncate">${metrics.avgWin}</div>
                 </div>
-                <div className="bg-base-100 p-4 rounded-lg shadow">
-                    <div className="text-sm text-gray-500">Avg Loss</div>
-                    <div className="text-2xl font-bold text-red-500">${metrics.avgLoss}</div>
+                <div className="bg-base-100 p-4 rounded-lg shadow overflow-hidden">
+                    <div className="text-sm text-gray-500 truncate">Avg Loss</div>
+                    <div className="text-xl lg:text-2xl font-bold text-red-500 truncate">${metrics.avgLoss}</div>
                 </div>
-                <div className="bg-base-100 p-4 rounded-lg shadow">
-                    <div className="text-sm text-gray-500">Max Drawdown</div>
-                    <div className="text-2xl font-bold text-red-500">{metrics.maxDrawdown}%</div>
+                <div className="bg-base-100 p-4 rounded-lg shadow overflow-hidden">
+                    <div className="text-sm text-gray-500 truncate">Max Drawdown</div>
+                    <div className="text-xl lg:text-2xl font-bold text-red-500 truncate">{metrics.maxDrawdown}%</div>
                 </div>
-                <div className="bg-base-100 p-4 rounded-lg shadow">
-                    <div className="text-sm text-gray-500">Max Runup</div>
-                    <div className="text-2xl font-bold text-green-500">{metrics.maxRunup}%</div>
+                <div className="bg-base-100 p-4 rounded-lg shadow overflow-hidden">
+                    <div className="text-sm text-gray-500 truncate">Max Runup</div>
+                    <div className="text-xl lg:text-2xl font-bold text-green-500 truncate">{metrics.maxRunup}%</div>
                 </div>
             </div>
 
             {/* Main Content Grid */}
             <div className="grid grid-cols-12 gap-6">
-                {/* Equity Curve - Spans 7 columns */}
-                <div className="col-span-7 bg-base-100 p-6 rounded-lg shadow">
+                {/* Equity Curve - Spans 8 columns */}
+                <div className="col-span-8 bg-base-100 p-6 rounded-lg shadow">
                     <div className="text-lg font-bold mb-4">Equity Curve</div>
                     <div className="h-[300px] flex items-center justify-center text-gray-500">
                         Equity curve visualization placeholder...
                     </div>
                 </div>
 
-                {/* Stats Column - Spans 2 columns */}
-                <div className="col-span-2 space-y-6">
-                    {/* PnL Box */}
-                    <div className="bg-base-100 p-4 rounded-lg shadow">
-                        <div className="mb-4">
-                            <div className="text-gray-500 text-sm">Total Realized PnL</div>
-                            <div className="text-xl font-bold">${metrics.totalGrossProfits.toLocaleString()}</div>
+                {/* Right Side Stats - Spans 4 columns */}
+                <div className="col-span-4 space-y-4">
+                    {/* PnL and Streak Grid */}
+                    <div className="grid grid-cols-2 gap-4">
+                        {/* PnL Box */}
+                        <div className="bg-base-100 p-4 rounded-lg shadow">
+                            <div className="mb-3">
+                                <div className="text-gray-500 text-sm mb-1">Total Realized PnL</div>
+                                <div className="text-lg font-bold">${metrics.totalGrossProfits.toLocaleString()}</div>
+                            </div>
+                            <div>
+                                <div className="text-gray-500 text-sm mb-1">Total Unrealized</div>
+                                <div className="text-lg font-bold">${metrics.totalGrossLosses.toLocaleString()}</div>
+                            </div>
                         </div>
-                        <div>
-                            <div className="text-gray-500 text-sm">Total Unrealized</div>
-                            <div className="text-xl font-bold">${metrics.totalGrossLosses.toLocaleString()}</div>
-                        </div>
-                    </div>
 
-                    {/* Current Streak */}
-                    <div className="bg-base-100 p-4 rounded-lg shadow">
-                        <div className="text-gray-500 text-sm mb-2">Current Streak</div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <div className="text-xs text-gray-500">Win</div>
-                                <div className="text-xl font-bold text-green-500">{metrics.winCount}</div>
-                            </div>
-                            <div>
-                                <div className="text-xs text-gray-500">Lose</div>
-                                <div className="text-xl font-bold text-red-500">{metrics.loseCount}</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Period Returns */}
-                    <div className="bg-base-100 p-4 rounded-lg shadow">
-                        <div className="text-gray-500 text-sm mb-2">Period Returns</div>
-                        <div className="space-y-2">
-                            <div>
-                                <div className="text-xs text-gray-500">Weekly</div>
-                                <div className="text-sm font-bold">{metrics.weeklyReturn}%</div>
-                            </div>
-                            <div>
-                                <div className="text-xs text-gray-500">Monthly</div>
-                                <div className="text-sm font-bold">{metrics.monthlyReturn}%</div>
-                            </div>
-                            <div>
-                                <div className="text-xs text-gray-500">Quarterly</div>
-                                <div className="text-sm font-bold">{metrics.quarterlyReturn}%</div>
-                            </div>
-                            <div>
-                                <div className="text-xs text-gray-500">Yearly</div>
-                                <div className="text-sm font-bold">{metrics.yearlyReturn}%</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Exposure Metrics - Spans 3 columns */}
-                <div className="col-span-3 space-y-6">
-                    {/* Daily Exposure */}
-                    <div className="bg-base-100 p-4 rounded-lg shadow">
-                        <div className="text-gray-500 text-sm mb-2">Daily Exposure</div>
-                        <div className="grid grid-cols-3 gap-2">
-                            <div>
-                                <div className="text-xs text-gray-500">Gross</div>
-                                <div className="text-sm font-bold">$10,000</div>
-                            </div>
-                            <div>
-                                <div className="text-xs text-gray-500">Net</div>
-                                <div className="text-sm font-bold">$5,000</div>
-                            </div>
-                            <div>
-                                <div className="text-xs text-gray-500">Util</div>
-                                <div className="text-sm font-bold">25%</div>
+                        {/* Current Streak */}
+                        <div className="bg-base-100 p-4 rounded-lg shadow">
+                            <div className="text-gray-500 text-sm mb-2">Current Streak</div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <div className="text-xs text-gray-500">Win</div>
+                                    <div className="text-lg font-bold text-green-500">{metrics.winCount}</div>
+                                </div>
+                                <div>
+                                    <div className="text-xs text-gray-500">Lose</div>
+                                    <div className="text-lg font-bold text-red-500">{metrics.loseCount}</div>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* New Exposure */}
-                    <div className="bg-base-100 p-4 rounded-lg shadow">
-                        <div className="text-gray-500 text-sm mb-2">New Exposure</div>
-                        <div className="grid grid-cols-3 gap-2">
-                            <div>
-                                <div className="text-xs text-gray-500">Long</div>
-                                <div className="text-sm font-bold">$8,000</div>
+                    {/* Exposure Metrics */}
+                    <div className="grid grid-cols-2 gap-4">
+                        {/* Daily Exposure */}
+                        <div className="bg-base-100 p-4 rounded-lg shadow">
+                            <div className="text-gray-500 text-sm mb-2">Daily Exposure</div>
+                            <div className="space-y-2">
+                                <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">Gross</div>
+                                    <div className="text-sm font-bold">${metrics.dailyExposure?.gross || 0}</div>
+                                </div>
+                                <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">Net</div>
+                                    <div className="text-sm font-bold">${metrics.dailyExposure?.net || 0}</div>
+                                </div>
+                                <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">Util</div>
+                                    <div className="text-sm font-bold">{metrics.dailyExposure?.util || 0}%</div>
+                                </div>
                             </div>
-                            <div>
-                                <div className="text-xs text-gray-500">Short</div>
-                                <div className="text-sm font-bold">$2,000</div>
-                            </div>
-                            <div>
-                                <div className="text-xs text-gray-500">Ratio</div>
-                                <div className="text-sm font-bold">4:1</div>
+                        </div>
+
+                        {/* Period Returns */}
+                        <div className="bg-base-100 p-4 rounded-lg shadow">
+                            <div className="text-gray-500 text-sm mb-2">Period Returns</div>
+                            <div className="space-y-2">
+                                <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">Weekly</div>
+                                    <div className="text-sm font-bold">{metrics.weeklyReturn}%</div>
+                                </div>
+                                <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">Monthly</div>
+                                    <div className="text-sm font-bold">{metrics.monthlyReturn}%</div>
+                                </div>
+                                <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">Quarterly</div>
+                                    <div className="text-sm font-bold">{metrics.quarterlyReturn}%</div>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Open Exposure */}
-                    <div className="bg-base-100 p-4 rounded-lg shadow">
-                        <div className="text-gray-500 text-sm mb-2">Open Exposure</div>
-                        <div className="grid grid-cols-3 gap-2">
-                            <div>
-                                <div className="text-xs text-gray-500">Risk</div>
-                                <div className="text-sm font-bold">$1,200</div>
+                    {/* New and Open Exposure */}
+                    <div className="grid grid-cols-2 gap-4">
+                        {/* New Exposure */}
+                        <div className="bg-base-100 p-4 rounded-lg shadow">
+                            <div className="text-gray-500 text-sm mb-2">New Exposure</div>
+                            <div className="space-y-2">
+                                <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">Long</div>
+                                    <div className="text-sm font-bold">${metrics.newExposure?.long || 0}</div>
+                                </div>
+                                <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">Short</div>
+                                    <div className="text-sm font-bold">${metrics.newExposure?.short || 0}</div>
+                                </div>
+                                <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">Ratio</div>
+                                    <div className="text-sm font-bold">{metrics.newExposure?.ratio || '0:0'}</div>
+                                </div>
                             </div>
-                            <div>
-                                <div className="text-xs text-gray-500">R-Mult</div>
-                                <div className="text-sm font-bold">2.5R</div>
-                            </div>
-                            <div>
-                                <div className="text-xs text-gray-500">Heat</div>
-                                <div className="text-sm font-bold">15%</div>
+                        </div>
+
+                        {/* Open Exposure */}
+                        <div className="bg-base-100 p-4 rounded-lg shadow">
+                            <div className="text-gray-500 text-sm mb-2">Open Exposure</div>
+                            <div className="space-y-2">
+                                <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">Risk</div>
+                                    <div className="text-sm font-bold">${metrics.openExposure?.risk || 0}</div>
+                                </div>
+                                <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">R-Mult</div>
+                                    <div className="text-sm font-bold">{metrics.openExposure?.rMult || '0R'}</div>
+                                </div>
+                                <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">Heat</div>
+                                    <div className="text-sm font-bold">{metrics.openExposure?.heat || 0}%</div>
+                                </div>
                             </div>
                         </div>
                     </div>
