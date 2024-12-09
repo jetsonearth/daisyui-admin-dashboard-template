@@ -67,17 +67,59 @@ const calculateTradePerformanceMetrics = (trades) => {
 }
 
 // Calculate Current Capital with enhanced safety
-const calculateCurrentCapital = (trades, startingCapital = 50000) => {
+const calculateCurrentCapital = (trades, startingCapital) => {
+    console.log('Calculate Current Capital - Input:', {
+        startingCapital,
+        tradesCount: trades.length,
+        tradesTypes: trades.map(trade => trade.status)
+    })
+
+    if (startingCapital === undefined || startingCapital === null) {
+        console.error('Starting capital is undefined or null')
+        throw new Error('Starting capital must be provided')
+    }
+
+    const validStartingCapital = safeNumeric(startingCapital)
+    
     trades = validateTrades(trades)
     const totalRealizedPnL = trades
         .filter(trade => trade.status === TRADE_STATUS.CLOSED)
-        .reduce((sum, trade) => sum + safeNumeric(trade.realized_pnl), 0)
+        .reduce((sum, trade) => {
+            const realizedPnl = safeNumeric(trade.realized_pnl)
+            console.log('Closed Trade Realized PnL:', { 
+                tradeId: trade.id, 
+                realizedPnl 
+            })
+            return sum + realizedPnl
+        }, 0)
 
     const totalUnrealizedPnL = trades
         .filter(trade => trade.status === TRADE_STATUS.OPEN)
-        .reduce((sum, trade) => sum + safeNumeric(trade.unrealized_pnl), 0)
+        .reduce((sum, trade) => {
+            // Safely handle potential undefined or null values
+            const currentValue = safeNumeric(trade.current_value, 0)
+            const entryValue = safeNumeric(trade.entry_value, 0)
+            const unrealizedPnl = currentValue - entryValue
 
-    return startingCapital + totalRealizedPnL + totalUnrealizedPnL
+            console.log('Open Trade Unrealized PnL:', { 
+                tradeId: trade.id, 
+                currentValue,
+                entryValue,
+                unrealizedPnl 
+            })
+            return sum + unrealizedPnl
+        }, 0)
+
+    const currentCapital = validStartingCapital + totalRealizedPnL + totalUnrealizedPnL
+    
+    console.log('Current Capital Calculation:', {
+        startingCapital: validStartingCapital,
+        totalRealizedPnL,
+        totalUnrealizedPnL,
+        currentCapital
+    })
+
+    return currentCapital
 }
 
 // Calculate Current Streak with more robust tracking
@@ -110,7 +152,13 @@ const calculateCurrentStreak = (trades) => {
 }
 
 // Exposure Metrics with improved error handling
-const calculateExposureMetrics = (trades, accountValue = 50000) => {
+const calculateExposureMetrics = (trades, accountValue) => {
+    if (accountValue === undefined || accountValue === null) {
+        throw new Error('Account value must be provided')
+    }
+
+    const validAccountValue = safeNumeric(accountValue)
+    
     trades = validateTrades(trades)
     const todayTrades = trades.filter(trade => 
         trade.status === TRADE_STATUS.OPEN && 
@@ -123,7 +171,7 @@ const calculateExposureMetrics = (trades, accountValue = 50000) => {
             safeNumeric(trade.entry_price) - safeNumeric(trade.stop_loss)
         ) * safeNumeric(trade.shares)
         return sum + riskPerTrade
-    }, 0) / accountValue * 100
+    }, 0) / validAccountValue * 100
 
     // Daily Exposure Profit (DEP)
     const dailyExposureProfit = todayTrades.reduce((sum, trade) => {
@@ -131,7 +179,7 @@ const calculateExposureMetrics = (trades, accountValue = 50000) => {
             safeNumeric(trade.current_price) - safeNumeric(trade.entry_price)
         ) * safeNumeric(trade.shares)
         return sum + profitPerTrade
-    }, 0) / accountValue * 100
+    }, 0) / validAccountValue * 100
 
     // New Exposure Metrics
     const newExposureTrades = trades.filter(trade => 
@@ -144,14 +192,14 @@ const calculateExposureMetrics = (trades, accountValue = 50000) => {
             safeNumeric(trade.entry_price) - safeNumeric(trade.stop_loss)
         ) * safeNumeric(trade.shares)
         return sum + riskPerTrade
-    }, 0) / accountValue * 100
+    }, 0) / validAccountValue * 100
 
     const newExposureProfit = newExposureTrades.reduce((sum, trade) => {
         const profitPerTrade = (
             safeNumeric(trade.current_price) - safeNumeric(trade.entry_price)
         ) * safeNumeric(trade.shares)
         return sum + profitPerTrade
-    }, 0) / accountValue * 100
+    }, 0) / validAccountValue * 100
 
     // Open Exposure Metrics
     const openTrades = trades.filter(trade => trade.status === TRADE_STATUS.OPEN)
@@ -173,14 +221,14 @@ const calculateExposureMetrics = (trades, accountValue = 50000) => {
         ) * (safeNumeric(trade.shares) / 3)
         
         return sum + (risk33 + risk66 + riskInitial)
-    }, 0) / accountValue * 100
+    }, 0) / validAccountValue * 100
 
     const openExposureProfit = openTrades.reduce((sum, trade) => {
         const profitPerTrade = (
             safeNumeric(trade.current_price) - safeNumeric(trade.entry_price)
         ) * safeNumeric(trade.shares)
         return sum + profitPerTrade
-    }, 0) / accountValue * 100
+    }, 0) / validAccountValue * 100
 
     return {
         dailyExposure: {
@@ -227,19 +275,25 @@ const calculatePeriodicReturns = (trades, accountValue) => {
 
 // Drawdown calculation with enhanced error handling
 const calculateDrawdownAndRunup = (trades, startingCapital) => {
+    if (startingCapital === undefined || startingCapital === null) {
+        throw new Error('Starting capital must be provided')
+    }
+
+    const validStartingCapital = safeNumeric(startingCapital)
+    
     trades = validateTrades(trades)
     
     // Cumulative PnL calculation with safe numeric conversion
     const cumulativePnL = trades.reduce((acc, trade) => {
-        const lastBalance = acc.length > 0 ? acc[acc.length - 1] : startingCapital
+        const lastBalance = acc.length > 0 ? acc[acc.length - 1] : validStartingCapital
         const tradePnL = safeNumeric(trade.realized_pnl)
         return [...acc, lastBalance + tradePnL]
     }, [])
 
     let maxDrawdown = 0
     let maxRunup = 0
-    let peak = startingCapital
-    let trough = startingCapital
+    let peak = validStartingCapital
+    let trough = validStartingCapital
 
     for (let balance of cumulativePnL) {
         // Maximum Drawdown Calculation
@@ -255,7 +309,7 @@ const calculateDrawdownAndRunup = (trades, startingCapital) => {
         }
 
         // Maximum Run-up Calculation
-        const runup = (balance - startingCapital) / startingCapital * 100
+        const runup = (balance - validStartingCapital) / validStartingCapital * 100
         maxRunup = Math.max(maxRunup, runup)
     }
 
@@ -265,15 +319,24 @@ const calculateDrawdownAndRunup = (trades, startingCapital) => {
     }
 }
 
-export const calculatePortfolioMetrics = (trades = [], startingCapital = 50000) => {
+export const calculatePortfolioMetrics = (trades = [], startingCapital) => {
+    if (startingCapital === undefined || startingCapital === null) {
+        throw new Error('Starting capital must be provided')
+    }
+
+    const validStartingCapital = safeNumeric(startingCapital)
+
     const performanceMetrics = calculateTradePerformanceMetrics(trades)
-    const currentCapital = calculateCurrentCapital(trades, startingCapital)
+    const currentCapital = calculateCurrentCapital(trades, validStartingCapital)
     const currentStreak = calculateCurrentStreak(trades)
     const exposureMetrics = calculateExposureMetrics(trades, currentCapital)
     const periodicReturns = calculatePeriodicReturns(trades, currentCapital)
-    const { maxDrawdown, maxRunup } = calculateDrawdownAndRunup(trades, startingCapital)
+    const { maxDrawdown, maxRunup } = calculateDrawdownAndRunup(trades, validStartingCapital)
 
     return {
+        // Starting Capital explicitly returned
+        startingCapital: validStartingCapital,
+
         // Performance Metrics
         currentCapital,
         ...performanceMetrics,

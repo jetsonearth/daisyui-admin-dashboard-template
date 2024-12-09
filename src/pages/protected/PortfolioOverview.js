@@ -6,6 +6,7 @@ import { TRADE_STATUS } from '../../features/trades/tradeModel'
 import { marketDataService } from '../../features/marketData/marketDataService'
 import { closeTrade } from '../../features/trades/tradesSlice'
 import { calculatePortfolioMetrics } from '../../features/metrics/metricsService'
+import { userSettingsService } from '../../services/userSettingsService'
 
 // Time filter buttons configuration
 const timeFilters = [
@@ -24,10 +25,11 @@ function PortfolioOverview(){
     const [selectedTimeFilter, setSelectedTimeFilter] = useState(timeFilters[0])
     const [isAutoRefresh, setIsAutoRefresh] = useState(true)
     const [lastUpdate, setLastUpdate] = useState(null)
+    const [startingCapital, setStartingCapital] = useState(0)
 
     // Calculate metrics
     const calculateMetrics = () => {
-        const metrics = calculatePortfolioMetrics(allTrades, 50000)
+        const metrics = calculatePortfolioMetrics(allTrades, startingCapital)
         return metrics
     }
 
@@ -38,6 +40,20 @@ function PortfolioOverview(){
         const openTrades = allTrades.filter(trade => trade.status === 'open')
         setTrades(openTrades)
     }, [allTrades])
+
+    // Fetch starting capital from user settings
+    useEffect(() => {
+        const fetchStartingCapital = async () => {
+            try {
+                const userSettings = await userSettingsService.getUserSettings()
+                setStartingCapital(userSettings.starting_cash || 0)
+            } catch (error) {
+                console.error('Failed to fetch starting capital:', error)
+            }
+        }
+
+        fetchStartingCapital()
+    }, [])
 
     // Function to handle trade closure
     const handleCloseTrade = (trade) => {
@@ -87,9 +103,9 @@ function PortfolioOverview(){
             </div>
 
             {/* Metrics Row */}
-            <div className="grid grid-cols-5 gap-4 mb-6">
+            <div className="grid grid-cols-5 gap-4 mb-7">
                 {/* Each metric card with better overflow handling */}
-                <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[90px]">
+                <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[110px]">
                     <div className="text-xs text-gray-500 truncate mb-1">Current Capital</div>
                     <div className="text-2xl font-semibold truncate">
                         ${typeof metrics.currentCapital === 'number' 
@@ -101,7 +117,7 @@ function PortfolioOverview(){
                     </div>
                     <div className="text-xs text-green-500 truncate mt-auto">+12.5% from last month</div>
                 </div>
-                <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[90px]">
+                <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[110px]">
                     <div className="text-xs text-gray-500 truncate mb-1">Profit Factor</div>
                     <div className="text-2xl font-semibold truncate">
                         {typeof metrics.profitFactor === 'number' 
@@ -118,7 +134,7 @@ function PortfolioOverview(){
                             : '0.0'}%
                     </div>
                 </div> */}
-                <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[90px]">
+                <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[110px]">
                     <div className="text-xs text-gray-500 truncate mb-1">RRR</div>
                     <div className="text-2xl font-semibold truncate">
                         {typeof metrics.rrr === 'number' 
@@ -149,7 +165,7 @@ function PortfolioOverview(){
                             : '0'}
                     </div>
                 </div> */}
-                <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[90px]">
+                <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[110px]">
                     <div className="text-xs text-gray-500 truncate mb-1">Max Drawdown</div>
                     <div className="text-2xl font-semibold text-red-500 truncate">
                         {typeof metrics.maxDrawdown === 'number' 
@@ -157,7 +173,7 @@ function PortfolioOverview(){
                             : '0.00'}%
                     </div>
                 </div>
-                <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[90px]">
+                <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[110px]">
                     <div className="text-xs text-gray-500 truncate mb-1">Max Runup</div>
                     <div className="text-2xl font-semibold text-green-500 truncate">
                         {typeof metrics.maxRunup === 'number' 
@@ -171,7 +187,12 @@ function PortfolioOverview(){
             <div className="grid grid-cols-12 gap-6">
                 {/* Equity Curve - Spans 5 columns */}
                 <div className="col-span-6 bg-base-100 p-6 rounded-lg shadow">
-                    <div className="text-lg font-bold mb-4">Equity Curve</div>
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-lg font-bold">Equity Curve</h2>
+                        <div className="text-sm text-gray-500 bg-base-200 px-3 py-1 rounded-full">
+                            Starting Capital: <span className="font-semibold text-primary">${startingCapital.toLocaleString()}</span>
+                        </div>
+                    </div>
                     <div className="h-[300px] flex items-center justify-center text-gray-500">
                         Equity curve visualization placeholder...
                     </div>
@@ -182,7 +203,7 @@ function PortfolioOverview(){
                     {/* Win Rate, PnL and Streak Grid */}
                     <div className="grid grid-cols-3 gap-4">
                         {/* Win Rate Box */}
-                        <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[150px]">
+                        <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[170px]">
                             <div className="text-xs text-gray-500 truncate mb-1">Win Rate</div>
                             <div className="text-4xl font-semibold text-green-500 truncate flex items-center justify-center w-full h-full">
                                 {typeof metrics.winRate === 'number' 
