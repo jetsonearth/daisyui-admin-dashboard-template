@@ -90,7 +90,6 @@ function TradeLog(){
                                 <th className="w-32">Entry Date</th>
                                 <th className="w-28">Entry Price</th>
                                 <th className="w-28">Current Price</th>
-                                <th className="w-28">Price Change</th>
                                 <th className="w-24">Total Shares</th>
                                 <th className="w-24">Remaining</th>
                                 <th className="w-32">Total Cost</th>
@@ -111,6 +110,11 @@ function TradeLog(){
                                 <th className="w-32">Portfolio Impact</th>
                                 <th className="w-20">MAE</th>
                                 <th className="w-20">MFE</th>
+                                <th className="w-32">Exit Date</th>
+                                <th className="w-24">Commission</th>
+                                <th className="w-32">Holding Period</th>
+                                <th className="w-32">Mistakes</th>
+                                <th className="w-32">Notes</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -128,43 +132,31 @@ function TradeLog(){
                                         <td>{trade.entry_date || 'N/A'}</td>
                                         <td>{formatCurrency(trade.avg_cost)}</td>
                                         <td className="font-medium">{formatCurrency(trade.last_price)}</td>
-                                        <td className={trade.last_price ? (trade.last_price > trade.avg_cost ? 'text-green-500' : 'text-red-500') : ''}>
-                                            {trade.last_price ? ((trade.last_price - trade.avg_cost) / trade.avg_cost * 100).toFixed(2) + '%' : '-'}
-                                        </td>
                                         <td>{safeToFixed(trade.total_shares)}</td>
                                         <td>{trade.shares_remaining}</td>
                                         <td>{formatCurrency(trade.total_cost)}</td>
                                         <td>{formatCurrency(trade.market_value)}</td>
-                                        <td>{safeToFixed(trade.weight)}%</td>
-                                        <td>{safeToFixed(trade.trimmed)}%</td>
-                                        <td className="whitespace-normal">{trade.strategy}</td>
-                                        <td className="whitespace-normal">
-                                            <div className="flex flex-wrap gap-1">
-                                                {trade.setups?.map((setup, i) => (
-                                                    <span key={i} className="badge badge-sm">{setup}</span>
-                                                ))}
-                                            </div>
-                                        </td>
-                                        <td>{formatCurrency(trade.initial_sl)}</td>
-                                        <td>{formatCurrency(trade.sl_33)}</td>
-                                        <td>{formatCurrency(trade.sl_66)}</td>
-                                        <td className={trade.unrealized_pnl_percentage >= 0 ? 'text-green-500' : 'text-red-500'}>
-                                            {safeToFixed(trade.unrealized_pnl_percentage)}%
-                                        </td>
-                                        <td className={trade.unrealized_pnl >= 0 ? 'text-green-500' : 'text-red-500'}>
-                                            {formatCurrency(trade.unrealized_pnl)}
-                                        </td>
-                                        <td className={trade.realized_pnl_percentage >= 0 ? 'text-green-500' : 'text-red-500'}>
-                                            {safeToFixed(trade.realized_pnl_percentage)}%
-                                        </td>
-                                        <td className={trade.realized_pnl >= 0 ? 'text-green-500' : 'text-red-500'}>
-                                            {formatCurrency(trade.realized_pnl)}
-                                        </td>
-                                        <td>{trade.rrr || '-'}</td>
+                                        <td>{safeToFixed(trade.weight_percentage)}%</td>
+                                        <td>{safeToFixed(trade.trimmed_percentage)}%</td>
+                                        <td>{trade.strategy || 'N/A'}</td>
+                                        <td>{trade.setups ? trade.setups.join(', ') : 'N/A'}</td>
+                                        <td>{formatCurrency(trade.stop_loss_price)}</td>
+                                        <td>{formatCurrency(trade.stop_loss_33_percent)}</td>
+                                        <td>{formatCurrency(trade.stop_loss_66_percent)}</td>
+                                        <td>{safeToFixed(trade.unrealized_percentage)}%</td>
+                                        <td>{formatCurrency(trade.unrealized_pnl)}</td>
+                                        <td>{safeToFixed(trade.realized_percentage)}%</td>
+                                        <td>{formatCurrency(trade.realized_pnl)}</td>
+                                        <td>{safeToFixed(trade.risk_reward_ratio)}</td>
                                         <td>{formatCurrency(trade.open_risk)}</td>
                                         <td>{safeToFixed(trade.portfolio_impact)}%</td>
                                         <td className="text-red-500">{safeToFixed(trade.mae)}%</td>
                                         <td className="text-green-500">{safeToFixed(trade.mfe)}%</td>
+                                        <td>{trade.exit_date || 'N/A'}</td>
+                                        <td>{formatCurrency(trade.commission)}</td>
+                                        <td>{trade.holding_period || 'N/A'}</td>
+                                        <td>{trade.mistakes || 'N/A'}</td>
+                                        <td>{trade.notes || 'N/A'}</td>
                                     </tr>
                                 ))
                             }
