@@ -1,44 +1,58 @@
 import { TRADE_STATUS } from '../trades/tradeModel'
 
-// Helper function to calculate trade performance metrics
+// Validate trades input
+const validateTrades = (trades) => {
+    if (!Array.isArray(trades)) {
+        console.warn('Invalid trades input: expected an array')
+        return []
+    }
+    return trades
+}
+
+// Helper function to safely get numeric value
+const safeNumeric = (value, defaultValue = 0) => 
+    typeof value === 'number' && !isNaN(value) ? value : defaultValue
+
+// Calculate trade performance metrics with enhanced error handling
 const calculateTradePerformanceMetrics = (trades) => {
+    trades = validateTrades(trades)
     const closedTrades = trades.filter(trade => trade.status === TRADE_STATUS.CLOSED)
     const openTrades = trades.filter(trade => trade.status === TRADE_STATUS.OPEN)
 
-    // Gross Profits and Losses
+    // Gross Profits and Losses with safe numeric conversion
     const totalGrossProfits = closedTrades
-        .filter(trade => trade.realized_pnl > 0)
-        .reduce((sum, trade) => sum + trade.realized_pnl, 0)
+        .filter(trade => safeNumeric(trade.realized_pnl) > 0)
+        .reduce((sum, trade) => sum + safeNumeric(trade.realized_pnl), 0)
 
     const totalGrossLosses = Math.abs(closedTrades
-        .filter(trade => trade.realized_pnl <= 0)
-        .reduce((sum, trade) => sum + trade.realized_pnl, 0))
+        .filter(trade => safeNumeric(trade.realized_pnl) <= 0)
+        .reduce((sum, trade) => sum + safeNumeric(trade.realized_pnl), 0))
 
     // Win Rate
     const totalTrades = closedTrades.length
-    const winningTrades = closedTrades.filter(trade => trade.realized_pnl > 0)
+    const winningTrades = closedTrades.filter(trade => safeNumeric(trade.realized_pnl) > 0)
     const winRate = totalTrades > 0 
         ? Math.round((winningTrades.length / totalTrades) * 100) 
         : 0
 
-    // Average Win and Loss
+    // Average Win and Loss with safe calculations
     const avgWin = winningTrades.length > 0
         ? totalGrossProfits / winningTrades.length
         : 0
 
-    const losingTrades = closedTrades.filter(trade => trade.realized_pnl <= 0)
+    const losingTrades = closedTrades.filter(trade => safeNumeric(trade.realized_pnl) <= 0)
     const avgLoss = losingTrades.length > 0
         ? totalGrossLosses / losingTrades.length
         : 0
 
-    // Profit Factor
+    // Profit Factor with division by zero protection
     const profitFactor = totalGrossLosses !== 0
-        ? Math.round((totalGrossProfits / totalGrossLosses) * 10) / 10
+        ? Number((totalGrossProfits / totalGrossLosses).toFixed(1))
         : 0
 
     // Risk Reward Ratio
     const rrr = avgLoss !== 0 
-        ? Math.round((avgWin / avgLoss) * 10) / 10
+        ? Number((avgWin / avgLoss).toFixed(1))
         : 0
 
     return {
@@ -52,21 +66,23 @@ const calculateTradePerformanceMetrics = (trades) => {
     }
 }
 
-// Calculate Current Capital
+// Calculate Current Capital with enhanced safety
 const calculateCurrentCapital = (trades, startingCapital = 50000) => {
+    trades = validateTrades(trades)
     const totalRealizedPnL = trades
         .filter(trade => trade.status === TRADE_STATUS.CLOSED)
-        .reduce((sum, trade) => sum + (trade.realized_pnl || 0), 0)
+        .reduce((sum, trade) => sum + safeNumeric(trade.realized_pnl), 0)
 
     const totalUnrealizedPnL = trades
         .filter(trade => trade.status === TRADE_STATUS.OPEN)
-        .reduce((sum, trade) => sum + (trade.unrealized_pnl || 0), 0)
+        .reduce((sum, trade) => sum + safeNumeric(trade.unrealized_pnl), 0)
 
     return startingCapital + totalRealizedPnL + totalUnrealizedPnL
 }
 
-// Calculate Current Streak
+// Calculate Current Streak with more robust tracking
 const calculateCurrentStreak = (trades) => {
+    trades = validateTrades(trades)
     const closedTrades = trades
         .filter(trade => trade.status === TRADE_STATUS.CLOSED)
         .sort((a, b) => new Date(b.exit_date) - new Date(a.exit_date))
@@ -75,7 +91,7 @@ const calculateCurrentStreak = (trades) => {
     let streakType = null
 
     for (const trade of closedTrades) {
-        const isWinningTrade = trade.realized_pnl > 0
+        const isWinningTrade = safeNumeric(trade.realized_pnl) > 0
 
         if (streakType === null) {
             streakType = isWinningTrade
@@ -93,8 +109,9 @@ const calculateCurrentStreak = (trades) => {
     }
 }
 
-// Exposure Metrics Calculations
+// Exposure Metrics with improved error handling
 const calculateExposureMetrics = (trades, accountValue = 50000) => {
+    trades = validateTrades(trades)
     const todayTrades = trades.filter(trade => 
         trade.status === TRADE_STATUS.OPEN && 
         new Date(trade.entry_date).toDateString() === new Date().toDateString()
@@ -102,29 +119,37 @@ const calculateExposureMetrics = (trades, accountValue = 50000) => {
 
     // Daily Exposure Risk (DER)
     const dailyExposureRisk = todayTrades.reduce((sum, trade) => {
-        const riskPerTrade = Math.abs(trade.entry_price - trade.stop_loss) * trade.shares
+        const riskPerTrade = Math.abs(
+            safeNumeric(trade.entry_price) - safeNumeric(trade.stop_loss)
+        ) * safeNumeric(trade.shares)
         return sum + riskPerTrade
     }, 0) / accountValue * 100
 
     // Daily Exposure Profit (DEP)
     const dailyExposureProfit = todayTrades.reduce((sum, trade) => {
-        const profitPerTrade = (trade.current_price - trade.entry_price) * trade.shares
+        const profitPerTrade = (
+            safeNumeric(trade.current_price) - safeNumeric(trade.entry_price)
+        ) * safeNumeric(trade.shares)
         return sum + profitPerTrade
     }, 0) / accountValue * 100
 
     // New Exposure Metrics
     const newExposureTrades = trades.filter(trade => 
         trade.status === TRADE_STATUS.OPEN && 
-        trade.realized_pnl < trade.risk_per_trade
+        safeNumeric(trade.realized_pnl) < safeNumeric(trade.risk_per_trade)
     )
 
     const newExposureRisk = newExposureTrades.reduce((sum, trade) => {
-        const riskPerTrade = Math.abs(trade.entry_price - trade.stop_loss) * trade.shares
+        const riskPerTrade = Math.abs(
+            safeNumeric(trade.entry_price) - safeNumeric(trade.stop_loss)
+        ) * safeNumeric(trade.shares)
         return sum + riskPerTrade
     }, 0) / accountValue * 100
 
     const newExposureProfit = newExposureTrades.reduce((sum, trade) => {
-        const profitPerTrade = (trade.current_price - trade.entry_price) * trade.shares
+        const profitPerTrade = (
+            safeNumeric(trade.current_price) - safeNumeric(trade.entry_price)
+        ) * safeNumeric(trade.shares)
         return sum + profitPerTrade
     }, 0) / accountValue * 100
 
@@ -132,18 +157,28 @@ const calculateExposureMetrics = (trades, accountValue = 50000) => {
     const openTrades = trades.filter(trade => trade.status === TRADE_STATUS.OPEN)
 
     const openExposureRisk = openTrades.reduce((sum, trade) => {
-        const stop33 = trade.entry_price + (trade.entry_price - trade.stop_loss) * 0.33
-        const stop66 = trade.entry_price + (trade.entry_price - trade.stop_loss) * 0.66
+        const stop33 = safeNumeric(trade.entry_price) + 
+            (safeNumeric(trade.entry_price) - safeNumeric(trade.stop_loss)) * 0.33
+        const stop66 = safeNumeric(trade.entry_price) + 
+            (safeNumeric(trade.entry_price) - safeNumeric(trade.stop_loss)) * 0.66
         
-        const risk33 = Math.abs(trade.current_price - stop33) * (trade.shares / 3)
-        const risk66 = Math.abs(trade.current_price - stop66) * (trade.shares / 3)
-        const riskInitial = Math.abs(trade.current_price - trade.stop_loss) * (trade.shares / 3)
+        const risk33 = Math.abs(
+            safeNumeric(trade.current_price) - stop33
+        ) * (safeNumeric(trade.shares) / 3)
+        const risk66 = Math.abs(
+            safeNumeric(trade.current_price) - stop66
+        ) * (safeNumeric(trade.shares) / 3)
+        const riskInitial = Math.abs(
+            safeNumeric(trade.current_price) - safeNumeric(trade.stop_loss)
+        ) * (safeNumeric(trade.shares) / 3)
         
         return sum + (risk33 + risk66 + riskInitial)
     }, 0) / accountValue * 100
 
     const openExposureProfit = openTrades.reduce((sum, trade) => {
-        const profitPerTrade = (trade.current_price - trade.entry_price) * trade.shares
+        const profitPerTrade = (
+            safeNumeric(trade.current_price) - safeNumeric(trade.entry_price)
+        ) * safeNumeric(trade.shares)
         return sum + profitPerTrade
     }, 0) / accountValue * 100
 
@@ -166,34 +201,38 @@ const calculateExposureMetrics = (trades, accountValue = 50000) => {
     }
 }
 
+// Periodic Returns with improved implementation
 const calculatePeriodicReturns = (trades, accountValue) => {
-    // This would require historical account value tracking
-    // For now, we'll create a placeholder implementation
-    const currentDate = new Date()
-
+    trades = validateTrades(trades)
+    
     return {
-        // Periodic Returns
-        weeklyReturn: 0,  // (Current Week End Value - Previous Week End Value) / Previous Week End Value × 100
-        monthlyReturn: 0, // (Current Month End Value - Previous Month End Value) / Previous Month End Value × 100
-        quarterlyReturn: 0, // (Current Quarter End Value - Previous Quarter End Value) / Previous Quarter End Value × 100
-        yearlyReturn: 0,  // (Current Year End Value - Previous Year End Value) / Previous Year End Value × 100
+        // Periodic Returns (placeholders for now)
+        weeklyReturn: 0,
+        monthlyReturn: 0,
+        quarterlyReturn: 0,
+        yearlyReturn: 0,
 
-        // Average Returns
+        // Average Returns (placeholders)
         averageWeeklyReturn: 0,
         averageMonthlyReturn: 0,
         averageQuarterlyReturn: 0,
         averageYearlyReturn: 0,
 
         // Portfolio Exposure
-        totalExposure: openTrades.reduce((sum, trade) => sum + trade.position_size, 0) / accountValue * 100
+        totalExposure: trades
+            .filter(trade => trade.status === TRADE_STATUS.OPEN)
+            .reduce((sum, trade) => sum + safeNumeric(trade.position_size), 0) / accountValue * 100
     }
 }
 
+// Drawdown calculation with enhanced error handling
 const calculateDrawdownAndRunup = (trades, startingCapital) => {
-    // Cumulative PnL calculation
+    trades = validateTrades(trades)
+    
+    // Cumulative PnL calculation with safe numeric conversion
     const cumulativePnL = trades.reduce((acc, trade) => {
         const lastBalance = acc.length > 0 ? acc[acc.length - 1] : startingCapital
-        const tradePnL = trade.realized_pnl || 0
+        const tradePnL = safeNumeric(trade.realized_pnl)
         return [...acc, lastBalance + tradePnL]
     }, [])
 
@@ -221,8 +260,8 @@ const calculateDrawdownAndRunup = (trades, startingCapital) => {
     }
 
     return {
-        maxDrawdown,
-        maxRunup
+        maxDrawdown: Number(maxDrawdown.toFixed(2)),
+        maxRunup: Number(maxRunup.toFixed(2))
     }
 }
 
