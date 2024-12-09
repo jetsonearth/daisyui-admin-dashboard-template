@@ -17,7 +17,7 @@ function TradePlanner() {
     const [inputs, setInputs] = useState({
         ticker: '',
         currentPrice: '',
-        atrPercent: '',
+        atr: '',
         lowOfDay: '',
         portfolioRisk: '0.5', // Default 0.5%
         commission: '',     // Default empty
@@ -27,6 +27,7 @@ function TradePlanner() {
         assetType: ASSET_TYPES.STOCK,
         notes: ''
     })
+
 
     // Calculation results
     const [results, setResults] = useState({
@@ -51,18 +52,15 @@ function TradePlanner() {
     const calculateResults = () => {
         const {
             currentPrice,
-            atrPercent,
+            atr,
             lowOfDay,
             portfolioRisk,
             commission
         } = inputs
-
+    
         // Guard against invalid inputs
         if (!currentPrice || isNaN(currentPrice)) {
             setResults({
-                atrDistance: 0,
-                lodDistance: 0,
-                stopDistancePercent: 0,
                 fullStopPrice: 0,
                 stop33: 0,
                 stop66: 0,
@@ -72,38 +70,80 @@ function TradePlanner() {
                 breakEvenPrice: 0,
                 target2R: 0,
                 target3R: 0,
-                rrr: 0
+                rrr: 0,
+                // New fields for stop-loss logic explanation
+                stopLossLogic: 'No valid price',
+                atrStopPrice: 0,
+                lodStopPrice: 0,
+                percentStopPrice: 0,
+                stopLossPercent: 0
             })
             return
         }
 
+        console.log('Input Values:', {
+            currentPrice,
+            atr,
+            lowOfDay,
+            portfolioRisk,
+            commission
+        });
+    
+    
         const price = parseFloat(currentPrice)
-        const atr = atrPercent ? (parseFloat(atrPercent) / 100) * price : price * 0.02 // Default to 2% if not provided
-        const lod = lowOfDay ? parseFloat(lowOfDay) : price * 0.93 // Default to 7% below price if not provided
+        const lod = parseFloat(lowOfDay)  // Will throw an error if not provided
         const risk = portfolioRisk ? parseFloat(portfolioRisk) / 100 : 0.005 // Default to 0.5%
-
-        // Calculate distances
-        const atrDistance = Math.max(price * 0.001, price - (price - atr)) // Minimum 0.1% distance
-        const lodDistance = Math.max(price * 0.001, price - lod)
-
-        // Use the larger of ATR or LOD distance, max 7%
-        const stopDistance = Math.min(Math.max(atrDistance, lodDistance), price * 0.07)
-        const stopDistancePercent = (stopDistance / price) * 100
-
-        // Calculate stop levels
-        const fullStopPrice = Math.max(0.01, price - stopDistance)
-        const stop66 = Math.max(0.01, price - (stopDistance * 0.66))
-        const stop33 = Math.max(0.01, price - (stopDistance * 0.33))
-
-        // Calculate position size based on risk
+    
+        // Stop-Loss Calculation Logic:
+        // 1. ATR Stop-Loss: Entry Price - ATR
+        const atrStopPrice = price - parseFloat(atr)  // Will throw an error if not provided
+    
+        // 2. Low of Day Stop-Loss
+        const lodStopPrice = lod
+    
+        // 3. Percentage-Based Stop-Loss (7%)
+        const percentStopPrice = price * 0.93  // 7% below entry
+    
+        // Select the MOST CONSERVATIVE stop-loss (highest price)
+        // This minimizes potential loss by choosing the stop-loss that triggers earliest
+        const fullStopPrice = Math.max(atrStopPrice, lodStopPrice, percentStopPrice)
+    
+        // Determine which stop-loss logic was used
+        let stopLossLogic = 'Percentage (7%)'
+        if (fullStopPrice === atrStopPrice) {
+            stopLossLogic = 'ATR'
+        } else if (fullStopPrice === lodStopPrice) {
+            stopLossLogic = 'Low of Day'
+        }
+    
+        // Calculate stop-loss percentage
+        const stopLossPercent = ((price - fullStopPrice) / price) * 100
+    
+        // Calculate stop levels (33% and 66% of full stop distance)
+        const stopDistance = price - fullStopPrice
+        const stop66 = price - (stopDistance * 0.66)
+        const stop33 = price - (stopDistance * 0.33)
+    
+        // Calculate position sizing based on risk
         const riskAmount = accountSize * risk
         const riskPerShare = Math.max(0.01, stopDistance) // Prevent division by zero
         const positionSize = Math.max(1, Math.floor(riskAmount / riskPerShare))
-
+    
         // Calculate exposures
         const dollarExposure = positionSize * price
-        const openRisk = ((price - fullStopPrice) / price) * 100
+        // const openRisk = ((price - fullStopPrice) / price) * 100
+        // Compute Open Risk as a weighted average of the three stop levels
 
+        // 3-Tiered Stop-Loss Risk Calculation
+        const fullStopLoss = ((price - fullStopPrice) / price) * 100
+        const stop33Loss = ((price - stop33) / price) * 100
+        const stop66Loss = ((price - stop66) / price) * 100
+
+        const openRisk = (
+            (fullStopLoss * 0.5) +  // Full stop gets 50% weight
+            (stop33Loss * 0.33) +   // 33% stop gets 33% weight
+            (stop66Loss * 0.17)     // 66% stop gets 17% weight
+        )
         // Calculate break-even including commission
         const totalCommission = commission ? parseFloat(commission) * 2 : 0 // Entry + Exit
         const breakEvenPrice = price + (totalCommission / positionSize)
@@ -115,9 +155,6 @@ function TradePlanner() {
         const rrr = 3 // Default to 3R target
 
         setResults({
-            atrDistance,
-            lodDistance,
-            stopDistancePercent,
             fullStopPrice,
             stop33,
             stop66,
@@ -127,7 +164,12 @@ function TradePlanner() {
             breakEvenPrice,
             target2R,
             target3R,
-            rrr
+            rrr,
+            stopLossLogic,
+            atrStopPrice,
+            lodStopPrice,
+            percentStopPrice,
+            stopLossPercent
         })
     }
 
@@ -219,12 +261,12 @@ function TradePlanner() {
 
                             <div className="form-control">
                                 <label className="label">
-                                    <span className="label-text">ATR %</span>
+                                    <span className="label-text">ATR</span>
                                 </label>
                                 <input
                                     type="number"
-                                    name="atrPercent"
-                                    value={inputs.atrPercent}
+                                    name="atr"
+                                    value={inputs.atr}
                                     onChange={handleInputChange}
                                     className="input input-bordered"
                                     placeholder="0.00"
@@ -370,46 +412,65 @@ function TradePlanner() {
                         {/* Stop Loss Visualization */}
                         <div className="bg-base-200 p-4 rounded-lg">
                             <h4 className="font-medium mb-3">Position Analysis</h4>
-                            <StopLossVisualizer 
-                                currentPrice={parseFloat(inputs.currentPrice) || 0}
-                                stop33={results.stop33 || 0}
-                                stop66={results.stop66 || 0}
-                                fullStop={results.fullStopPrice || 0}
-                                target2R={results.target2R || 0}
-                                target3R={results.target3R || 0}
-                                direction={inputs.direction || 'LONG'}
-                            />
                             
                             {/* Compact Analysis Grid */}
                             <div className="grid grid-cols-2 gap-x-8 gap-y-2 mt-4">
                                 {/* Stop Levels */}
                                 <div>
-                                    <div className="text-sm font-medium text-gray-500">Full Stop (Max 7%)</div>
-                                    <div className="flex justify-between items-baseline">
-                                        <span className="text-lg font-semibold">${results.fullStopPrice.toFixed(2)}</span>
-                                        <span className="text-sm text-gray-500">7.00% from entry</span>
+                                    <div>
+                                        <div className="text-sm font-medium text-gray-500">
+                                            Full Stop 
+                                            <span className="text-xs text-yellow-400 ml-2">
+                                                {results.stopLossLogic === 'ATR' && '(Using ATR Stop)'}
+                                                {results.stopLossLogic === 'Low of Day' && '(Using Low of Day)'}
+                                                {results.stopLossLogic === 'Percentage (7%)' && '(Using 7% Stop)'}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between items-baseline">
+                                            <span className="text-lg font-semibold">
+                                                ${results.fullStopPrice.toFixed(2)}
+                                                <span className="text-xs text-red-500 ml-2">
+                                                    ({((parseFloat(inputs.currentPrice) - results.fullStopPrice) / parseFloat(inputs.currentPrice) * 100).toFixed(2)}% loss)
+                                                </span>
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
 
                                 <div>
                                     <div className="text-sm font-medium text-gray-500">33% Stop</div>
-                                    <div className="text-lg font-semibold">${results.stop33.toFixed(2)}</div>
+                                    <div className="flex justify-between items-baseline">
+                                        <span className="text-lg font-semibold">
+                                            ${results.stop33.toFixed(2)}
+                                            <span className="text-xs text-red-500 ml-2">
+                                                ({((parseFloat(inputs.currentPrice) - results.stop33) / parseFloat(inputs.currentPrice) * 100).toFixed(2)}% loss)
+                                            </span>
+                                        </span>
+                                    </div>
                                 </div>
 
                                 <div>
                                     <div className="text-sm font-medium text-gray-500">66% Stop</div>
-                                    <div className="text-lg font-semibold">${results.stop66.toFixed(2)}</div>
+                                    <div className="flex justify-between items-baseline">
+                                        <span className="text-lg font-semibold">
+                                            ${results.stop66.toFixed(2)}
+                                            <span className="text-xs text-red-500 ml-2">
+                                                ({((parseFloat(inputs.currentPrice) - results.stop66) / parseFloat(inputs.currentPrice) * 100).toFixed(2)}% loss)
+                                            </span>
+                                        </span>
+                                    </div>
                                 </div>
 
                                 {/* Position Size */}
                                 <div>
-                                    <div className="text-sm font-medium text-gray-500">Position Size</div>
+                                    <div className="text-sm font-medium text-gray-500">
+                                        Position Size 
+                                        <span className="text-xs text-yellow-400 ml-2">(Risk-Based Size)</span>
+                                    </div>
                                     <div className="flex justify-between items-baseline">
                                         <span className="text-lg font-semibold">{results.positionSize} shares</span>
-                                        <span className="text-sm text-gray-500">Risk-Based Size</span>
                                     </div>
                                 </div>
-
                                 {/* Dollar Exposure */}
                                 <div>
                                     <div className="text-sm font-medium text-gray-500">Dollar Exposure</div>
@@ -418,7 +479,7 @@ function TradePlanner() {
 
                                 {/* Open Risk */}
                                 <div>
-                                    <div className="text-sm font-medium text-gray-500">Open Risk</div>
+                                    <div className="text-sm font-medium text-gray-500">3-Tiered SL Open Risk</div>
                                     <div className="text-lg font-semibold">{results.openRisk.toFixed(2)}%</div>
                                 </div>
 
@@ -438,7 +499,7 @@ function TradePlanner() {
                         {/* Price Ladder moved below */}
                         {inputs.currentPrice && (
                             <div className="bg-base-200 p-4 rounded-lg">
-                                <h4 className="font-medium mb-3">Price Ladder</h4>
+                                <h4 className="font-medium mb-10">Price Ladder</h4>
                                 {console.log('Price Ladder Props:', {
                                     currentPrice: parseFloat(inputs.currentPrice),
                                     fullStop: results.fullStopPrice,

@@ -1,7 +1,7 @@
 // Trade status options
 export const TRADE_STATUS = {
-    OPEN: 'open',
-    CLOSED: 'closed'
+    OPEN: 'Open',
+    CLOSED: 'Closed'
 };
 
 // Asset types
@@ -22,7 +22,6 @@ export const STRATEGIES = {
     EP: 'EP',
     MB: 'MB',
     PBB: 'PBB',
-    MOMENTUM: 'MOMENTUM'
 };
 
 // Setups
@@ -89,7 +88,7 @@ export const SAMPLE_TRADES = [
         market_value: 15000,
         trimmed: 25,
         weight: 5,
-        strategy: STRATEGIES.MOMENTUM,
+        strategy: STRATEGIES.MB,
         setups: ['VCP', 'Bull Flag'],
         initial_sl: 145.00,
         sl_33: 146.00,
