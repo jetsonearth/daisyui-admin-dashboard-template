@@ -400,7 +400,7 @@ function PortfolioOverview(){
                                         <td>${trade.avg_cost?.toFixed(2)}</td>
                                         <td>{trade.shares_remaining}</td>
                                         <td>{trade.trimmed || '0'}%</td>
-                                        <td>${trade.open_risk?.toFixed(2)}</td>
+                                        <td>{trade.open_risk?.toFixed(2)}%</td>
                                         <td>{trade.portfolio_weight?.toFixed(2)}%</td>
                                         <td>
                                             <div className="dropdown dropdown-end">

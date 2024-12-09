@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import { useSelector } from 'react-redux'; 
+import { useDispatch, useSelector } from 'react-redux'; 
 import TitleCard from '../../components/Cards/TitleCard'
 import { TRADE_STATUS, ASSET_TYPES, DIRECTIONS, STRATEGIES, SAMPLE_TRADES } from '../../features/trades/tradeModel'
 import { marketDataService } from '../../features/marketData/marketDataService'
 
 function TradeLog(){
+    const dispatch = useDispatch(); // Add this line
     const tradesFromStore = useSelector(state => state.trades.trades); 
     const [trades, setTrades] = useState(tradesFromStore);
     const [isAutoRefresh, setIsAutoRefresh] = useState(true)
@@ -53,6 +54,18 @@ function TradeLog(){
         updateMarketData();
     };
 
+    // New reset function
+    const handleReset = () => {
+        // Reset trades to the original store trades
+        setTrades(tradesFromStore);
+        
+        // Reset auto-refresh to true
+        setIsAutoRefresh(true);
+        
+        // Clear last update
+        setLastUpdate(null);
+    };
+
     return(
         <div className="p-4">
             <TitleCard title="Trade Log" topMargin="mt-2">
@@ -69,6 +82,15 @@ function TradeLog(){
                     >
                         Refresh Now
                     </button>
+
+                    {/* New Reset Button */}
+                    <button 
+                        onClick={handleReset}
+                        className="btn btn-secondary"
+                    >
+                        Reset
+                    </button>
+
                     <span className="text-gray-400">
                         Auto-refreshing every 30 minutes
                     </span>
@@ -148,7 +170,7 @@ function TradeLog(){
                                         <td>{safeToFixed(trade.realized_percentage)}%</td>
                                         <td>{formatCurrency(trade.realized_pnl)}</td>
                                         <td>{safeToFixed(trade.risk_reward_ratio)}</td>
-                                        <td>{formatCurrency(trade.open_risk)}</td>
+                                        <td>{safeToFixed(trade.open_risk)}%</td>
                                         <td>{safeToFixed(trade.portfolio_impact)}%</td>
                                         <td className="text-red-500">{safeToFixed(trade.mae)}%</td>
                                         <td className="text-green-500">{safeToFixed(trade.mfe)}%</td>
