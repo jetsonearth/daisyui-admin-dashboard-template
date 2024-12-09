@@ -5,6 +5,7 @@ import dayjs from 'dayjs'
 import { TRADE_STATUS } from '../../features/trades/tradeModel'
 import { marketDataService } from '../../features/marketData/marketDataService'
 import { closeTrade } from '../../features/trades/tradesSlice'
+import { calculatePortfolioMetrics } from '../../features/metrics/metricsService'
 
 // Time filter buttons configuration
 const timeFilters = [
@@ -26,20 +27,8 @@ function PortfolioOverview(){
 
     // Calculate metrics
     const calculateMetrics = () => {
-        const openTrades = allTrades.filter(trade => trade.status === 'open')
-        const totalPnL = openTrades.reduce((sum, trade) => sum + (trade.unrealized_pnl || 0), 0)
-        const totalRisk = openTrades.reduce((sum, trade) => sum + (trade.open_risk || 0), 0)
-        
-        return {
-            currentCapital: 54321,
-            profitFactor: 5,
-            winRate: 35,
-            rrr: 3,
-            avgWin: 213,
-            avgLoss: 20,
-            winCount: 90,
-            loseCount: 20
-        }
+        const metrics = calculatePortfolioMetrics(allTrades, 50000)
+        return metrics
     }
 
     const metrics = calculateMetrics()
@@ -98,7 +87,7 @@ function PortfolioOverview(){
             </div>
 
             {/* Metrics Row */}
-            <div className="grid grid-cols-6 gap-4 mb-6">
+            <div className="grid grid-cols-8 gap-4 mb-6">
                 <div className="bg-base-100 p-4 rounded-lg shadow">
                     <div className="text-sm text-gray-500">Current Capital</div>
                     <div className="text-2xl font-bold">${metrics.currentCapital.toLocaleString()}</div>
@@ -127,6 +116,14 @@ function PortfolioOverview(){
                     <div className="text-sm text-gray-500">Avg Loss</div>
                     <div className="text-2xl font-bold text-red-500">${metrics.avgLoss}</div>
                 </div>
+                <div className="bg-base-100 p-4 rounded-lg shadow">
+                    <div className="text-sm text-gray-500">Max Drawdown</div>
+                    <div className="text-2xl font-bold text-red-500">{metrics.maxDrawdown}%</div>
+                </div>
+                <div className="bg-base-100 p-4 rounded-lg shadow">
+                    <div className="text-sm text-gray-500">Max Runup</div>
+                    <div className="text-2xl font-bold text-green-500">{metrics.maxRunup}%</div>
+                </div>
             </div>
 
             {/* Main Content Grid */}
@@ -145,11 +142,11 @@ function PortfolioOverview(){
                     <div className="bg-base-100 p-4 rounded-lg shadow">
                         <div className="mb-4">
                             <div className="text-gray-500 text-sm">Total Realized PnL</div>
-                            <div className="text-xl font-bold">$54,321</div>
+                            <div className="text-xl font-bold">${metrics.totalGrossProfits.toLocaleString()}</div>
                         </div>
                         <div>
                             <div className="text-gray-500 text-sm">Total Unrealized</div>
-                            <div className="text-xl font-bold">$54,321</div>
+                            <div className="text-xl font-bold">${metrics.totalGrossLosses.toLocaleString()}</div>
                         </div>
                     </div>
 
@@ -159,11 +156,34 @@ function PortfolioOverview(){
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <div className="text-xs text-gray-500">Win</div>
-                                <div className="text-xl font-bold text-green-500">90</div>
+                                <div className="text-xl font-bold text-green-500">{metrics.winCount}</div>
                             </div>
                             <div>
                                 <div className="text-xs text-gray-500">Lose</div>
-                                <div className="text-xl font-bold text-red-500">20</div>
+                                <div className="text-xl font-bold text-red-500">{metrics.loseCount}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Period Returns */}
+                    <div className="bg-base-100 p-4 rounded-lg shadow">
+                        <div className="text-gray-500 text-sm mb-2">Period Returns</div>
+                        <div className="space-y-2">
+                            <div>
+                                <div className="text-xs text-gray-500">Weekly</div>
+                                <div className="text-sm font-bold">{metrics.weeklyReturn}%</div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Monthly</div>
+                                <div className="text-sm font-bold">{metrics.monthlyReturn}%</div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Quarterly</div>
+                                <div className="text-sm font-bold">{metrics.quarterlyReturn}%</div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-gray-500">Yearly</div>
+                                <div className="text-sm font-bold">{metrics.yearlyReturn}%</div>
                             </div>
                         </div>
                     </div>
