@@ -35,7 +35,7 @@ function PageContent(){
                                             key={key}
                                             exact={true}
                                             path={`${route.path}`}
-                                            element={<route.component />}
+                                            element={route.element}
                                         />
                                     )
                                 })
