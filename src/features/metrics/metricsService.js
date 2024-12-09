@@ -166,11 +166,73 @@ const calculateExposureMetrics = (trades, accountValue = 50000) => {
     }
 }
 
+const calculatePeriodicReturns = (trades, accountValue) => {
+    // This would require historical account value tracking
+    // For now, we'll create a placeholder implementation
+    const currentDate = new Date()
+
+    return {
+        // Periodic Returns
+        weeklyReturn: 0,  // (Current Week End Value - Previous Week End Value) / Previous Week End Value × 100
+        monthlyReturn: 0, // (Current Month End Value - Previous Month End Value) / Previous Month End Value × 100
+        quarterlyReturn: 0, // (Current Quarter End Value - Previous Quarter End Value) / Previous Quarter End Value × 100
+        yearlyReturn: 0,  // (Current Year End Value - Previous Year End Value) / Previous Year End Value × 100
+
+        // Average Returns
+        averageWeeklyReturn: 0,
+        averageMonthlyReturn: 0,
+        averageQuarterlyReturn: 0,
+        averageYearlyReturn: 0,
+
+        // Portfolio Exposure
+        totalExposure: openTrades.reduce((sum, trade) => sum + trade.position_size, 0) / accountValue * 100
+    }
+}
+
+const calculateDrawdownAndRunup = (trades, startingCapital) => {
+    // Cumulative PnL calculation
+    const cumulativePnL = trades.reduce((acc, trade) => {
+        const lastBalance = acc.length > 0 ? acc[acc.length - 1] : startingCapital
+        const tradePnL = trade.realized_pnl || 0
+        return [...acc, lastBalance + tradePnL]
+    }, [])
+
+    let maxDrawdown = 0
+    let maxRunup = 0
+    let peak = startingCapital
+    let trough = startingCapital
+
+    for (let balance of cumulativePnL) {
+        // Maximum Drawdown Calculation
+        if (balance > peak) {
+            peak = balance
+            trough = balance
+        }
+        
+        if (balance < trough) {
+            trough = balance
+            const drawdown = (peak - trough) / peak * 100
+            maxDrawdown = Math.max(maxDrawdown, drawdown)
+        }
+
+        // Maximum Run-up Calculation
+        const runup = (balance - startingCapital) / startingCapital * 100
+        maxRunup = Math.max(maxRunup, runup)
+    }
+
+    return {
+        maxDrawdown,
+        maxRunup
+    }
+}
+
 export const calculatePortfolioMetrics = (trades = [], startingCapital = 50000) => {
     const performanceMetrics = calculateTradePerformanceMetrics(trades)
     const currentCapital = calculateCurrentCapital(trades, startingCapital)
     const currentStreak = calculateCurrentStreak(trades)
     const exposureMetrics = calculateExposureMetrics(trades, currentCapital)
+    const periodicReturns = calculatePeriodicReturns(trades, currentCapital)
+    const { maxDrawdown, maxRunup } = calculateDrawdownAndRunup(trades, startingCapital)
 
     return {
         // Performance Metrics
@@ -179,8 +241,13 @@ export const calculatePortfolioMetrics = (trades = [], startingCapital = 50000) 
         ...currentStreak,
 
         // Exposure Metrics
-        ...exposureMetrics
+        ...exposureMetrics,
+
+        // Periodic Returns
+        ...periodicReturns,
+
+        // Drawdown Metrics
+        maxDrawdown,
+        maxRunup
     }
 }
-
-export const getTradeStreak = (trades) => calculateCurrentStreak(trades)
