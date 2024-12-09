@@ -8,8 +8,8 @@ export function useAuth() {
   useEffect(() => {
     // Check active session
     const checkUser = async () => {
-      const { data } = await supabase.auth.getSession()
-      setUser(data.session?.user || null)
+      const { data: { session } } = await supabase.auth.getSession()
+      setUser(session?.user || null)
       setLoading(false)
     }
 
