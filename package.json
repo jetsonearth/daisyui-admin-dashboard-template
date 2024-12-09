@@ -37,6 +37,7 @@
     "react-router-dom": "^6.4.3",
     "react-scripts": "5.0.1",
     "react-tailwindcss-datepicker": "^1.6.0",
+    "react-toastify": "^10.0.6",
     "stream": "^0.0.3",
     "stream-browserify": "^3.0.0",
     "stream-http": "^3.2.0",

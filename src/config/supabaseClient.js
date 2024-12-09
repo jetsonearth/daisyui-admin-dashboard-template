@@ -1,7 +1,11 @@
-import { createClient } from '@supabase/supabase-js'
+// src/config/supabaseClient.js
+import { createClient } from '@supabase/supabase-js';
 
-// Create a single supabase client for interacting with your app
-export const supabase = createClient(
-  process.env.REACT_APP_SUPABASE_URL, 
-  process.env.REACT_APP_SUPABASE_ANON_KEY
-)
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
+const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);

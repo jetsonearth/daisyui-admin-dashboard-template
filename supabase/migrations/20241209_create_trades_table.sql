@@ -77,12 +77,22 @@ CREATE TABLE trades (
 );
 
 -- Row Level Security
-ALTER TABLE trades ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trades SET SCHEMA public;
+ALTER TABLE public.trades ENABLE ROW LEVEL SECURITY;
 
--- Policy to allow users to only access their own trades
-CREATE POLICY "Users can only access their own trades" 
-    ON trades FOR ALL 
-    USING (auth.uid() = user_id);
+-- Revoke all default permissions
+REVOKE ALL ON public.trades FROM public;
+REVOKE ALL ON public.trades FROM authenticated;
+
+-- Strict Row Level Security policy
+CREATE OR REPLACE POLICY "Users can only access their own trades"
+ON public.trades
+FOR ALL USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+-- Minimal, user-specific permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.trades TO authenticated
+WITH CHECK (auth.uid() = user_id);
 
 -- Trigger to automatically update the updated_at timestamp
 CREATE OR REPLACE FUNCTION update_modified_column()
@@ -94,11 +104,11 @@ END;
 $$ language 'plpgsql';
 
 CREATE TRIGGER update_trades_modtime
-    BEFORE UPDATE ON trades
+    BEFORE UPDATE ON public.trades
     FOR EACH ROW
     EXECUTE FUNCTION update_modified_column();
 
 -- Optional: Create an index for faster querying
-CREATE INDEX idx_trades_user_id ON trades(user_id);
-CREATE INDEX idx_trades_ticker ON trades(ticker);
-CREATE INDEX idx_trades_entry_date ON trades(entry_date);
+CREATE INDEX idx_trades_user_id ON public.trades(user_id);
+CREATE INDEX idx_trades_ticker ON public.trades(ticker);
+CREATE INDEX idx_trades_entry_date ON public.trades(entry_date);

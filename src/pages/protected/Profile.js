@@ -1,68 +1,125 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import TitleCard from '../../components/Cards/TitleCard'
+import { userSettingsService } from '../../services/userSettingsService';
 
 function Profile(){
-    const [startingCash, setStartingCash] = useState(100000); // Default starting cash
+    // Account Settings
+    const [startingCash, setStartingCash] = useState(100000);
     const [transferAmount, setTransferAmount] = useState('');
 
-    const handleTransfer = () => {
-        if (transferAmount && !isNaN(parseFloat(transferAmount))) {
-            const amount = parseFloat(transferAmount);
-            setStartingCash(prevCash => prevCash + amount);
-            setTransferAmount(''); // Reset transfer input
+    // Profile Settings
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
+    const [tradingExperience, setTradingExperience] = useState('');
+    const [preferredTradingStyle, setPreferredTradingStyle] = useState('');
+    const [bio, setBio] = useState('');
+
+    // Advanced Settings
+    const [automatedTradeLogging, setAutomatedTradeLogging] = useState(false);
+    const [performanceAlerts, setPerformanceAlerts] = useState(false);
+
+    const [isLoading, setIsLoading] = useState(true);
+
+    // Fetch user settings on component mount
+    useEffect(() => {
+        const fetchUserSettings = async () => {
+            try {
+                const settings = await userSettingsService.getUserSettings();
+                
+                // Account Settings
+                setStartingCash(settings.starting_cash || 100000);
+                
+                // Profile Settings
+                setName(settings.name || '');
+                setEmail(settings.email || '');
+                setTradingExperience(settings.trading_experience || '');
+                setPreferredTradingStyle(settings.preferred_trading_style || '');
+                setBio(settings.bio || '');
+                
+                // Advanced Settings
+                setAutomatedTradeLogging(settings.automated_trade_logging || false);
+                setPerformanceAlerts(settings.performance_alerts || false);
+                
+                setIsLoading(false);
+            } catch (error) {
+                toast.error('Failed to load user settings');
+                setIsLoading(false);
+            }
+        };
+
+        fetchUserSettings();
+    }, []);
+
+    // Handle Account Settings Save
+    const handleSaveAccountSettings = async () => {
+        try {
+            await userSettingsService.updateUserSettings({ 
+                starting_cash: startingCash 
+            });
+            toast.success('Account settings saved!');
+        } catch (error) {
+            toast.error('Failed to save account settings');
         }
     };
 
+    // Handle Transfer
+    const handleTransfer = async () => {
+        if (transferAmount && !isNaN(parseFloat(transferAmount))) {
+            const amount = parseFloat(transferAmount);
+            const newStartingCash = startingCash + amount;
+            
+            try {
+                await userSettingsService.updateUserSettings({ 
+                    starting_cash: newStartingCash 
+                });
+                
+                setStartingCash(newStartingCash);
+                setTransferAmount('');
+                
+                toast.success('Transfer successful!');
+            } catch (error) {
+                toast.error('Failed to update starting cash');
+            }
+        }
+    };
+
+    // Handle Profile Settings Save
+    const handleSaveProfileSettings = async () => {
+        try {
+            await userSettingsService.updateUserSettings({ 
+                name,
+                email,
+                trading_experience: tradingExperience,
+                preferred_trading_style: preferredTradingStyle,
+                bio
+            });
+            toast.success('Profile settings saved!');
+        } catch (error) {
+            toast.error('Failed to save profile settings');
+        }
+    };
+
+    // Handle Advanced Settings Save
+    const handleSaveAdvancedSettings = async () => {
+        try {
+            await userSettingsService.updateUserSettings({ 
+                automated_trade_logging: automatedTradeLogging,
+                performance_alerts: performanceAlerts
+            });
+            toast.success('Advanced settings saved!');
+        } catch (error) {
+            toast.error('Failed to save advanced settings');
+        }
+    };
+
+    if (isLoading) {
+        return <div>Loading...</div>;
+    }
+
     return(
         <>
-            <TitleCard title="Profile Settings" topMargin="mt-2">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="form-control w-full">
-                        <label className="label">
-                            <span className="label-text">Name</span>
-                        </label>
-                        <input type="text" placeholder="Your Name" className="input input-bordered w-full" />
-                    </div>
-
-                    <div className="form-control w-full">
-                        <label className="label">
-                            <span className="label-text">Email</span>
-                        </label>
-                        <input type="email" placeholder="Your Email" className="input input-bordered w-full" />
-                    </div>
-
-                    <div className="form-control w-full">
-                        <label className="label">
-                            <span className="label-text">Trading Experience (Years)</span>
-                        </label>
-                        <input type="number" placeholder="Years of Experience" className="input input-bordered w-full" />
-                    </div>
-
-                    <div className="form-control w-full">
-                        <label className="label">
-                            <span className="label-text">Preferred Trading Style</span>
-                        </label>
-                        <select className="select select-bordered w-full">
-                            <option>Day Trading</option>
-                            <option>Swing Trading</option>
-                            <option>Position Trading</option>
-                            <option>Scalping</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div className="form-control w-full mt-4">
-                    <label className="label">
-                        <span className="label-text">Bio</span>
-                    </label>
-                    <textarea className="textarea textarea-bordered h-24" placeholder="Your trading journey and goals"></textarea>
-                </div>
-
-                <div className="mt-6">
-                    <button className="btn btn-primary">Save Changes</button>
-                </div>
-            </TitleCard>
-
             <TitleCard title="Account Settings" topMargin="mt-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="form-control w-full">
@@ -119,46 +176,131 @@ function Profile(){
                 </div>
 
                 <div className="mt-6">
-                    <button className="btn btn-primary">Save Account Settings</button>
+                    <button 
+                        onClick={handleSaveAccountSettings}
+                        className="btn btn-primary"
+                    >
+                        Save Account Settings
+                    </button>
                 </div>
             </TitleCard>
-
-
-            <TitleCard title="Trading Preferences" topMargin="mt-6">
+            
+            <TitleCard title="Profile Settings" topMargin="mt-2">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="form-control w-full">
                         <label className="label">
-                            <span className="label-text">Default Position Size ($)</span>
+                            <span className="label-text">Name</span>
                         </label>
-                        <input type="number" placeholder="Default Position Size" className="input input-bordered w-full" />
+                        <input 
+                            type="text" 
+                            placeholder="Your Name" 
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            className="input input-bordered w-full" 
+                        />
                     </div>
 
                     <div className="form-control w-full">
                         <label className="label">
-                            <span className="label-text">Risk Per Trade (%)</span>
+                            <span className="label-text">Email</span>
                         </label>
-                        <input type="number" placeholder="Risk Percentage" className="input input-bordered w-full" />
+                        <input 
+                            type="email" 
+                            placeholder="Your Email" 
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className="input input-bordered w-full" 
+                        />
                     </div>
 
                     <div className="form-control w-full">
                         <label className="label">
-                            <span className="label-text">Default Stop Loss (%)</span>
+                            <span className="label-text">Trading Experience (Years)</span>
                         </label>
-                        <input type="number" placeholder="Stop Loss Percentage" className="input input-bordered w-full" />
+                        <input 
+                            type="number" 
+                            placeholder="Years of Experience" 
+                            value={tradingExperience}
+                            onChange={(e) => setTradingExperience(e.target.value)}
+                            className="input input-bordered w-full" 
+                        />
                     </div>
 
                     <div className="form-control w-full">
                         <label className="label">
-                            <span className="label-text">Default Take Profit (%)</span>
+                            <span className="label-text">Preferred Trading Style</span>
                         </label>
-                        <input type="number" placeholder="Take Profit Percentage" className="input input-bordered w-full" />
+                        <select 
+                            className="select select-bordered w-full"
+                            value={preferredTradingStyle}
+                            onChange={(e) => setPreferredTradingStyle(e.target.value)}
+                        >
+                            <option value="">Select Trading Style</option>
+                            <option>Day Trading</option>
+                            <option>Swing Trading</option>
+                            <option>Position Trading</option>
+                            <option>Scalping</option>
+                        </select>
                     </div>
+                </div>
+
+                <div className="form-control w-full mt-4">
+                    <label className="label">
+                        <span className="label-text">Bio</span>
+                    </label>
+                    <textarea 
+                        className="textarea textarea-bordered h-24" 
+                        placeholder="Your trading journey and goals"
+                        value={bio}
+                        onChange={(e) => setBio(e.target.value)}
+                    ></textarea>
                 </div>
 
                 <div className="mt-6">
-                    <button className="btn btn-primary">Save Preferences</button>
+                    <button 
+                        onClick={handleSaveProfileSettings}
+                        className="btn btn-primary"
+                    >
+                        Save Profile Settings
+                    </button>
                 </div>
             </TitleCard>
+
+            <TitleCard title="Advanced Settings" topMargin="mt-6">
+                <div className="form-control w-full">
+                    <label className="label cursor-pointer">
+                        <span className="label-text">Automated Trade Logging</span>
+                        <input 
+                            type="checkbox" 
+                            className="toggle toggle-primary"
+                            checked={automatedTradeLogging}
+                            onChange={(e) => setAutomatedTradeLogging(e.target.checked)}
+                        />
+                    </label>
+                </div>
+                <div className="form-control w-full">
+                    <label className="label cursor-pointer">
+                        <span className="label-text">Performance Alerts</span>
+                        <input 
+                            type="checkbox" 
+                            className="toggle toggle-primary"
+                            checked={performanceAlerts}
+                            onChange={(e) => setPerformanceAlerts(e.target.checked)}
+                        />
+                    </label>
+                </div>
+                <div className="mt-6">
+                    <button 
+                        onClick={handleSaveAdvancedSettings}
+                        className="btn btn-primary"
+                    >
+                        Save Advanced Settings
+                    </button>
+                </div>
+            </TitleCard>
+
+            <ToastContainer />
+
         </>
     )
 }
