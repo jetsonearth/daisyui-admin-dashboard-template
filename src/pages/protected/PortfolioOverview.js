@@ -256,16 +256,16 @@ function PortfolioOverview(){
                             <div className="text-gray-500 text-sm mb-2">Daily Exposure</div>
                             <div className="space-y-2">
                                 <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Gross</div>
-                                    <div className="text-sm font-bold">${metrics.dailyExposure?.gross || 0}</div>
+                                    <div className="text-xs text-gray-500">Risk</div>
+                                    <div className="text-sm font-bold">{metrics.dailyExposure?.risk || 0}%</div>
                                 </div>
                                 <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Net</div>
-                                    <div className="text-sm font-bold">${metrics.dailyExposure?.net || 0}</div>
+                                    <div className="text-xs text-gray-500">Profit</div>
+                                    <div className="text-sm font-bold">{metrics.dailyExposure?.profit || 0}%</div>
                                 </div>
                                 <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Util</div>
-                                    <div className="text-sm font-bold">{metrics.dailyExposure?.util || 0}%</div>
+                                    <div className="text-xs text-gray-500">Delta</div>
+                                    <div className="text-sm font-bold">{metrics.dailyExposure?.delta || 0}%</div>
                                 </div>
                             </div>
                         </div>
@@ -313,16 +313,16 @@ function PortfolioOverview(){
                             <div className="text-gray-500 text-sm mb-2">New Exposure</div>
                             <div className="space-y-2">
                                 <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Long</div>
-                                    <div className="text-sm font-bold">${metrics.newExposure?.long || 0}</div>
+                                    <div className="text-xs text-gray-500">Risk</div>
+                                    <div className="text-sm font-bold">{metrics.newExposure?.risk || 0}%</div>
                                 </div>
                                 <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Short</div>
-                                    <div className="text-sm font-bold">${metrics.newExposure?.short || 0}</div>
+                                    <div className="text-xs text-gray-500">Profit</div>
+                                    <div className="text-sm font-bold">{metrics.newExposure?.profit || 0}%</div>
                                 </div>
                                 <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Ratio</div>
-                                    <div className="text-sm font-bold">{metrics.newExposure?.ratio || '0:0'}</div>
+                                    <div className="text-xs text-gray-500">Delta</div>
+                                    <div className="text-sm font-bold">{metrics.newExposure?.delta || 0}%</div>
                                 </div>
                             </div>
                         </div>
@@ -333,15 +333,15 @@ function PortfolioOverview(){
                             <div className="space-y-2">
                                 <div className="flex justify-between">
                                     <div className="text-xs text-gray-500">Risk</div>
-                                    <div className="text-sm font-bold">${metrics.openExposure?.risk || 0}</div>
+                                    <div className="text-sm font-bold">{metrics.openExposure?.risk || 0}%</div>
                                 </div>
                                 <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">R-Mult</div>
-                                    <div className="text-sm font-bold">{metrics.openExposure?.rMult || '0R'}</div>
+                                    <div className="text-xs text-gray-500">Profit</div>
+                                    <div className="text-sm font-bold">{metrics.openExposure?.profit || 0}%</div>
                                 </div>
                                 <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Heat</div>
-                                    <div className="text-sm font-bold">{metrics.openExposure?.heat || 0}%</div>
+                                    <div className="text-xs text-gray-500">Delta</div>
+                                    <div className="text-sm font-bold">{metrics.openExposure?.delta || 0}%</div>
                                 </div>
                             </div>
                         </div>
