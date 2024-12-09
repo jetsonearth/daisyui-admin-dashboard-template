@@ -5,16 +5,21 @@ export const userSettingsService = {
     // Fetch user settings
     async getUserSettings() {
         try {
+            console.time('supabase_auth_getUser');
             const { data: { user } } = await supabase.auth.getUser();
+            console.timeEnd('supabase_auth_getUser');
+            
             if (!user) throw new Error('No authenticated user');
 
             console.log('Fetching settings for user:', user.id);
 
+            console.time('supabase_fetch_settings');
             const { data, error } = await supabase
                 .from('user_settings')
                 .select('*')
                 .eq('user_id', user.id)
                 .single();
+            console.timeEnd('supabase_fetch_settings');
 
             console.log('Fetch settings response:', { data, error });
 

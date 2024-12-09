@@ -16,16 +16,29 @@ function Profile(){
     // Fetch user settings on component mount
     useEffect(() => {
         const fetchUserSettings = async () => {
+            const startTime = performance.now();
             try {
+                console.time('fetchUserSettings');
+                
                 const settings = await userSettingsService.getUserSettings();
                 
                 // Set current balance
                 setCurrentBalance(settings.starting_cash || 0);
                 
                 setIsLoading(false);
+                
+                const endTime = performance.now();
+                console.log(`User settings fetch took ${endTime - startTime}ms`);
             } catch (error) {
+                console.error('Detailed error loading user settings:', {
+                    message: error.message,
+                    name: error.name,
+                    stack: error.stack
+                });
                 toast.error('Failed to load user settings');
                 setIsLoading(false);
+            } finally {
+                console.timeEnd('fetchUserSettings');
             }
         };
 
