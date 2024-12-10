@@ -10,15 +10,46 @@ import StopLossVisualizer from '../../components/StopLossVisualizer'
 import { marketDataService } from '../../features/marketData/marketDataService'
 import { supabase } from '../../config/supabaseClient';
 import { toast, ToastContainer } from 'react-toastify';
+import { userSettingsService } from '../../services/userSettingsService';
 import 'react-toastify/dist/ReactToastify.css';
+
 
 function TradePlanner() {
     const navigate = useNavigate()
     const dispatch = useDispatch(); // Initialize useDispatch hook
 
+    // State for account size
+    const [accountSize, setAccountSize] = useState(0);
+
+    // Fetch current capital when component mounts
+    useEffect(() => {
+        const fetchAccountSize = async () => {
+            try {
+                const currentCapital = await userSettingsService.getCurrentCapital();
+                setInputs(prev => ({
+                    ...prev,
+                    accountSize: currentCapital
+                }));
+                console.log('Current Account Size:', currentCapital);
+            } catch (error) {
+                console.error('Error fetching account size:', error);
+                // Fallback to a default value if needed
+                setInputs(prev => ({
+                    ...prev,
+                    accountSize: 13000
+                }));
+                toast.error('Failed to fetch account size. Using default.');
+            }
+        };
+    
+        fetchAccountSize();
+    }, []); 
+
+
     // Input states
     const [inputs, setInputs] = useState({
         ticker: '',
+        accountSize: 0,
         entryPrice: '',
         atr: '',
         lowOfDay: '',
@@ -94,12 +125,10 @@ function TradePlanner() {
         stopLossPercent: 0
     })
 
-    // Mock account size - should be fetched from portfolio
-    const accountSize = 13000
-
     const calculateResults = async () => {
         const {
             entryPrice,
+            accountSize,
             atr,
             lowOfDay,
             portfolioRisk,
@@ -202,18 +231,18 @@ function TradePlanner() {
 
         const positionSize = Math.max(1, Math.floor(riskAmount / riskPerShare))
 
-        // console.log('Stop Loss Calculations:', {
-        //     price,
-        //     stopDistanceTiered,
-        //     fullStopPrice,
-        //     stop33,
-        //     stop66,
-        //     fullStopLoss: fullStopLoss.toFixed(2) + '%',
-        //     stop33Loss: stop33Loss.toFixed(2) + '%', 
-        //     stop66Loss: stop66Loss.toFixed(2) + '%',
-        //     riskPerShare,
-        //     openRisk: openRisk.toFixed(2) + '%'
-        // })
+        console.log('Stop Loss Calculations:', {
+            // price,
+            // stopDistanceTiered,
+            // fullStopPrice,
+            // stop33,
+            // stop66,
+            // fullStopLoss: fullStopLoss.toFixed(2) + '%',
+            // stop33Loss: stop33Loss.toFixed(2) + '%', 
+            // stop66Loss: stop66Loss.toFixed(2) + '%',
+            // riskPerShare,
+            openRisk: openRisk.toFixed(2) + '%'
+        })
 
         console.log('Position Size Calculation:', {
             positionSize: positionSize
@@ -420,12 +449,12 @@ function TradePlanner() {
     }
 
     const handleInputChange = (e) => {
-        const { name, value } = e.target
+        const { name, value } = e.target;
         setInputs(prev => ({
             ...prev,
-            [name]: value
-        }))
-    }
+            [name]: name === 'accountSize' ? parseFloat(value) : value
+        }));
+    };
 
     return (
         <div className="p-4">
@@ -435,7 +464,8 @@ function TradePlanner() {
                     <div className="space-y-4">
                         <h3 className="text-lg font-semibold mb-4">Trade Parameters</h3>
                         
-                        {/* Basic Info */}
+                    {/* Basic Info */}
+                    <div className="grid grid-cols-2 gap-4">
                         <div className="form-control">
                             <label className="label">
                                 <span className="label-text">Ticker</span>
@@ -446,7 +476,7 @@ function TradePlanner() {
                                 value={inputs.ticker}
                                 onChange={handleInputChange}
                                 className="input input-bordered"
-                                placeholder="AAPL"
+                                placeholder="Enter ticker"
                             />
                             {inputs.ticker && (
                                 <div className="text-sm text-gray-350 mt-1">
@@ -458,6 +488,21 @@ function TradePlanner() {
                                 </div>
                             )}
                         </div>
+                        
+                        <div className="form-control">
+                            <label className="label">
+                                <span className="label-text">Current Capital</span>
+                            </label>
+                            <input
+                                type="number"
+                                name="accountSize"
+                                value={inputs.accountSize}
+                                onChange={handleInputChange}
+                                className="input input-bordered"
+                                placeholder="Enter account size"
+                            />
+                        </div>
+                    </div>
 
                         <div className="grid grid-cols-2 gap-4">
                             <div className="form-control">
@@ -692,7 +737,7 @@ function TradePlanner() {
                                     <div className="text-sm font-medium text-gray-500">Dollar Exposure</div>
                                     <div className="text-lg font-semibold">
                                         ${results.dollarExposure.toFixed(2)}
-                                        <span className="text-xs text-red-500 ml-2">
+                                        <span className="text-xs text-red-500 ml-3">
                                             ({results.portfolioWeight.toFixed(2)}% Portfolio)
                                         </span>
                                     </div>
