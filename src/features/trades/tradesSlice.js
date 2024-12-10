@@ -2,7 +2,7 @@ import { createSlice } from '@reduxjs/toolkit'
 import { SAMPLE_TRADES } from './tradeModel'
 
 const initialState = {
-    trades: SAMPLE_TRADES,
+    trades: [],
     loading: false,
     error: null
 }
@@ -29,9 +29,11 @@ export const tradesSlice = createSlice({
             state.trades.forEach(trade => {
                 if (trade.ticker === ticker && trade.status === 'open') {
                     trade.last_price = currentPrice
-                    trade.market_value = currentPrice * trade.shares_remaining
-                    trade.unrealized_pnl = trade.market_value - (trade.avg_cost * trade.shares_remaining)
-                    trade.unrealized_pnl_percentage = ((trade.market_value - (trade.avg_cost * trade.shares_remaining)) / (trade.avg_cost * trade.shares_remaining)) * 100
+                    trade.market_value = currentPrice * trade.remaining_shares
+                    trade.unrealized_pnl = trade.market_value - (trade.entry_price * trade.remaining_shares)
+                    trade.unrealized_percentage = ((trade.market_value - (trade.entry_price * trade.remaining_shares)) / (trade.entry_price * trade.remaining_shares)) * 100
+                    trade.entry_price = trade.entry_price // preserve entry_price
+                    trade.remaining_shares = trade.remaining_shares // preserve remaining_shares
                 }
             })
         },
