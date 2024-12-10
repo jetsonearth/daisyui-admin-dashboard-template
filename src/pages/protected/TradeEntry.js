@@ -406,6 +406,19 @@ function TradePlanner() {
 
             console.log("🚀 Prepared Trade Object:", newTrade);
 
+            console.log('New Trade Object:', {
+                ...newTrade,
+                open_risk: results.openRisk,
+                openRisk: results.openRisk
+            });
+
+            console.log('Detailed Open Risk Breakdown:', {
+                fullStopLoss: ((parseFloat(inputs.entryPrice) - results.fullStopPrice) / parseFloat(inputs.entryPrice)) * 100,
+                stop33Loss: ((parseFloat(inputs.entryPrice) - results.stop33) / parseFloat(inputs.entryPrice)) * 100,
+                stop66Loss: ((parseFloat(inputs.entryPrice) - results.stop66) / parseFloat(inputs.entryPrice)) * 100,
+                calculatedOpenRisk: results.openRisk
+            });
+
             // Supabase insertion
             console.log("💾 Inserting Trade into Supabase");
             const { data, error } = await supabase
