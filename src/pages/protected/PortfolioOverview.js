@@ -4,6 +4,7 @@ import TitleCard from '../../components/Cards/TitleCard'
 import dayjs from 'dayjs'
 import { TRADE_STATUS } from '../../features/trades/tradeModel'
 import { marketDataService } from '../../features/marketData/marketDataService'
+import { capitalService } from '../../services/capitalService';
 import { closeTrade } from '../../features/trades/tradesSlice'
 import { calculatePortfolioMetrics } from '../../features/metrics/metricsService'
 import { userSettingsService } from '../../services/userSettingsService'
@@ -26,10 +27,17 @@ function PortfolioOverview(){
     const [isAutoRefresh, setIsAutoRefresh] = useState(true)
     const [lastUpdate, setLastUpdate] = useState(null)
     const [startingCapital, setStartingCapital] = useState(0)
-
+    const [currentCapital, setCurrentCapital] = useState(0);
+    
     // Calculate metrics
     const calculateMetrics = () => {
         const metrics = calculatePortfolioMetrics(allTrades, startingCapital)
+        console.log("starting capital:", startingCapital);
+        console.log("current capital:", currentCapital);
+        
+        // Override currentCapital with the state value
+        metrics.currentCapital = currentCapital;
+        
         return metrics
     }
 
@@ -54,6 +62,21 @@ function PortfolioOverview(){
 
         fetchStartingCapital()
     }, [])
+
+
+    useEffect(() => {
+        const fetchCurrentCapital = async () => {
+            try {
+                const capital = await userSettingsService.getCurrentCapital(allTrades);
+                setCurrentCapital(capital);
+                await capitalService.trackCapitalChange(allTrades);
+            } catch (error) {
+                console.error('Failed to fetch current capital:', error);
+            }
+        }
+    
+        fetchCurrentCapital();
+    }, [allTrades, startingCapital]);
 
     // Function to handle trade closure
     const handleCloseTrade = (trade) => {
@@ -92,13 +115,6 @@ function PortfolioOverview(){
                             </button>
                         ))}
                     </div>
-                    <button className="btn btn-ghost btn-circle">
-                        <div className="avatar">
-                            <div className="w-8 rounded-full">
-                                <img src="/avatar-placeholder.png" alt="user" />
-                            </div>
-                        </div>
-                    </button>
                 </div>
             </div>
 
@@ -108,14 +124,16 @@ function PortfolioOverview(){
                 <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[110px]">
                     <div className="text-xs text-gray-500 truncate mb-1">Current Capital</div>
                     <div className="text-2xl font-semibold truncate">
-                        ${typeof metrics.currentCapital === 'number' 
-                            ? metrics.currentCapital.toLocaleString(undefined, {
-                                minimumFractionDigits: 0,
-                                maximumFractionDigits: 0
-                            }) 
-                            : '0'}
+                        ${currentCapital.toLocaleString(undefined, {
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0
+                        })}
                     </div>
-                    <div className="text-xs text-green-500 truncate mt-auto">+12.5% from last month</div>
+                    <div className="text-xs text-green-500 truncate mt-auto">
+                        {startingCapital > 0 
+                            ? ((currentCapital - startingCapital) / startingCapital * 100).toFixed(1) 
+                            : '0.0'}% from start
+                    </div>
                 </div>
                 <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[110px]">
                     <div className="text-xs text-gray-500 truncate mb-1">Profit Factor</div>
@@ -126,14 +144,7 @@ function PortfolioOverview(){
                     </div>
                     <div className="text-xs text-green-500 truncate mt-auto">+8.1% from last</div>
                 </div>
-                {/* <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[90px]">
-                    <div className="text-xs text-gray-500 truncate mb-1">Win Rate</div>
-                    <div className="text-2xl font-semibold truncate">
-                        {typeof metrics.winRate === 'number' 
-                            ? metrics.winRate.toFixed(1) 
-                            : '0.0'}%
-                    </div>
-                </div> */}
+
                 <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[110px]">
                     <div className="text-xs text-gray-500 truncate mb-1">RRR</div>
                     <div className="text-2xl font-semibold truncate">
@@ -143,28 +154,7 @@ function PortfolioOverview(){
                     </div>
                     <div className="text-xs text-green-500 truncate mt-auto">+4.2% from last</div>
                 </div>
-                {/* <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[90px]">
-                    <div className="text-xs text-gray-500 truncate mb-1">Avg Win</div>
-                    <div className="text-2xl font-semibold text-green-500 truncate">
-                        ${typeof metrics.avgWin === 'number' 
-                            ? metrics.avgWin.toLocaleString(undefined, {
-                                minimumFractionDigits: 0,
-                                maximumFractionDigits: 0
-                            }) 
-                            : '0'}
-                    </div>
-                </div> */}
-                {/* <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[90px]">
-                    <div className="text-xs text-gray-500 truncate mb-1">Avg Loss</div>
-                    <div className="text-2xl font-semibold text-red-500 truncate">
-                        ${typeof metrics.avgLoss === 'number' 
-                            ? Math.abs(metrics.avgLoss).toLocaleString(undefined, {
-                                minimumFractionDigits: 0,
-                                maximumFractionDigits: 0
-                            }) 
-                            : '0'}
-                    </div>
-                </div> */}
+
                 <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[110px]">
                     <div className="text-xs text-gray-500 truncate mb-1">Max Drawdown</div>
                     <div className="text-2xl font-semibold text-red-500 truncate">

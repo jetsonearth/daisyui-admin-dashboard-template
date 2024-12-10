@@ -148,20 +148,25 @@ export const userSettingsService = {
 
 
     // Get current capital (starting_cash + PnL)
-    async getCurrentCapital(trades) {
+    async getCurrentCapital() {
         try {
-            const settings = await this.getUserSettings();
-            const startingCash = settings.starting_cash || 0;
+            const { data: { user } } = await supabase.auth.getUser();
             
-            // Sum of all realized and unrealized PnL
-            const totalPnL = trades.reduce((sum, trade) => 
-                sum + (trade.realized_pnl || 0) + (trade.unrealized_pnl || 0), 
-                0
-            );
-
-            return startingCash + totalPnL;
+            const { data, error } = await supabase.rpc('calculate_user_capital', {
+                input_user_id: user.id
+            });
+    
+            if (error) {
+                console.error('Capital Calculation Error:', error);
+                throw error;
+            }
+    
+            const capitalInfo = data[0];
+            console.log('Capital Breakdown:', capitalInfo);
+    
+            return capitalInfo.current_capital;
         } catch (error) {
-            console.error('Error getting current capital:', error);
+            console.error('Error calculating capital:', error);
             throw error;
         }
     },

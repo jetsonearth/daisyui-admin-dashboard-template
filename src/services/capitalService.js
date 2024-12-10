@@ -1,9 +1,8 @@
-// src/services/capitalService.js
 import { supabase } from '../config/supabaseClient';
 import { userSettingsService } from './userSettingsService';
 
 export const capitalService = {
-    // Insert a capital change record
+    // Record a capital change
     async recordCapitalChange(changeType, amount, metadata = {}) {
         try {
             const { data: { user } } = await supabase.auth.getUser();
@@ -27,7 +26,7 @@ export const capitalService = {
         }
     },
 
-    // Retrieve capital change history for plotting
+    // Retrieve capital change history
     async getCapitalChangeHistory(options = {}) {
         try {
             const { data: { user } } = await supabase.auth.getUser();
@@ -54,7 +53,7 @@ export const capitalService = {
         }
     },
 
-    // Method to track capital changes during trade updates
+    // Track capital changes during trade updates
     async trackCapitalChange(trades) {
         try {
             const currentCapital = await userSettingsService.getCurrentCapital(trades);
@@ -70,6 +69,29 @@ export const capitalService = {
             return currentCapital;
         } catch (error) {
             console.error('Error tracking capital change:', error);
+            throw error;
+        }
+    },
+
+    // Calculate cumulative capital changes for equity curve
+    async calculateEquityCurve(options = {}) {
+        try {
+            const capitalHistory = await this.getCapitalChangeHistory(options);
+            
+            // Calculate cumulative capital
+            let cumulativeCapital = 0;
+            const equityCurve = capitalHistory.map(change => {
+                cumulativeCapital += change.amount;
+                return {
+                    timestamp: change.created_at,
+                    amount: cumulativeCapital,
+                    change_type: change.change_type
+                };
+            });
+
+            return equityCurve;
+        } catch (error) {
+            console.error('Error calculating equity curve:', error);
             throw error;
         }
     }
