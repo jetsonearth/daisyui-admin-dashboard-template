@@ -79,11 +79,19 @@ function TradePlanner() {
         stop66: 0,
         positionSize: 0,
         dollarExposure: 0,
+        totalCost: 0,
+        portfolioWeight: 0,
+        portfolioHeat: 0,
         openRisk: 0,
         // breakEvenPrice: 0,
         target2R: 0,
         target3R: 0,
-        rrr: 0
+        rrr: 0,
+        stopLossLogic: '',
+        atrStopPrice: 0,
+        lodStopPrice: 0,
+        percentStopPrice: 0,
+        stopLossPercent: 0
     })
 
     // Mock account size - should be fetched from portfolio
@@ -107,12 +115,14 @@ function TradePlanner() {
                 stop66: 0,
                 positionSize: 0,
                 dollarExposure: 0,
+                totalCost: 0,
+                portfolioWeight: 0,
+                portfolioHeat: 0,
                 openRisk: 0,
                 // breakEvenPrice: 0,
                 target2R: 0,
                 target3R: 0,
                 rrr: 0,
-                // New fields for stop-loss logic explanation
                 stopLossLogic: 'No valid price',
                 atrStopPrice: 0,
                 lodStopPrice: 0,
@@ -680,7 +690,12 @@ function TradePlanner() {
                                 {/* Dollar Exposure */}
                                 <div>
                                     <div className="text-sm font-medium text-gray-500">Dollar Exposure</div>
-                                    <div className="text-lg font-semibold">${results.dollarExposure.toFixed(2)}</div>
+                                    <div className="text-lg font-semibold">
+                                        ${results.dollarExposure.toFixed(2)}
+                                        <span className="text-xs text-red-500 ml-2">
+                                            ({results.portfolioWeight.toFixed(2)}% Portfolio)
+                                        </span>
+                                    </div>
                                 </div>
 
                                 {/* Open Risk */}
