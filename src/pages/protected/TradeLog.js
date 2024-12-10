@@ -1,31 +1,58 @@
 import React, { useState, useEffect } from 'react'
-import { useDispatch, useSelector } from 'react-redux'; 
 import { useNavigate } from 'react-router-dom'
+import { supabase } from '../../config/supabaseClient'
 import TitleCard from '../../components/Cards/TitleCard'
-import { TRADE_STATUS, ASSET_TYPES, DIRECTIONS, STRATEGIES, SAMPLE_TRADES } from '../../features/trades/tradeModel'
+import { TRADE_STATUS, ASSET_TYPES, DIRECTIONS, STRATEGIES } from '../../features/trades/tradeModel'
 import { marketDataService } from '../../features/marketData/marketDataService'
+import { toast } from 'react-toastify'
 
 function TradeLog(){
-    const dispatch = useDispatch(); // Add this line
     const navigate = useNavigate()
-    const tradesFromStore = useSelector(state => state.trades.trades); 
-    const [trades, setTrades] = useState(tradesFromStore);
+    const [trades, setTrades] = useState([])
+    const [loading, setLoading] = useState(true)
     const [isAutoRefresh, setIsAutoRefresh] = useState(true)
     const [lastUpdate, setLastUpdate] = useState(null)
 
-    // Function to safely format number with toFixed
+    // Keep your existing helper functions
     const safeToFixed = (number, decimals = 2) => {
         if (number === undefined || number === null) return '0.00';
         return Number(number).toFixed(decimals);
     };
 
-    // Function to safely format currency
     const formatCurrency = (amount) => {
         if (amount === undefined || amount === null) return '$0.00';
         return `$${safeToFixed(amount)}`;
     };
 
-    // Function to update market data
+    // Fetch trades from Supabase
+    const fetchTrades = async () => {
+        try {
+            const { data: { user }, error: userError } = await supabase.auth.getUser()
+            
+            if (userError || !user) {
+                toast.error('Please log in to view trades')
+                setLoading(false)
+                return
+            }
+
+            const { data, error } = await supabase
+                .from('trades')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('entry_datetime', { ascending: false })
+
+            if (error) throw error
+
+            setTrades(data)
+            setLoading(false)
+        } catch (err) {
+            console.error('Error fetching trades:', err)
+            toast.error('Failed to load trades')
+            setLoading(false)
+        }
+    }
+
+    // Modified updateMarketData to work with Supabase data
     const updateMarketData = async () => {
         try {
             const updatedTrades = await marketDataService.updateTradesWithMarketData(trades);
@@ -36,7 +63,7 @@ function TradeLog(){
         }
     };
 
-    // Auto-refresh every 30 minutes
+    // Keep your existing useEffect for auto-refresh
     useEffect(() => {
         let intervalId;
         if (isAutoRefresh) {
@@ -46,8 +73,14 @@ function TradeLog(){
         return () => {
             if (intervalId) clearInterval(intervalId);
         };
-    }, [isAutoRefresh]); // Only re-run when autoRefresh changes
+    }, [isAutoRefresh]);
 
+    // Add useEffect for initial data fetch
+    useEffect(() => {
+        fetchTrades()
+    }, [])
+
+    // Keep your existing UI handlers
     const toggleAutoRefresh = () => {
         setIsAutoRefresh(!isAutoRefresh);
     };
@@ -56,17 +89,12 @@ function TradeLog(){
         updateMarketData();
     };
 
-    // New reset function
     const handleReset = () => {
-        // Reset trades to the original store trades
-        setTrades(tradesFromStore);
-        
-        // Reset auto-refresh to true
+        fetchTrades(); // Modified to fetch from Supabase
         setIsAutoRefresh(true);
-        
-        // Clear last update
         setLastUpdate(null);
     };
+
 
     return (
         <div className="p-4">

@@ -7,7 +7,10 @@ import { processTradeEntry } from '../../features/trades/tradeService' // Import
 import { addTrade } from '../../features/trades/tradesSlice'; // Correct import for addTrade
 import PriceLadder from '../../components/PriceLadder'
 import StopLossVisualizer from '../../components/StopLossVisualizer'
-import { SAMPLE_TRADES } from '../../features/trades/tradeModel'
+
+import { supabase } from '../../config/supabaseClient';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 function TradePlanner() {
     const navigate = useNavigate()
@@ -16,7 +19,7 @@ function TradePlanner() {
     // Input states
     const [inputs, setInputs] = useState({
         ticker: '',
-        currentPrice: '',
+        entryPrice: '',
         atr: '',
         lowOfDay: '',
         portfolioRisk: '0.5', // Default 0.5%
@@ -40,18 +43,18 @@ function TradePlanner() {
         positionSize: 0,
         dollarExposure: 0,
         openRisk: 0,
-        breakEvenPrice: 0,
+        // breakEvenPrice: 0,
         target2R: 0,
         target3R: 0,
         rrr: 0
     })
 
     // Mock account size - should be fetched from portfolio
-    const accountSize = 100000
+    const accountSize = 13000
 
     const calculateResults = () => {
         const {
-            currentPrice,
+            entryPrice,
             atr,
             lowOfDay,
             portfolioRisk,
@@ -59,7 +62,7 @@ function TradePlanner() {
         } = inputs
     
         // Guard against invalid inputs
-        if (!currentPrice || isNaN(currentPrice)) {
+        if (!entryPrice || isNaN(entryPrice)) {
             setResults({
                 fullStopPrice: 0,
                 stop33: 0,
@@ -67,7 +70,7 @@ function TradePlanner() {
                 positionSize: 0,
                 dollarExposure: 0,
                 openRisk: 0,
-                breakEvenPrice: 0,
+                // breakEvenPrice: 0,
                 target2R: 0,
                 target3R: 0,
                 rrr: 0,
@@ -82,7 +85,7 @@ function TradePlanner() {
         }
 
         console.log('Input Values:', {
-            currentPrice,
+            entryPrice,
             atr,
             lowOfDay,
             portfolioRisk,
@@ -90,9 +93,9 @@ function TradePlanner() {
         });
     
     
-        const price = parseFloat(currentPrice)
+        const price = parseFloat(entryPrice)
         const lod = parseFloat(lowOfDay)  // Will throw an error if not provided
-        const risk = portfolioRisk ? parseFloat(portfolioRisk) / 100 : 0.005 // Default to 0.5%
+        const portfolioHeat = portfolioRisk ? parseFloat(portfolioRisk) / 100 : 0.005 // Default to 0.5%
     
         // Stop-Loss Calculation Logic:
         // 1. ATR Stop-Loss: Entry Price - ATR
@@ -125,14 +128,7 @@ function TradePlanner() {
         const stop33 = price - (stopDistance * 0.33)
     
         // Calculate position sizing based on risk
-        const riskAmount = accountSize * risk
-        const riskPerShare = Math.max(0.01, stopDistance) // Prevent division by zero
-        const positionSize = Math.max(1, Math.floor(riskAmount / riskPerShare))
-    
-        // Calculate exposures
-        const dollarExposure = positionSize * price
-        // const openRisk = ((price - fullStopPrice) / price) * 100
-        // Compute Open Risk as a weighted average of the three stop levels
+        const riskAmount = accountSize * portfolioHeat
 
         // 3-Tiered Stop-Loss Risk Calculation
         const fullStopLoss = ((price - fullStopPrice) / price) * 100
@@ -144,15 +140,47 @@ function TradePlanner() {
             (stop33Loss * 0.33) +   // 33% stop gets 33% weight
             (stop66Loss * 0.17)     // 66% stop gets 17% weight
         )
+
+        // Calculate position size
+        const stopDistanceTiered = price * openRisk / 100
+        const riskPerShare = Math.max(0.01, stopDistanceTiered) // Prevent division by zero
+
+        const positionSize = Math.max(1, Math.floor(riskAmount / riskPerShare))
+
+        // console.log('Stop Loss Calculations:', {
+        //     price,
+        //     stopDistanceTiered,
+        //     fullStopPrice,
+        //     stop33,
+        //     stop66,
+        //     fullStopLoss: fullStopLoss.toFixed(2) + '%',
+        //     stop33Loss: stop33Loss.toFixed(2) + '%', 
+        //     stop66Loss: stop66Loss.toFixed(2) + '%',
+        //     riskPerShare,
+        //     openRisk: openRisk.toFixed(2) + '%'
+        // })
+
+        console.log('Position Size Calculation:', {
+            positionSize: positionSize
+        })        
+    
+        // Calculate exposures
+        const dollarExposure = positionSize * price
+        // const openRisk = ((price - fullStopPrice) / price) * 100
+        // Compute Open Risk as a weighted average of the three stop levels
+
+        const portfolioWeight = (results.positionSize * parseFloat(inputs.entryPrice) / accountSize) * 100
+
         // Calculate break-even including commission
         const totalCommission = commission ? parseFloat(commission) * 2 : 0 // Entry + Exit
-        const breakEvenPrice = price + (totalCommission / positionSize)
+        // const breakEvenPrice = price + (totalCommission / positionSize)
+        const totalCost = dollarExposure + totalCommission
 
         // Calculate R-multiple targets (2R and 3R)
         const rValue = Math.max(0.01, price - fullStopPrice)
         const target2R = price + (rValue * 2)
         const target3R = price + (rValue * 3)
-        const rrr = 3 // Default to 3R target
+        const rrr = 0 // Placeholder for RRR, will be updated in tradelog once we have market data
 
         setResults({
             fullStopPrice,
@@ -160,16 +188,18 @@ function TradePlanner() {
             stop66,
             positionSize,
             dollarExposure,
-            openRisk,
-            breakEvenPrice,
+            totalCost,
+            portfolioWeight: parseFloat(portfolioWeight.toFixed(2)), 
+            portfolioHeat: parseFloat(portfolioHeat.toFixed(2)),
+            openRisk: parseFloat(openRisk.toFixed(2)),
             target2R,
             target3R,
-            rrr,
+            rrr: parseFloat(rrr.toFixed(1)),
             stopLossLogic,
             atrStopPrice,
             lodStopPrice,
-            percentStopPrice,
-            stopLossPercent
+            percentStopPrice: parseFloat(percentStopPrice.toFixed(2)),
+            stopLossPercent: parseFloat(stopLossPercent.toFixed(2))
         })
     }
 
@@ -177,39 +207,161 @@ function TradePlanner() {
         calculateResults()
     }, [inputs])
 
-    const handleSubmit = () => {
-        const newTrade = {
-            id: Date.now().toString(), // Add unique ID
-            ticker: inputs.ticker,
-            direction: inputs.direction,
-            asset_type: inputs.assetType,
-            shares: results.positionSize,
-            shares_remaining: results.positionSize,
-            avg_cost: parseFloat(inputs.currentPrice),
-            current_price: parseFloat(inputs.currentPrice),
-            strategy: inputs.strategy,
-            setup: inputs.setup,
-            full_stop_price: results.fullStopPrice,
-            stop_33: results.stop33,
-            stop_66: results.stop66,
-            open_risk: results.openRisk,
-            rrr: results.rrr,
-            status: 'open', // Ensure status is set to 'open'
-            entry_date: new Date().toISOString().split('T')[0],
-            unrealized_pnl: 0,
-            unrealized_pnl_percentage: 0,
-            market_value: results.positionSize * parseFloat(inputs.currentPrice),
-            portfolio_weight: 0, // Will be calculated
-            portfolio_impact: 0, // Will be calculated
-            trimmed: 0
+    const handleSubmit = async () => {
+        // Validation Checks
+        const errors = [];
+
+        console.log("🔍 Starting Trade Submission Validation");
+        console.log("Current Inputs:", inputs);
+        console.log("Current Results:", results);
+
+        // Required Fields Validation
+        if (!inputs.ticker || inputs.ticker.trim() === '') {
+            console.warn("❌ Validation Error: Ticker is required");
+            errors.push('Ticker is required')
         }
 
-        console.log('Dispatching new trade:', newTrade) // Debug log
-        dispatch(addTrade(newTrade))
-        console.log('Trade dispatched') // Debug log
+        if (!inputs.entryPrice || isNaN(parseFloat(inputs.entryPrice))) {
+            console.warn("❌ Validation Error: Valid current price is required");
+            errors.push('Valid current price is required')
+        }
 
-        // Navigate to trade log
-        navigate('/app/trades');
+        if (!inputs.direction) {
+            console.warn("❌ Validation Error: Trade direction is required");
+            errors.push('Trade direction is required')
+        }
+
+        // Position Size Validation
+        if (results.positionSize <= 0) {
+            console.warn("❌ Validation Error: Position size must be greater than zero");
+            errors.push('Position size must be greater than zero')
+        }
+
+        // If there are validation errors, show toast and stop submission
+        if (errors.length > 0) {
+            console.error("🚫 Validation Failed. Stopping trade submission.");
+            errors.forEach(error => toast.error(error, {
+                position: "top-right",
+                autoClose: 3000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true
+            }))
+            return
+        }
+
+        try {
+            // Step 2: Authenticate User
+            console.log("🔐 Checking User Authentication");
+            const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+            console.log("📦 Current Session:", session);
+            
+            const { data: { user }, error: userError } = await supabase.auth.getUser()
+            console.log("👤 Current User:", user);
+
+            // Add these debugging lines
+            console.log('Supabase object:', supabase)
+            console.log('Supabase auth methods:', Object.keys(supabase.auth))
+            
+            // Check if user method exists
+            if (typeof supabase.auth.user === 'function') {
+                const user = supabase.auth.user()
+                console.log('User via old method:', user)
+            } else {
+                console.warn('supabase.auth.user is not a function')
+            }
+            
+            // Verify user authentication
+            if (!user) {
+                console.error("🚨 No authenticated user found");
+                toast.error('Please log in to submit a trade')
+                return
+            }
+
+            // Step 3: Prepare Trade Object
+            console.log("📝 Preparing Trade Object");
+
+            const newTrade = {
+                trade_id: `${inputs.ticker}-${new Date().toISOString().split('T')[0]}-${inputs.direction}`,
+                user_id: user.id,
+                ticker: inputs.ticker,
+                direction: inputs.direction,
+                asset_type: inputs.assetType || 'STOCK', // Default if not specified
+                total_shares: results.positionSize,
+                total_cost: results.totalCost,
+                remaining_shares: results.positionSize,
+                entry_price: parseFloat(inputs.entryPrice),
+                last_price: parseFloat(inputs.entryPrice),
+                
+                // Optional fields with defaults
+                strategy: inputs.strategy || 'UNDEFINED',
+                setups: inputs.setup ? [inputs.setup] : null, // Use null instead of empty array
+
+                stop_loss_price: results.fullStopPrice,
+                stop_loss_33_percent: results.stop33,
+                stop_loss_66_percent: results.stop66,
+                open_risk: results.openRisk,
+                risk_reward_ratio: results.rrr,
+                r_target_2: results.target2R,
+                r_target_3: results.target3R,  
+                status: TRADE_STATUS.OPEN,
+                // entry_date: new Date().toISOString().split('T')[0],
+                entry_datetime: new Date().toISOString(),
+                unrealized_pnl: 0,
+                unrealized_pnl_percentage: 0,
+                market_value: results.positionSize * parseFloat(inputs.entryPrice),
+                portfolio_weight: results.portfolioWeight,
+                portfolio_heat: results.portfolioHeat,
+                portfolio_impact: 0,
+                trimmed_percentage: 0,
+                
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            }
+
+            console.log("🚀 Prepared Trade Object:", newTrade);
+
+            // Supabase insertion
+            console.log("💾 Inserting Trade into Supabase");
+            const { data, error } = await supabase
+                .from('trades')
+                .insert(newTrade)
+                .select()
+
+            if (error) {
+                console.error("❌ Supabase Insertion Error:", error);
+                throw error
+            }
+    
+            console.log("✅ Trade Successfully Inserted:", data);
+
+            // Success Toast
+            toast.success('Trade successfully logged!', {
+                position: "top-right",
+                autoClose: 3000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true
+            })
+
+            // Navigate to trade log
+            navigate('/app/trades')
+
+        } catch (error) {
+            // Supabase or Network Error Toast
+            console.error("🔥 Comprehensive Trade Submission Error:", error);
+            toast.error(`Failed to log trade: ${error.message}`, {
+                position: "top-right",
+                autoClose: 5000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true
+            })
+            console.error('Error submitting trade:', error)
+        }
     }
 
     const handleInputChange = (e) => {
@@ -246,12 +398,12 @@ function TradePlanner() {
                         <div className="grid grid-cols-2 gap-4">
                             <div className="form-control">
                                 <label className="label">
-                                    <span className="label-text">Current Price</span>
+                                    <span className="label-text">Entry Price</span>
                                 </label>
                                 <input
                                     type="number"
-                                    name="currentPrice"
-                                    value={inputs.currentPrice}
+                                    name="entryPrice"
+                                    value={inputs.entryPrice}
                                     onChange={handleInputChange}
                                     className="input input-bordered"
                                     placeholder="0.00"
@@ -430,7 +582,7 @@ function TradePlanner() {
                                             <span className="text-lg font-semibold">
                                                 ${results.fullStopPrice.toFixed(2)}
                                                 <span className="text-xs text-red-500 ml-2">
-                                                    ({((parseFloat(inputs.currentPrice) - results.fullStopPrice) / parseFloat(inputs.currentPrice) * 100).toFixed(2)}% loss)
+                                                    ({((parseFloat(inputs.entryPrice) - results.fullStopPrice) / parseFloat(inputs.entryPrice) * 100).toFixed(2)}% loss)
                                                 </span>
                                             </span>
                                         </div>
@@ -443,7 +595,7 @@ function TradePlanner() {
                                         <span className="text-lg font-semibold">
                                             ${results.stop33.toFixed(2)}
                                             <span className="text-xs text-red-500 ml-2">
-                                                ({((parseFloat(inputs.currentPrice) - results.stop33) / parseFloat(inputs.currentPrice) * 100).toFixed(2)}% loss)
+                                                ({((parseFloat(inputs.entryPrice) - results.stop33) / parseFloat(inputs.entryPrice) * 100).toFixed(2)}% loss)
                                             </span>
                                         </span>
                                     </div>
@@ -455,7 +607,7 @@ function TradePlanner() {
                                         <span className="text-lg font-semibold">
                                             ${results.stop66.toFixed(2)}
                                             <span className="text-xs text-red-500 ml-2">
-                                                ({((parseFloat(inputs.currentPrice) - results.stop66) / parseFloat(inputs.currentPrice) * 100).toFixed(2)}% loss)
+                                                ({((parseFloat(inputs.entryPrice) - results.stop66) / parseFloat(inputs.entryPrice) * 100).toFixed(2)}% loss)
                                             </span>
                                         </span>
                                     </div>
@@ -497,17 +649,17 @@ function TradePlanner() {
                         </div>
 
                         {/* Price Ladder moved below */}
-                        {inputs.currentPrice && (
+                        {inputs.entryPrice && (
                             <div className="bg-base-200 p-4 rounded-lg">
                                 <h4 className="font-medium mb-10">Price Ladder</h4>
                                 {console.log('Price Ladder Props:', {
-                                    currentPrice: parseFloat(inputs.currentPrice),
+                                    entryPrice: parseFloat(inputs.entryPrice),
                                     fullStop: results.fullStopPrice,
                                     stop33: results.stop33,
                                     stop66: results.stop66
                                 })}
                                 <PriceLadder
-                                    currentPrice={parseFloat(inputs.currentPrice)}
+                                    entryPrice={parseFloat(inputs.entryPrice)}
                                     fullStop={results.fullStopPrice || 0}
                                     stop33={results.stop33 || 0}
                                     stop66={results.stop66 || 0}
@@ -527,6 +679,7 @@ function TradePlanner() {
                     </div>
                 </div>
             </TitleCard>
+            <ToastContainer /> 
         </div>
     )
 }
