@@ -41,6 +41,8 @@ function TradeLog(){
                 .eq('user_id', user.id)
                 .order('entry_datetime', { ascending: false })
 
+            console.log('Fetched trades:', data) // Debug log
+
             if (error) throw error
 
             setTrades(data)
@@ -54,12 +56,68 @@ function TradeLog(){
 
     // Modified updateMarketData to work with Supabase data
     const updateMarketData = async () => {
+        console.log('🔄 Starting market data update. Current trades:', trades.length);
         try {
-            const updatedTrades = await marketDataService.updateTradesWithMarketData(trades);
-            setTrades(updatedTrades);
+            const currentTrades = [...trades];
+            const updatedTrades = await marketDataService.updateTradesWithMarketData(currentTrades);
+            
+            console.log('🔄 Updated trades full data:', updatedTrades); // Log full trade objects
+            
+            if (updatedTrades && updatedTrades.length > 0) {
+                setTrades(updatedTrades);
+                const currentTimestamp = new Date().toISOString();
+                
+                const { data: { user }, error: userError } = await supabase.auth.getUser();
+                if (userError) {
+                    throw new Error(`Auth error: ${userError.message}`);
+                }
+    
+                console.log('🔐 Authenticated, starting DB updates...');
+                
+                for (const trade of updatedTrades) {
+                    // Log the exact data we're trying to update
+                    console.log('Updating trade:', {
+                        id: trade.id,
+                        ticker: trade.ticker,
+                        lastPrice: trade.last_price
+                    });
+    
+                    const { data, error } = await supabase
+                        .from('trades')
+                        .update({
+                            // Remove current_price since it's not in the schema
+                            last_price: trade.last_price, // Use current_price from market data as the last_price
+                            market_value: trade.market_value,
+                            unrealized_pnl: trade.unrealized_pnl,
+                            unrealized_pnl_percentage: trade.unrealized_pnl_percentage,
+                            mae: trade.mae,
+                            mfe: trade.mfe,
+                            open_risk: trade.open_risk,
+                            portfolio_impact: trade.portfolio_impact,
+                            weight_percentage: trade.weight_percentage,
+                            trimmed_percentage: trade.trimmed_percentage,
+                            updated_at: currentTimestamp
+                        })
+                        .eq('id', trade.id)
+                        .eq('user_id', user.id)
+                        .select();
+    
+                    if (error) {
+                        console.error(`❌ Failed to update trade ${trade.ticker}:`, error);
+                    } else {
+                        console.log(`✅ Updated trade ${trade.ticker} in DB. Response:`, data);
+                    }
+                }
+                
+                console.log('✅ All DB updates completed');
+            } else {
+                console.warn('🚨 No trades returned from market data update');
+            }
+            
             setLastUpdate(new Date().toLocaleTimeString());
         } catch (error) {
-            console.error('Error updating market data:', error);
+            console.error('❌ Error in updateMarketData:', error);
+            toast.error('Failed to update market data');
         }
     };
 
@@ -105,25 +163,25 @@ function TradeLog(){
                             onClick={toggleAutoRefresh}
                             className={`btn ${isAutoRefresh ? 'btn-error' : 'btn-success'}`}
                         >
-                            {isAutoRefresh ? 'Stop Auto-Refresh' : 'Start Auto-Refresh'}
+                            {isAutoRefresh ? 'Stop Auto-Sync' : 'Start Auto-Sync'}
                         </button>
                         <button 
                             onClick={handleRefreshNow}
                             className="btn btn-primary"
                         >
-                            Refresh Now
+                            Sync Now
                         </button>
 
                         {/* New Reset Button */}
-                        <button 
+                        {/* <button 
                             onClick={handleReset}
                             className="btn btn-secondary"
                         >
                             Reset
-                        </button>
+                        </button> */}
 
                         <span className="text-gray-400">
-                            Auto-refreshing every 30 minutes
+                            Auto-syncing real-time market data every 30 minutes
                         </span>
                         {lastUpdate && (
                             <span className="text-gray-400">
@@ -132,7 +190,12 @@ function TradeLog(){
                         )}
                     </div>
 
-                    {trades.length === 0 ? (
+                    {loading ? (
+                        <div className="text-center py-10">
+                            <span className="loading loading-spinner loading-lg"></span>
+                            <p>Loading trades...</p>
+                        </div>
+                    ) : trades.length === 0 ? (
                         <div className="text-center py-10 text-gray-500">
                             <div className="mb-4">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -210,15 +273,15 @@ function TradeLog(){
                                                     </span>
                                                 </td>
                                                 <td className="whitespace-nowrap">
-                                                    {trade.entry_date || 'N/A'}
+                                                    {trade.entry_datetime ? new Date(trade.entry_datetime).toISOString().split('T')[0] : ''}
                                                 </td>
-                                                <td>{formatCurrency(trade.avg_cost)}</td>
+                                                <td>{formatCurrency(trade.entry_price)}</td>
                                                 <td className="font-medium">{formatCurrency(trade.last_price)}</td>
                                                 <td>{safeToFixed(trade.total_shares)}</td>
-                                                <td>{trade.shares_remaining}</td>
+                                                <td>{safeToFixed(trade.remaining_shares)}</td>
                                                 <td>{formatCurrency(trade.total_cost)}</td>
                                                 <td>{formatCurrency(trade.market_value)}</td>
-                                                <td>{safeToFixed(trade.weight_percentage)}%</td>
+                                                <td>{safeToFixed(trade.portfolio_weight)}%</td>
                                                 <td>{safeToFixed(trade.trimmed_percentage)}%</td>
                                                 <td>
                                                     {trade.strategy ? (

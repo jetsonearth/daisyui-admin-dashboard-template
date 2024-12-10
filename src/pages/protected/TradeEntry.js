@@ -7,7 +7,7 @@ import { processTradeEntry } from '../../features/trades/tradeService' // Import
 import { addTrade } from '../../features/trades/tradesSlice'; // Correct import for addTrade
 import PriceLadder from '../../components/PriceLadder'
 import StopLossVisualizer from '../../components/StopLossVisualizer'
-
+import { marketDataService } from '../../features/marketData/marketDataService'
 import { supabase } from '../../config/supabaseClient';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -31,6 +31,42 @@ function TradePlanner() {
         notes: ''
     })
 
+    // Add a state to track price fetch time
+    const [priceInfo, setPriceInfo] = useState({
+        timestamp: null,
+        fetchError: null
+    })
+
+    // Modify the useEffect
+    useEffect(() => {
+        const fetchMarketPrice = async () => {
+            if (inputs.ticker) {
+                try {
+                    const currentPrice = await marketDataService.getQuote(inputs.ticker)
+                    if (currentPrice?.price) {
+                        setInputs(prevInputs => ({
+                            ...prevInputs,
+                            entryPrice: currentPrice.price.toString()
+                        }))
+                        
+                        // Update price info
+                        setPriceInfo({
+                            timestamp: new Date().toLocaleTimeString(),
+                            fetchError: null
+                        })
+                    }
+                } catch (error) {
+                    console.error('Error fetching market price:', error)
+                    setPriceInfo({
+                        timestamp: null,
+                        fetchError: error.message
+                    })
+                }
+            }
+        }
+
+        fetchMarketPrice()
+    }, [inputs.ticker])
 
     // Calculation results
     const [results, setResults] = useState({
@@ -52,13 +88,14 @@ function TradePlanner() {
     // Mock account size - should be fetched from portfolio
     const accountSize = 13000
 
-    const calculateResults = () => {
+    const calculateResults = async () => {
         const {
             entryPrice,
             atr,
             lowOfDay,
             portfolioRisk,
-            commission
+            commission,
+            ticker
         } = inputs
     
         // Guard against invalid inputs
@@ -94,8 +131,15 @@ function TradePlanner() {
     
     
         const price = parseFloat(entryPrice)
+        // Fetch current market price before trade submission
+        const currentPrice = await marketDataService.getQuote(inputs.ticker)
+        console.log('Current Market Price:', currentPrice?.price)
         const lod = parseFloat(lowOfDay)  // Will throw an error if not provided
         const portfolioHeat = portfolioRisk ? parseFloat(portfolioRisk) / 100 : 0.005 // Default to 0.5%
+
+        console.log('Heat:', {
+            portfolioHeat
+        })
     
         // Stop-Loss Calculation Logic:
         // 1. ATR Stop-Loss: Entry Price - ATR
@@ -119,7 +163,7 @@ function TradePlanner() {
             stopLossLogic = 'Low of Day'
         }
     
-        // Calculate stop-loss percentage
+        // Calculate stop-loss percentagea
         const stopLossPercent = ((price - fullStopPrice) / price) * 100
     
         // Calculate stop levels (33% and 66% of full stop distance)
@@ -190,7 +234,7 @@ function TradePlanner() {
             dollarExposure,
             totalCost,
             portfolioWeight: parseFloat(portfolioWeight.toFixed(2)), 
-            portfolioHeat: parseFloat(portfolioHeat.toFixed(2)),
+            portfolioHeat,
             openRisk: parseFloat(openRisk.toFixed(2)),
             target2R,
             target3R,
@@ -393,6 +437,15 @@ function TradePlanner() {
                                 className="input input-bordered"
                                 placeholder="AAPL"
                             />
+                            {inputs.ticker && (
+                                <div className="text-sm text-gray-350 mt-1">
+                                    {priceInfo.timestamp 
+                                        ? `Market price as of ${priceInfo.timestamp}` 
+                                        : priceInfo.fetchError 
+                                            ? `Price fetch error: ${priceInfo.fetchError}` 
+                                            : 'Fetching market price...'}
+                                </div>
+                            )}
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
