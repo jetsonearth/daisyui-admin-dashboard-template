@@ -94,7 +94,7 @@ function TradeLog(){
                             mfe: trade.mfe,
                             open_risk: trade.open_risk,
                             portfolio_impact: trade.portfolio_impact,
-                            weight_percentage: trade.weight_percentage,
+                            portfolio_weight: trade.weight_percentage,
                             trimmed_percentage: trade.trimmed_percentage,
                             updated_at: currentTimestamp
                         })
@@ -221,7 +221,7 @@ function TradeLog(){
                                         <th className="w-24">Direction</th>
                                         <th className="w-20">Status</th>
                                         <th className="w-32">Entry Date</th>
-                                        <th className="w-28">Entry Price</th>
+                                        <th className="w-28">Avg Cost</th>
                                         <th className="w-28">Current Price</th>
                                         <th className="w-24">Total Shares</th>
                                         <th className="w-24">Remaining Shares</th>
@@ -230,7 +230,7 @@ function TradeLog(){
                                         <th className="w-20">Weight %</th>
                                         <th className="w-24">Trimmed %</th>
                                         <th className="whitespace-normal min-w-[80px]">Strategy</th>
-                                        <th className="whitespace-normal min-w-[200px]">Setups</th>
+                                        <th className="whitespace-normal min-w-[120px]">Setups</th>
                                         <th className="w-24">Initial SL</th>
                                         <th className="w-24">33% SL</th>
                                         <th className="w-24">66% SL</th>
@@ -311,9 +311,9 @@ function TradeLog(){
                                                 <td>{formatCurrency(trade.stop_loss_66_percent)}</td>
                                                 <td className={`
                                                     font-semibold tabular-nums text-right
-                                                    ${trade.unrealized_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}
+                                                    ${trade.unrealized_pnl_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}
                                                 `}>
-                                                    {trade.unrealized_percentage > 0 ? '+' : ''}{safeToFixed(trade.unrealized_percentage)}%
+                                                    {trade.unrealized_pnl_percentage > 0 ? '+' : ''}{safeToFixed(trade.unrealized_pnl_percentage)}%
                                                 </td>
                                                 <td className={`
                                                     font-semibold tabular-nums text-right

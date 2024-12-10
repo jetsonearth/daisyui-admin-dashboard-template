@@ -52,7 +52,7 @@ export const userSettingsService = {
 
             const defaultSettings = {
                 user_id: user.id,
-                starting_cash: 100000.00,
+                starting_cash: 0,
                 name: '',
                 email: user.email,
                 trading_experience: null,
@@ -142,6 +142,47 @@ export const userSettingsService = {
                 code: error.code,
                 stack: error.stack
             });
+            throw error;
+        }
+    },
+
+
+    // Get current capital (starting_cash + PnL)
+    async getCurrentCapital(trades) {
+        try {
+            const settings = await this.getUserSettings();
+            const startingCash = settings.starting_cash || 0;
+            
+            // Sum of all realized and unrealized PnL
+            const totalPnL = trades.reduce((sum, trade) => 
+                sum + (trade.realized_pnl || 0) + (trade.unrealized_pnl || 0), 
+                0
+            );
+
+            return startingCash + totalPnL;
+        } catch (error) {
+            console.error('Error getting current capital:', error);
+            throw error;
+        }
+    },
+
+    // Update starting cash (for deposits/withdrawals)
+    async updateStartingCash(newAmount) {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('No authenticated user');
+
+            const { data, error } = await supabase
+                .from('user_settings')
+                .update({ starting_cash: newAmount })
+                .eq('user_id', user.id)
+                .select()
+                .single();
+
+            if (error) throw error;
+            return data;
+        } catch (error) {
+            console.error('Error updating starting cash:', error);
             throw error;
         }
     }

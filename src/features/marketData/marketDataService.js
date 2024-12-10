@@ -137,17 +137,19 @@ class MarketDataService {
     async updateTradesWithMarketData(trades) {
         try {
             console.log('🔄 Updating trades with market data');
+            
             const priceMap = await this.fetchSheetData();
             
             if (priceMap.size === 0) {
                 console.log('❌ No price data available');
                 return trades;
             }
-
-            // Pre-calculate the current time for all updates
+    
             const updateTime = new Date().toLocaleTimeString();
             
-            // Use a single loop with optimized calculations
+            // Calculate total account capital (sum of all market values)
+            const totalAccountCapital = trades.reduce((sum, t) => sum + (t.market_value || 0), 0);
+    
             const updatedTrades = trades.map(trade => {
                 const price = priceMap.get(trade.ticker);
                 
@@ -155,25 +157,52 @@ class MarketDataService {
                     console.log(`⚠️ No price found for ${trade.ticker}`);
                     return trade;
                 }
-
-                console.log(`✅ Found price for ${trade.ticker}: $${price}`);
-                
-                // Calculate values only if we have valid inputs
-                const shares = trade.shares_remaining;
-                const entryPrice = trade.avg_cost;
+    
+                const shares = trade.remaining_shares || trade.shares_remaining || trade.total_shares;
+                const entryPrice = trade.entry_price || trade.avg_cost || trade.avg_entry_price;
                 
                 if (shares && entryPrice) {
                     const marketValue = price * shares;
                     const priceDiff = price - entryPrice;
+                    const unrealizedPnL = priceDiff * shares;
+                    const unrealizedPnLPercentage = (priceDiff / entryPrice) * 100;
+    
+                    // Open Risk - use the predefined initial risk amount
+                    const initialRiskAmount = Math.abs(entryPrice - trade.initial_stop_loss) * trade.total_shares;
                     
-                    return {
+                    // Risk-Reward Ratio (RRR)
+                    // RRR = (Unrealized PnL + Realized PnL) / Initial Risk Amount
+                    const realizedPnL = trade.realized_pnl || 0;
+                    const rrr = (unrealizedPnL + realizedPnL) / initialRiskAmount;
+    
+                    // Portfolio Impact - percentage impact on total account capital
+                    const portfolioImpact = ((unrealizedPnL + realizedPnL) / totalAccountCapital) * 100;
+    
+                    // Holding Period
+                    const entryDate = new Date(trade.entry_date);
+                    const exitDate = trade.exit_date ? new Date(trade.exit_date) : new Date();
+                    const holdingPeriod = Math.round((exitDate - entryDate) / (1000 * 60 * 60 * 24)); // in days
+    
+                    // Weight Percentage - market value over account capital
+                    const weightPercentage = (marketValue / totalAccountCapital) * 100;
+                    console.log('🔵 EC:', totalAccountCapital);
+    
+                    const calculatedTrade = {
                         ...trade,
                         last_price: price,
                         market_value: marketValue,
-                        unrealized_pnl: priceDiff * shares,
-                        unrealized_pnl_percentage: (priceDiff / entryPrice) * 100,
+                        unrealized_pnl: unrealizedPnL,
+                        unrealized_pnl_percentage: unrealizedPnLPercentage,
+                        open_risk: initialRiskAmount,
+                        risk_reward_ratio: rrr,
+                        portfolio_impact: portfolioImpact,
+                        holding_period: holdingPeriod,
+                        portfolio_weight: weightPercentage,
+                        trimmed_percentage: 0, // As you specified
                         last_update: updateTime
                     };
+    
+                    return calculatedTrade;
                 }
                 
                 return {
@@ -182,8 +211,7 @@ class MarketDataService {
                     last_update: updateTime
                 };
             });
-
-            console.log('✅ Trades updated with latest prices');
+    
             return updatedTrades;
         } catch (error) {
             console.error('❌ Error updating trades:', error);
