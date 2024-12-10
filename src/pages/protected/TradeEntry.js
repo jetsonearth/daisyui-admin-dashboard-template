@@ -46,7 +46,8 @@ function TradePlanner() {
                     if (currentPrice?.price) {
                         setInputs(prevInputs => ({
                             ...prevInputs,
-                            entryPrice: currentPrice.price.toString()
+                            entryPrice: currentPrice.price.toString(),
+                            lowOfDay: currentPrice.low ? currentPrice.low.toString() : ''
                         }))
                         
                         // Update price info
