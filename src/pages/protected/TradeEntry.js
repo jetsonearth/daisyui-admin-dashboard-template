@@ -291,7 +291,10 @@ function TradePlanner() {
         calculateResults()
     }, [inputs])
 
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
     const handleSubmit = async () => {
+        setIsSubmitting(true);
         // Validation Checks
         const errors = [];
 
@@ -332,6 +335,7 @@ function TradePlanner() {
                 pauseOnHover: true,
                 draggable: true
             }))
+            setIsSubmitting(false);
             return
         }
 
@@ -360,6 +364,7 @@ function TradePlanner() {
             if (!user) {
                 console.error("🚨 No authenticated user found");
                 toast.error('Please log in to submit a trade')
+                setIsSubmitting(false);
                 return
             }
 
@@ -458,6 +463,8 @@ function TradePlanner() {
                 draggable: true
             })
             console.error('Error submitting trade:', error)
+        } finally {
+            setIsSubmitting(false);
         }
     }
 
@@ -471,6 +478,20 @@ function TradePlanner() {
 
     return (
         <div className="p-4">
+            {/* Submission Loading Overlay */}
+            {isSubmitting && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center">
+                    <div className="bg-base-100 p-8 rounded-lg shadow-xl text-center">
+                        <span className="loading loading-spinner loading-lg text-primary mb-4"></span>
+                        <div className="text-lg font-semibold">
+                            Placing Trade for {inputs.ticker}
+                        </div>
+                        <div className="text-sm text-gray-500 mt-2">
+                            Processing trade details...
+                        </div>
+                    </div>
+                </div>
+            )}
             <TitleCard title="New Trade Entry">
                 <div className="grid grid-cols-2 gap-6">
                     {/* Left Column - Inputs */}
