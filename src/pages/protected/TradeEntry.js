@@ -728,7 +728,7 @@ function TradePlanner() {
                                     stop66: results.stop66
                                 })}
                                 <PriceLadder
-                                    entryPrice={parseFloat(inputs.entryPrice)}
+                                    currentPrice={parseFloat(inputs.entryPrice)}
                                     fullStop={results.fullStopPrice || 0}
                                     stop33={results.stop33 || 0}
                                     stop66={results.stop66 || 0}
