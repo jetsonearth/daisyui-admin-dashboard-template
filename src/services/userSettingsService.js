@@ -92,7 +92,6 @@ export const userSettingsService = {
         }
     },
 
-    // Update or insert user settings
     async updateUserSettings(settings) {
         try {
             const { data: { user } } = await supabase.auth.getUser();
@@ -100,19 +99,29 @@ export const userSettingsService = {
                 console.error('No authenticated user');
                 throw new Error('No authenticated user');
             }
-
-            console.log('Updating settings for user:', user.id);
-            console.log('Settings to update:', settings);
-
-            // Prepare settings object with user_id
+    
+            // First, fetch existing settings to preserve starting_cash
+            const { data: existingSettings, error: fetchError } = await supabase
+                .from('user_settings')
+                .select('starting_cash')
+                .eq('user_id', user.id)
+                .single();
+    
+            if (fetchError && fetchError.code !== 'PGRST116') {
+                console.error('Error fetching existing settings:', fetchError);
+                throw fetchError;
+            }
+    
+            // Prepare settings object, preserving starting_cash
             const settingsToUpsert = {
                 user_id: user.id,
+                starting_cash: existingSettings?.starting_cash, // Preserve existing starting_cash
                 ...settings,
                 updated_at: new Date().toISOString()
             };
-
+    
             console.log('Prepared settings for upsert:', settingsToUpsert);
-
+    
             const { data, error } = await supabase
                 .from('user_settings')
                 .upsert(settingsToUpsert, { 
@@ -121,9 +130,7 @@ export const userSettingsService = {
                 })
                 .select()
                 .single();
-
-            console.log('Upsert response:', { data, error });
-
+    
             if (error) {
                 console.error('Supabase upsert error:', {
                     message: error.message,
@@ -132,7 +139,7 @@ export const userSettingsService = {
                 });
                 throw error;
             }
-
+    
             console.log('Settings saved successfully:', data);
             return data;
         } catch (error) {
@@ -145,7 +152,6 @@ export const userSettingsService = {
             throw error;
         }
     },
-
 
     // Get current capital (starting_cash + PnL)
     async getCurrentCapital() {

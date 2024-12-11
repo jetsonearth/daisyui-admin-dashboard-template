@@ -1,4 +1,5 @@
 import { capitalService } from '../../services/capitalService';
+import { userSettingsService } from '../../services/userSettingsService'; // Import userSettingsService
 
 class MarketDataService {
     constructor() {
@@ -152,12 +153,16 @@ class MarketDataService {
                 console.log('❌ No price data available');
                 return trades;
             }
-    
+
             const updateTime = new Date().toLocaleTimeString();
             
-            // Get total account capital from capitalService
-            const totalAccountCapital = await capitalService.getCurrentCapital();
-            console.log('Total Account Capital:', totalAccountCapital);
+            // Get initial starting cash
+            const currentSettings = await userSettingsService.getUserSettings();
+            const startingCash = currentSettings.starting_cash || 0;
+            console.log('🏁 Starting Cash:', startingCash);
+
+            let totalRealizedPnL = 0;
+            let totalUnrealizedPnL = 0;
 
             const updatedTrades = await Promise.all(trades.map(async (trade) => {
                 const symbolData = priceMap.get(trade.ticker);
@@ -166,7 +171,7 @@ class MarketDataService {
                     console.log(`⚠️ No price found for ${trade.ticker}`);
                     return trade;
                 }
-    
+
                 const shares = trade.remaining_shares || trade.shares_remaining || trade.total_shares;
                 const entryPrice = trade.entry_price || trade.avg_cost || trade.avg_entry_price;
                 
@@ -175,85 +180,66 @@ class MarketDataService {
                     const priceDiff = symbolData.price - entryPrice;
                     const unrealizedPnL = priceDiff * shares;
                     const unrealizedPnLPercentage = (priceDiff / entryPrice) * 100;
-    
+
                     // Open Risk - use the predefined initial risk amount
                     const initialRiskAmount = Math.abs(entryPrice - trade.stop_loss_price) * trade.total_shares;
                     
                     // Risk-Reward Ratio (RRR)
-                    // RRR = (Unrealized PnL + Realized PnL) / Initial Risk Amount
                     const realizedPnL = trade.realized_pnl || 0;
                     const rrr = (unrealizedPnL + realizedPnL) / initialRiskAmount;
+
+                    // Accumulate PnL
+                    totalRealizedPnL += realizedPnL;
+                    totalUnrealizedPnL += unrealizedPnL;
 
                     console.log('Portfolio Impact Calculation:', 
                         unrealizedPnL,
                         realizedPnL,
-                        totalAccountCapital);
-    
+                        startingCash);
+
                     // Portfolio Impact - percentage impact on total account capital
-                    const portfolioImpact = ((unrealizedPnL + realizedPnL) / totalAccountCapital) * 100;
+                    const totalCapital = startingCash + totalRealizedPnL + totalUnrealizedPnL;
+                    const portfolioImpact = ((unrealizedPnL + realizedPnL) / totalCapital) * 100;
                     
                     console.log('Portfolio Impact Calculation:', {
                         unrealizedPnL,
                         realizedPnL,
-                        totalAccountCapital,
+                        totalCapital,
                         portfolioImpact
                     });
-    
-                    // Holding Period
-                    const entryDate = new Date(trade.entry_date);
-                    const exitDate = trade.exit_date ? new Date(trade.exit_date) : new Date();
-                    const holdingPeriod = Math.round((exitDate - entryDate) / (1000 * 60 * 60 * 24)); // in days
-    
-                    // Weight Percentage - market value over account capital
-                    const weightPercentage = (marketValue / totalAccountCapital) * 100;
-                    console.log('🔵 EC:', totalAccountCapital);
 
-                    console.log(`RRR Calculation for ${trade.ticker}:`, {
-                        unrealizedPnL,
-                        realizedPnL,
-                        initialRiskAmount,
-                        entryPrice: trade.entry_price,
-                        stopLossPrice: trade.stop_loss_price,
-                        shares: trade.total_shares
-                    });
-    
-                    const calculatedTrade = {
+                    // Update trade with new market data
+                    return {
                         ...trade,
-                        last_price: symbolData.price,
-                        low_price: symbolData.low,
+                        current_price: symbolData.price,
                         market_value: marketValue,
                         unrealized_pnl: unrealizedPnL,
                         unrealized_pnl_percentage: unrealizedPnLPercentage,
-                        open_risk: initialRiskAmount,
-                        risk_reward_ratio: rrr,
                         portfolio_impact: portfolioImpact,
-                        holding_period: holdingPeriod,
-                        portfolio_weight: weightPercentage,
-                        trimmed_percentage: 0, // As you specified
+                        risk_reward_ratio: rrr,
                         last_update: updateTime
                     };
-    
-                    return calculatedTrade;
                 }
-                
-                return {
-                    ...trade,
-                    last_price: symbolData.price,
-                    low_price: symbolData.low,
-                    last_update: updateTime
-                };
+                return trade;
             }));
 
-            await capitalService.recordDailyCapital(totalAccountCapital, {
+            // Calculate total capital
+            const totalCapital = startingCash + totalRealizedPnL + totalUnrealizedPnL;
+            console.log('🔵 Total Capital:', totalCapital);
+
+            // Update current capital
+            await capitalService.updateCurrentCapital(totalCapital, {
                 tradeCount: trades.length,
                 marketDataUpdateTime: new Date().toISOString(),
-                updatedTradesCount: updatedTrades.filter(trade => trade.last_update).length
+                updatedTradesCount: updatedTrades.filter(trade => trade.last_update).length,
+                realizedPnL: totalRealizedPnL,
+                unrealizedPnL: totalUnrealizedPnL
             });
-    
+
             return updatedTrades;
         } catch (error) {
             console.error('❌ Error updating trades:', error);
-            return trades;
+            throw error;
         }
     }
 
