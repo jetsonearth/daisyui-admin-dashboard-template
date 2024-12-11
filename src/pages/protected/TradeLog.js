@@ -5,6 +5,8 @@ import TitleCard from '../../components/Cards/TitleCard'
 import { TRADE_STATUS, ASSET_TYPES, DIRECTIONS, STRATEGIES } from '../../features/trades/tradeModel'
 import { marketDataService } from '../../features/marketData/marketDataService'
 import { toast } from 'react-toastify'
+import { TradeManager } from '../../components/TradeManager/TradeManager';
+import './TradeLog.css';
 
 function TradeLog(){
     const navigate = useNavigate()
@@ -13,6 +15,7 @@ function TradeLog(){
     const [isAutoRefresh, setIsAutoRefresh] = useState(true)
     const [lastUpdate, setLastUpdate] = useState(null)
     const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+    const [selectedTrade, setSelectedTrade] = useState(null);
 
     // Keep your existing helper functions
     const safeToFixed = (number, decimals = 2) => {
@@ -307,7 +310,11 @@ function TradeLog(){
                                 <tbody>
                                     {
                                         trades && trades.map((trade, k) => (
-                                            <tr key={k}>
+                                            <tr 
+                                                key={trade.id} 
+                                                className="trade-row"
+                                                onClick={() => setSelectedTrade(trade)}
+                                            >
                                                 <td className="font-medium">{trade.ticker || 'N/A'}</td>
                                                 <td>{trade.asset_type || 'N/A'}</td>
                                                 <td>
@@ -425,6 +432,14 @@ function TradeLog(){
                     )}
                 </div>
             </TitleCard>
+
+            {selectedTrade && (
+                <TradeManager
+                    trade={selectedTrade}
+                    onClose={() => setSelectedTrade(null)}
+                    onUpdate={fetchTrades}
+                />
+            )}
         </div>
     )
 }
