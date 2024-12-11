@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
-import { supabase } from '../../config/supabaseClient'
+import { supabase } from '../../config/supabaseClient';
 import './TradeManager.css';
+import { FaPlus, FaCut, FaTimes } from 'react-icons/fa';
 
 export const TradeManager = ({ trade, onClose, onUpdate }) => {
-    console.log('Trade passed to TradeManager:', trade);
-
     const [quantity, setQuantity] = useState('');
     const [price, setPrice] = useState('');
     const [loading, setLoading] = useState(false);
 
-    // Add default values if trade properties are undefined
+    // Safely extract trade details with fallbacks
+    const ticker = trade.ticker || 'Unknown';
     const remainingShares = trade.remaining_shares || trade.total_shares || 0;
     const avgCost = trade.avg_cost || trade.entry_price || 0;
+    const currentPrice = trade.current_price || 0;
+    const unrealizedPnL = ((currentPrice - avgCost) * remainingShares).toFixed(2);
 
     const handleAddPosition = async () => {
         setLoading(true);
@@ -19,11 +21,10 @@ export const TradeManager = ({ trade, onClose, onUpdate }) => {
             const newShares = Number(quantity);
             const newPrice = Number(price);
             
-            // Calculate new average cost
             const totalShares = remainingShares + newShares;
             const newAvgCost = ((avgCost * remainingShares) + (newPrice * newShares)) / totalShares;
 
-            const { data, error } = await supabase
+            const { error } = await supabase
                 .from('trades')
                 .update({
                     total_shares: totalShares,
@@ -47,16 +48,18 @@ export const TradeManager = ({ trade, onClose, onUpdate }) => {
         setLoading(true);
         try {
             const sharesToSell = Number(quantity);
+            const sellPrice = Number(price);
+
             if (sharesToSell > remainingShares) {
                 alert('Cannot sell more shares than available');
                 return;
             }
 
-            const { data, error } = await supabase
+            const { error } = await supabase
                 .from('trades')
                 .update({
                     remaining_shares: remainingShares - sharesToSell,
-                    realized_pnl: (trade.realized_pnl || 0) + ((Number(price) - avgCost) * sharesToSell),
+                    realized_pnl: (sellPrice - avgCost) * sharesToSell,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', trade.id);
@@ -74,14 +77,16 @@ export const TradeManager = ({ trade, onClose, onUpdate }) => {
     const handleCloseTrade = async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase
+            const exitPrice = Number(price);
+
+            const { error } = await supabase
                 .from('trades')
                 .update({
                     status: 'Closed',
                     remaining_shares: 0,
-                    realized_pnl: (trade.realized_pnl || 0) + ((Number(price) - avgCost) * remainingShares),
-                    exit_price: Number(price),
+                    exit_price: exitPrice,
                     exit_date: new Date().toISOString(),
+                    realized_pnl: (exitPrice - avgCost) * remainingShares,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', trade.id);
@@ -100,7 +105,7 @@ export const TradeManager = ({ trade, onClose, onUpdate }) => {
         <div className="trade-manager-modal">
             <div className="trade-manager-content">
                 <div className="trade-manager-header">
-                    <h2>Manage {trade.ticker || 'Trade'} Position</h2>
+                    <h2>Manage {trade.ticker} Position</h2>
                     <button className="close-button" onClick={onClose}>×</button>
                 </div>
 
@@ -109,45 +114,43 @@ export const TradeManager = ({ trade, onClose, onUpdate }) => {
                     <div>Average Cost: ${avgCost.toFixed(2)}</div>
                 </div>
 
-                <div className="trade-actions">
-                    <div className="input-group">
-                        <input
-                            type="number"
-                            value={quantity}
-                            onChange={(e) => setQuantity(e.target.value)}
-                            placeholder="Quantity"
-                        />
-                        <input
-                            type="number"
-                            value={price}
-                            onChange={(e) => setPrice(e.target.value)}
-                            placeholder="Price"
-                        />
-                    </div>
+                <div className="input-group">
+                    <input
+                        type="number"
+                        value={quantity}
+                        onChange={(e) => setQuantity(e.target.value)}
+                        placeholder="Quantity"
+                    />
+                    <input
+                        type="number"
+                        value={price}
+                        onChange={(e) => setPrice(e.target.value)}
+                        placeholder="Price"
+                    />
+                </div>
 
-                    <div className="button-group">
-                        <button 
-                            onClick={handleAddPosition}
-                            disabled={loading || !quantity || !price}
-                            className="add-button"
-                        >
-                            Add Position
-                        </button>
-                        <button 
-                            onClick={handleTrimPosition}
-                            disabled={loading || !quantity || !price}
-                            className="trim-button"
-                        >
-                            Trim Position
-                        </button>
-                        <button 
-                            onClick={handleCloseTrade}
-                            disabled={loading || !price}
-                            className="close-trade-button"
-                        >
-                            Close Trade
-                        </button>
-                    </div>
+                <div className="button-group">
+                    <button 
+                        onClick={handleAddPosition}
+                        disabled={loading || !quantity || !price}
+                        className="trade-action-btn add-btn"
+                    >
+                        Add Position
+                    </button>
+                    <button 
+                        onClick={handleTrimPosition}
+                        disabled={loading || !quantity || !price}
+                        className="trade-action-btn trim-btn"
+                    >
+                        Trim Position
+                    </button>
+                    <button 
+                        onClick={handleCloseTrade}
+                        disabled={loading || !price}
+                        className="trade-action-btn close-btn"
+                    >
+                        Close Trade
+                    </button>
                 </div>
             </div>
         </div>
