@@ -174,7 +174,7 @@ class MarketDataService {
                     const unrealizedPnLPercentage = (priceDiff / entryPrice) * 100;
     
                     // Open Risk - use the predefined initial risk amount
-                    const initialRiskAmount = Math.abs(entryPrice - trade.initial_stop_loss) * trade.total_shares;
+                    const initialRiskAmount = Math.abs(entryPrice - trade.stop_loss_price) * trade.total_shares;
                     
                     // Risk-Reward Ratio (RRR)
                     // RRR = (Unrealized PnL + Realized PnL) / Initial Risk Amount
@@ -192,6 +192,15 @@ class MarketDataService {
                     // Weight Percentage - market value over account capital
                     const weightPercentage = (marketValue / totalAccountCapital) * 100;
                     console.log('🔵 EC:', totalAccountCapital);
+
+                    console.log(`RRR Calculation for ${trade.ticker}:`, {
+                        unrealizedPnL,
+                        realizedPnL,
+                        initialRiskAmount,
+                        entryPrice: trade.entry_price,
+                        stopLossPrice: trade.stop_loss_price,
+                        shares: trade.total_shares
+                    });
     
                     const calculatedTrade = {
                         ...trade,

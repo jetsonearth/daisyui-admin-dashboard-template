@@ -12,6 +12,7 @@ function TradeLog(){
     const [loading, setLoading] = useState(true)
     const [isAutoRefresh, setIsAutoRefresh] = useState(true)
     const [lastUpdate, setLastUpdate] = useState(null)
+    const [isManualRefreshing, setIsManualRefreshing] = useState(false);
 
     // Keep your existing helper functions
     const safeToFixed = (number, decimals = 2) => {
@@ -58,13 +59,55 @@ function TradeLog(){
     const updateMarketData = async () => {
         console.log('🔄 Starting market data update. Current trades:', trades.length);
         try {
-            const currentTrades = [...trades];
-            const updatedTrades = await marketDataService.updateTradesWithMarketData(currentTrades);
-            
-            console.log('🔄 Updated trades full data:', updatedTrades); // Log full trade objects
+            // Filter out closed trades before updating
+            const activeTrades = trades.filter(trade => 
+                trade.status !== TRADE_STATUS.CLOSED
+            );
+
+            console.log(`🔍 Filtering active trades. Total: ${trades.length}, Active: ${activeTrades.length}`);
+
+            // If no active trades, skip update
+            if (activeTrades.length === 0) {
+                console.log('🚫 No active trades to update');
+                return;
+            }
+
+            const updatedTrades = await marketDataService.updateTradesWithMarketData(activeTrades);
+
+            console.log('🎯 Updated Trades:', updatedTrades.map(trade => ({
+                ticker: trade.ticker,
+                rrr: trade.rrr,
+                openRisk: trade.open_risk
+            })));
+
             
             if (updatedTrades && updatedTrades.length > 0) {
-                setTrades(updatedTrades);
+                // Merge updated trades with original trades, keeping closed trades unchanged
+                const mergedTrades = trades.map(originalTrade => {
+                    const updatedTrade = updatedTrades.find(ut => ut.id === originalTrade.id);
+                    
+                    // If trade is closed, return original trade
+                    if (
+                        originalTrade.status === TRADE_STATUS.CLOSED || 
+                        originalTrade.status === TRADE_STATUS.EXITED
+                    ) {
+                        console.log(`🔒 Skipping update for closed trade: ${originalTrade.ticker}`);
+                        return originalTrade;
+                    }
+
+                    // If updatedTrade exists, merge with original trade, preserving open_risk
+                    if (updatedTrade) {
+                        return {
+                            ...updatedTrade,
+                            open_risk: originalTrade.open_risk
+                        };
+                    }                
+                });
+
+                // Update trades state with merged trades
+                setTrades(mergedTrades);
+
+                // Continue with Supabase update for active trades
                 const currentTimestamp = new Date().toISOString();
                 
                 const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -72,27 +115,25 @@ function TradeLog(){
                     throw new Error(`Auth error: ${userError.message}`);
                 }
     
-                console.log('🔐 Authenticated, starting DB updates...');
-                
                 for (const trade of updatedTrades) {
-                    // Log the exact data we're trying to update
-                    console.log('Updating trade:', {
-                        id: trade.id,
-                        ticker: trade.ticker,
-                        lastPrice: trade.last_price
-                    });
-    
+                    // Skip updates for closed trades
+                    if (
+                        trade.status === TRADE_STATUS.CLOSED || 
+                        trade.status === TRADE_STATUS.EXITED
+                    ) {
+                        console.log(`🚫 Skipping Supabase update for closed trade: ${trade.ticker}`);
+                        continue;
+                    }
+
                     const { data, error } = await supabase
                         .from('trades')
                         .update({
-                            // Remove current_price since it's not in the schema
-                            last_price: trade.last_price, // Use current_price from market data as the last_price
+                            last_price: trade.last_price,
                             market_value: trade.market_value,
                             unrealized_pnl: trade.unrealized_pnl,
                             unrealized_pnl_percentage: trade.unrealized_pnl_percentage,
                             mae: trade.mae,
                             mfe: trade.mfe,
-                            open_risk: trade.open_risk,
                             portfolio_impact: trade.portfolio_impact,
                             portfolio_weight: trade.weight_percentage,
                             trimmed_percentage: trade.trimmed_percentage,
@@ -104,17 +145,11 @@ function TradeLog(){
     
                     if (error) {
                         console.error(`❌ Failed to update trade ${trade.ticker}:`, error);
-                    } else {
-                        console.log(`✅ Updated trade ${trade.ticker} in DB. Response:`, data);
                     }
                 }
-                
-                console.log('✅ All DB updates completed');
             } else {
                 console.warn('🚨 No trades returned from market data update');
             }
-            
-            setLastUpdate(new Date().toLocaleTimeString());
         } catch (error) {
             console.error('❌ Error in updateMarketData:', error);
             toast.error('Failed to update market data');
@@ -143,8 +178,20 @@ function TradeLog(){
         setIsAutoRefresh(!isAutoRefresh);
     };
 
-    const handleRefreshNow = () => {
-        updateMarketData();
+    const handleRefreshNow = async () => {
+        try {
+            // Set manual refresh state to true
+            setIsManualRefreshing(true);
+            
+            // Call update market data
+            await updateMarketData();
+        } catch (error) {
+            console.error('Manual refresh error:', error);
+            toast.error('Failed to refresh market data');
+        } finally {
+            // Always reset manual refresh state
+            setIsManualRefreshing(false);
+        }
     };
 
     const handleReset = () => {
@@ -167,10 +214,17 @@ function TradeLog(){
                         </button>
                         <button 
                             onClick={handleRefreshNow}
-                            className="btn btn-primary"
+                            className={`btn btn-primary ${isManualRefreshing ? 'loading' : ''}`}
                         >
-                            Sync Now
+                            {isManualRefreshing ? 'Refreshing...' : 'Sync Now'}
                         </button>
+
+                        {/* Last Updated Text */}
+                        {lastUpdate && (
+                            <div className="text-xs text-gray-500 ml-2 mt-1">
+                                Last updated at {lastUpdate}
+                            </div>
+                        )}
 
                         {/* New Reset Button */}
                         {/* <button 
