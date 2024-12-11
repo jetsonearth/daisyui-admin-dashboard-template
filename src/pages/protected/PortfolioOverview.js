@@ -67,8 +67,11 @@ function PortfolioOverview(){
     useEffect(() => {
         const fetchCurrentCapital = async () => {
             try {
-                const capital = await userSettingsService.getCurrentCapital(allTrades);
+                // Change this line to use capitalService
+                const capital = await capitalService.getCurrentCapital();
                 setCurrentCapital(capital);
+                
+                // Optional: track capital change if needed
                 await capitalService.trackCapitalChange(allTrades);
             } catch (error) {
                 console.error('Failed to fetch current capital:', error);

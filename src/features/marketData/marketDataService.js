@@ -1,3 +1,5 @@
+import { capitalService } from '../../services/capitalService';
+
 class MarketDataService {
     constructor() {
         this.cache = new Map();
@@ -153,10 +155,11 @@ class MarketDataService {
     
             const updateTime = new Date().toLocaleTimeString();
             
-            // Calculate total account capital (sum of all market values)
-            const totalAccountCapital = trades.reduce((sum, t) => sum + (t.market_value || 0), 0);
-    
-            const updatedTrades = trades.map(trade => {
+            // Get total account capital from capitalService
+            const totalAccountCapital = await capitalService.getCurrentCapital();
+            console.log('Total Account Capital:', totalAccountCapital);
+
+            const updatedTrades = await Promise.all(trades.map(async (trade) => {
                 const symbolData = priceMap.get(trade.ticker);
                 
                 if (symbolData === undefined) {
@@ -180,9 +183,21 @@ class MarketDataService {
                     // RRR = (Unrealized PnL + Realized PnL) / Initial Risk Amount
                     const realizedPnL = trade.realized_pnl || 0;
                     const rrr = (unrealizedPnL + realizedPnL) / initialRiskAmount;
+
+                    console.log('Portfolio Impact Calculation:', 
+                        unrealizedPnL,
+                        realizedPnL,
+                        totalAccountCapital);
     
                     // Portfolio Impact - percentage impact on total account capital
                     const portfolioImpact = ((unrealizedPnL + realizedPnL) / totalAccountCapital) * 100;
+                    
+                    console.log('Portfolio Impact Calculation:', {
+                        unrealizedPnL,
+                        realizedPnL,
+                        totalAccountCapital,
+                        portfolioImpact
+                    });
     
                     // Holding Period
                     const entryDate = new Date(trade.entry_date);
@@ -227,6 +242,12 @@ class MarketDataService {
                     low_price: symbolData.low,
                     last_update: updateTime
                 };
+            }));
+
+            await capitalService.recordDailyCapital(totalAccountCapital, {
+                tradeCount: trades.length,
+                marketDataUpdateTime: new Date().toISOString(),
+                updatedTradesCount: updatedTrades.filter(trade => trade.last_update).length
             });
     
             return updatedTrades;

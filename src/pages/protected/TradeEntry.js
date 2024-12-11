@@ -173,8 +173,10 @@ function TradePlanner() {
         const price = parseFloat(entryPrice)
         // Fetch current market price before trade submission
         const currentPrice = await marketDataService.getQuote(inputs.ticker)
+        console.log('Price:', price)
         console.log('Current Market Price:', currentPrice?.price)
         const lod = parseFloat(lowOfDay)  // Will throw an error if not provided
+        console.log('Low of Day:', lod)
         const portfolioHeat = portfolioRisk ? parseFloat(portfolioRisk) / 100 : 0.005 // Default to 0.5%
 
         console.log('Heat:', {
@@ -413,7 +415,6 @@ function TradePlanner() {
 
             console.log('New Trade Object:', {
                 ...newTrade,
-                open_risk: results.openRisk,
                 openRisk: results.openRisk
             });
 

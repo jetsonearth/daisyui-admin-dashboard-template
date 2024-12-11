@@ -5,7 +5,7 @@ import { FaPlus, FaCut, FaTimes } from 'react-icons/fa';
 
 export const TradeManager = ({ trade, onClose, onUpdate }) => {
     const [quantity, setQuantity] = useState('');
-    const [price, setPrice] = useState('');
+    const [price, setPrice] = useState(trade.current_price ? trade.current_price.toString() : '');
     const [loading, setLoading] = useState(false);
 
     // Safely extract trade details with fallbacks
