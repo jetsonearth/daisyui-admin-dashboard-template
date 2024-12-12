@@ -269,55 +269,55 @@ function TradeLog(){
                             </button>
                         </div>
                     ) : (
-                        <div className="overflow-x-auto w-full">
-                            <table className="table w-full">
-                                <thead>
-                                    <tr>
-                                        <th className="w-20">Ticker</th>
-                                        <th className="w-24">Type</th>
-                                        <th className="w-24">Direction</th>
-                                        <th className="w-20">Status</th>
-                                        <th className="w-32">Entry Date</th>
-                                        <th className="w-28">Avg Cost</th>
-                                        <th className="w-28">Current Price</th>
-                                        <th className="w-24">Total Shares</th>
-                                        <th className="w-24">Remaining Shares</th>
-                                        <th className="w-32">Total Cost</th>
-                                        <th className="w-32">Market Value</th>
-                                        <th className="w-20">Weight %</th>
-                                        <th className="w-24">Trimmed %</th>
-                                        <th className="whitespace-normal min-w-[80px]">Strategy</th>
-                                        <th className="whitespace-normal min-w-[120px]">Setups</th>
-                                        <th className="w-24">Initial SL</th>
-                                        <th className="w-24">33% SL</th>
-                                        <th className="w-24">66% SL</th>
-                                        <th className="w-28">Unrealized PnL%</th>
-                                        <th className="w-28">Unrealized PnL</th>
-                                        <th className="w-28">Realized PnL%</th>
-                                        <th className="w-28">Realized PnL</th>
-                                        <th className="w-20">RRR</th>
-                                        <th className="w-24">Open Risk</th>
-                                        <th className="w-32">Portfolio Impact</th>
-                                        <th className="w-20">MAE</th>
-                                        <th className="w-20">MFE</th>
-                                        <th className="w-32">Exit Date</th>
-                                        <th className="w-24">Commission</th>
-                                        <th className="w-32">Holding Period</th>
-                                        <th className="w-32">Mistakes</th>
-                                        <th className="w-32">Notes</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {
-                                        trades && trades.map((trade, k) => (
+                            <div className="overflow-x-auto w-full">
+                                <table className="table table-s table-zebra table-pin-rows">
+                                    <thead>
+                                        <tr>
+                                            <th className="text-center w-20">Ticker</th>
+                                            <th className="text-center w-24">Type</th>
+                                            <th className="text-center w-24">Direction</th>
+                                            <th className="text-center w-20">Status</th>
+                                            <th className="text-center w-32">Entry Date</th>
+                                            <th className="text-center w-28">Avg Cost</th>
+                                            <th className="text-center w-28">Current Price</th>
+                                            <th className="text-center w-24">Total Shares</th>
+                                            <th className="text-center w-24">Remaining Shares</th>
+                                            <th className="text-center w-32">Total Cost</th>
+                                            <th className="text-center w-32">Market Value</th>
+                                            <th className="text-center w-20">Weight %</th>
+                                            <th className="text-center w-24">Trimmed %</th>
+                                            <th className="text-center whitespace-normal min-w-[80px]">Strategy</th>
+                                            <th className="text-center whitespace-normal min-w-[120px]">Setups</th>
+                                            <th className="text-center w-24">Initial SL</th>
+                                            <th className="text-center w-24">33% SL</th>
+                                            <th className="text-center w-24">66% SL</th>
+                                            <th className="text-center w-28">Unrealized PnL%</th>
+                                            <th className="text-center w-28">Unrealized PnL</th>
+                                            <th className="text-center w-28">Realized PnL%</th>
+                                            <th className="text-center w-28">Realized PnL</th>
+                                            <th className="text-center w-20">RRR</th>
+                                            <th className="text-center w-24">Open Risk</th>
+                                            <th className="text-center w-24">Portfolio Heat</th>
+                                            <th className="text-center w-32">Portfolio Impact</th>
+                                            <th className="text-center w-20">MAE</th>
+                                            <th className="text-center w-20">MFE</th>
+                                            <th className="text-center w-32">Exit Date</th>
+                                            <th className="text-center w-24">Commission</th>
+                                            <th className="text-center w-32">Holding Period</th>
+                                            <th className="text-center w-32">Mistakes</th>
+                                            <th className="text-center w-32">Notes</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {trades && trades.map((trade, k) => (
                                             <tr 
                                                 key={trade.id} 
-                                                className="trade-row"
+                                                className="hover cursor-pointer"
                                                 onClick={() => setSelectedTrade(trade)}
                                             >
-                                                <td className="font-medium">{trade.ticker || 'N/A'}</td>
-                                                <td>{trade.asset_type || 'N/A'}</td>
-                                                <td>
+                                                <td className="text-center font-medium">{trade.ticker || 'N/A'}</td>
+                                                <td className="text-center">{trade.asset_type || 'N/A'}</td>
+                                                <td className="text-center">
                                                     <span className={`
                                                         badge badge-pill 
                                                         ${trade.direction === DIRECTIONS.LONG ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}
@@ -325,7 +325,7 @@ function TradeLog(){
                                                         {trade.direction || 'N/A'}
                                                     </span>
                                                 </td>
-                                                <td>
+                                                <td className="text-center">
                                                     <span className={`
                                                         badge badge-pill 
                                                         ${trade.status === TRADE_STATUS.OPEN ? 'bg-emerald-500 text-white' : 'bg-amber-400 text-black'}
@@ -333,29 +333,27 @@ function TradeLog(){
                                                         {trade.status || 'N/A'}
                                                     </span>
                                                 </td>
-                                                <td className="whitespace-nowrap">
+                                                <td className="text-center whitespace-nowrap">
                                                     {trade.entry_datetime ? new Date(trade.entry_datetime).toISOString().split('T')[0] : ''}
                                                 </td>
-                                                <td>{formatCurrency(trade.entry_price)}</td>
-                                                <td className="font-medium">{formatCurrency(trade.last_price)}</td>
-                                                <td>{safeToFixed(trade.total_shares)}</td>
-                                                <td>{safeToFixed(trade.remaining_shares)}</td>
-                                                <td>{formatCurrency(trade.total_cost)}</td>
-                                                <td>{formatCurrency(trade.market_value)}</td>
-                                                <td>{safeToFixed(trade.portfolio_weight)}%</td>
-                                                <td>{safeToFixed(trade.trimmed_percentage)}%</td>
-                                                <td>
+                                                <td className="text-center">{formatCurrency(trade.entry_price)}</td>
+                                                <td className="text-center font-medium">{formatCurrency(trade.last_price)}</td>
+                                                <td className="text-center">{safeToFixed(trade.total_shares)}</td>
+                                                <td className="text-center">{safeToFixed(trade.remaining_shares)}</td>
+                                                <td className="text-center">{formatCurrency(trade.total_cost)}</td>
+                                                <td className="text-center">{formatCurrency(trade.market_value)}</td>
+                                                <td className="text-center">{safeToFixed(trade.portfolio_weight)}%</td>
+                                                <td className="text-center">{safeToFixed(trade.trimmed_percentage)}%</td>
+                                                <td className="text-center">
                                                     {trade.strategy ? (
-                                                        <span 
-                                                            className="badge badge-pill bg-purple-500 text-white"
-                                                        >
+                                                        <span className="badge badge-pill bg-purple-500 text-white">
                                                             {trade.strategy}
                                                         </span>
                                                     ) : 'N/A'}
                                                 </td>
-                                                <td>
+                                                <td className="text-center">
                                                     {trade.setups ? (
-                                                        <div className="flex flex-wrap gap-1">
+                                                        <div className="flex flex-wrap gap-1 justify-center">
                                                             {trade.setups.map((setup, index) => (
                                                                 <span 
                                                                     key={index} 
@@ -367,68 +365,75 @@ function TradeLog(){
                                                         </div>
                                                     ) : 'N/A'}
                                                 </td>
-                                                <td>{formatCurrency(trade.stop_loss_price)}</td>
-                                                <td>{formatCurrency(trade.stop_loss_33_percent)}</td>
-                                                <td>{formatCurrency(trade.stop_loss_66_percent)}</td>
+                                                <td className="text-center">{formatCurrency(trade.stop_loss_price)}</td>
+                                                <td className="text-center">{formatCurrency(trade.stop_loss_33_percent)}</td>
+                                                <td className="text-center">{formatCurrency(trade.stop_loss_66_percent)}</td>
+                                                
+                                                {/* Numeric columns with color coding */}
                                                 <td className={`
-                                                    font-semibold tabular-nums text-right
+                                                    text-center font-semibold tabular-nums
                                                     ${trade.unrealized_pnl_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}
                                                 `}>
                                                     {trade.unrealized_pnl_percentage > 0 ? '+' : ''}{safeToFixed(trade.unrealized_pnl_percentage)}%
                                                 </td>
                                                 <td className={`
-                                                    font-semibold tabular-nums text-right
+                                                    text-center font-semibold tabular-nums
                                                     ${trade.unrealized_pnl > 0 ? 'text-emerald-400' : 'text-rose-400'}
                                                 `}>
                                                     {trade.unrealized_pnl > 0 ? '+' : ''}{formatCurrency(trade.unrealized_pnl)}
                                                 </td>
                                                 <td className={`
-                                                    font-semibold tabular-nums text-right
+                                                    text-center font-semibold tabular-nums
                                                     ${trade.realized_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}
                                                 `}>
                                                     {trade.realized_percentage > 0 ? '+' : ''}{safeToFixed(trade.realized_percentage)}%
                                                 </td>
                                                 <td className={`
-                                                    font-semibold tabular-nums text-right
+                                                    text-center font-semibold tabular-nums
                                                     ${trade.realized_pnl > 0 ? 'text-emerald-400' : 'text-rose-400'}
                                                 `}>
                                                     {trade.realized_pnl > 0 ? '+' : ''}{formatCurrency(trade.realized_pnl)}
                                                 </td>
                                                 <td className={`
-                                                    font-semibold tabular-nums text-right
+                                                    text-center font-semibold tabular-nums
                                                     ${trade.risk_reward_ratio > 1 ? 'text-emerald-400' : 'text-rose-400'}
                                                 `}>
                                                     {safeToFixed(trade.risk_reward_ratio, 1)}
                                                 </td>
                                                 <td className={`
-                                                    font-semibold tabular-nums text-right
+                                                    text-center font-semibold tabular-nums
                                                     ${trade.open_risk > 0 ? 'text-rose-400' : 'text-emerald-400'}
                                                 `}>
                                                     {safeToFixed(trade.open_risk, 1)}%
                                                 </td>
                                                 <td className={`
-                                                    font-semibold tabular-nums text-right
+                                                    text-center font-semibold tabular-nums
+                                                    ${trade.portfolio_heat > 0 ? 'text-rose-400' : 'text-emerald-400'}
+                                                `}>
+                                                    {safeToFixed(trade.portfolio_heat, 3)}%
+                                                </td>
+                                                <td className={`
+                                                    text-center font-semibold tabular-nums
                                                     ${trade.portfolio_impact > 0 ? 'text-emerald-400' : 'text-rose-400'}
                                                 `}>
                                                     {trade.portfolio_impact > 0 ? '+' : ''}{safeToFixed(trade.portfolio_impact, 1)}%
                                                 </td>
-                                                <td className="font-semibold tabular-nums text-right text-rose-400">
+                                                <td className="text-center font-semibold tabular-nums text-rose-400">
                                                     {safeToFixed(trade.mae, 1)}%
                                                 </td>
-                                                <td className="font-semibold tabular-nums text-right text-emerald-400">
+                                                <td className="text-center font-semibold tabular-nums text-emerald-400">
                                                     {safeToFixed(trade.mfe, 1)}%
                                                 </td>
-                                                <td>{trade.exit_date || 'N/A'}</td>
-                                                <td>{formatCurrency(trade.commission)}</td>
-                                                <td>{trade.holding_period || 'N/A'}</td>
-                                                <td>{trade.mistakes || 'N/A'}</td>
-                                                <td>{trade.notes || 'N/A'}</td>
+                                                <td className="text-center">{trade.exit_date || 'N/A'}</td>
+                                                <td className="text-center">{formatCurrency(trade.commission)}</td>
+                                                <td className="text-center">{trade.holding_period || 'N/A'}</td>
+                                                <td className="text-center">{trade.mistakes || 'N/A'}</td>
+                                                <td className="text-center">{trade.notes || 'N/A'}</td>
                                             </tr>
-                                        ))
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                     )}
                 </div>
             </TitleCard>

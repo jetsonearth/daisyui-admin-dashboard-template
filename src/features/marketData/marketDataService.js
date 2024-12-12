@@ -181,11 +181,16 @@ class MarketDataService {
                     const unrealizedPnL = priceDiff * shares;
                     const unrealizedPnLPercentage = (priceDiff / entryPrice) * 100;
 
+                    // Trimmed Percentage
+                    const trimmedPercentage = ((trade.total_shares - shares) / trade.total_shares) * 100;
+                    
                     // Open Risk - use the predefined initial risk amount
                     const initialRiskAmount = Math.abs(entryPrice - trade.stop_loss_price) * trade.total_shares;
                     
                     // Risk-Reward Ratio (RRR)
                     const realizedPnL = trade.realized_pnl || 0;
+                    // Realized PnL Percentage
+                    const realizedPnLPercentage = (realizedPnL / (trade.total_shares * entryPrice)) * 100;
                     const rrr = (unrealizedPnL + realizedPnL) / initialRiskAmount;
 
                     // Accumulate PnL
@@ -195,17 +200,25 @@ class MarketDataService {
                     console.log('Portfolio Impact Calculation:', 
                         unrealizedPnL,
                         realizedPnL,
-                        startingCash);
+                        startingCash,
+                        trimmedPercentage);
 
                     // Portfolio Impact - percentage impact on total account capital
                     const totalCapital = startingCash + totalRealizedPnL + totalUnrealizedPnL;
                     const portfolioImpact = ((unrealizedPnL + realizedPnL) / totalCapital) * 100;
-                    
-                    console.log('Portfolio Impact Calculation:', {
+
+                    // Portfolio Weight
+                    const portfolioWeight = (marketValue / totalCapital) * 100;
+
+                    // Dynamically updating portfolio heat
+                    const portfolioHeat = (Math.abs(trade.open_risk) / totalCapital) * 100;
+
+                    console.log('Portfolio PnL, Capital, Heat and Impact Calculation:', {
                         unrealizedPnL,
                         realizedPnL,
                         totalCapital,
-                        portfolioImpact
+                        portfolioImpact,
+                        portfolioHeat
                     });
 
                     // Update trade with new market data
@@ -215,7 +228,12 @@ class MarketDataService {
                         market_value: marketValue,
                         unrealized_pnl: unrealizedPnL,
                         unrealized_pnl_percentage: unrealizedPnLPercentage,
+                        trimmed_percentage: trimmedPercentage,
+                        portfolio_weight: portfolioWeight,
                         portfolio_impact: portfolioImpact,
+                        portfolio_heat: portfolioHeat,
+                        realized_pnl: realizedPnL,
+                        realized_percentage: realizedPnLPercentage,
                         risk_reward_ratio: rrr,
                         last_update: updateTime
                     };
