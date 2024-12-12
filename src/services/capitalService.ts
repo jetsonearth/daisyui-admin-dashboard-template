@@ -7,11 +7,56 @@ import timezone from 'dayjs/plugin/timezone';
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
+// Define interfaces for type safety
+interface CapitalChangeMetadata {
+    timestamp?: string;
+    starting_cash?: number;
+    new_capital?: number;
+    trades_count?: number;
+    trade_details?: Array<{
+        ticker: string;
+        unrealized_pnl: number;
+    }>;
+    type?: 'end_of_day_snapshot' | 'interim_snapshot' | 'manual_update';
+    manual_update?: boolean;
+    [key: string]: any;  // Allow additional dynamic properties
+}
+
+interface CapitalChangeData {
+    user_id: string;
+    capital_amount: number;
+    date: string;
+    created_at: string;
+    is_end_of_day?: boolean;
+    metadata?: CapitalChangeMetadata;
+}
+
+interface CapitalSnapshotOptions {
+    startDate?: string;
+    endDate?: string;
+    interval?: 'daily' | 'weekly' | 'monthly';
+}
+
+interface Trade {
+    ticker: string;
+    unrealized_pnl?: number;
+    realized_pnl?: number;
+}
+
+interface EquityCurveEntry {
+    date: string;
+    capital_amount: number;
+    is_end_of_day?: boolean;
+}
+
+
 export const capitalService = {
     // Record a capital change
-    async recordCapitalChange(amount, metadata = {}) {
+    async recordCapitalChange(amount: number, metadata: CapitalChangeMetadata = {}): Promise<any> {
         try {
             const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('No authenticated user');
+
             const nyTime = dayjs().tz('America/New_York');
 
             // Get current settings
@@ -20,7 +65,7 @@ export const capitalService = {
             const newCapital = startingCash + amount;
 
             // Prepare insert data
-            const insertData = {
+            const insertData: CapitalChangeData = {
                 user_id: user.id,
                 capital_amount: amount,
                 date: nyTime.format('YYYY-MM-DD'),
@@ -36,15 +81,8 @@ export const capitalService = {
             // Upsert the record
             const { data, error } = await supabase
                 .from('capital_changes')
-                .upsert(insertData, {
-                    onConflict: {
-                        constraint: 'capital_changes_user_id_date_key',
-                        update: {
-                            capital_amount: insertData.capital_amount,
-                            metadata: insertData.metadata
-                        }
-                    },
-                    returning: 'minimal'
+                .upsert([insertData], {
+                    onConflict: 'user_id,date'
                 });
 
             if (error) {
@@ -65,9 +103,11 @@ export const capitalService = {
     },
 
     // Debug method to inspect capital recording
-    async debugCapitalRecording(amount, metadata = {}) {
+    async debugCapitalRecording(amount: number, metadata: CapitalChangeMetadata = {}): Promise<any[]> {
         try {
             const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('No authenticated user');
+
             const nyTime = dayjs().tz('America/New_York');
 
             console.log('🕵️ Capital Recording Debug:', {
@@ -91,7 +131,7 @@ export const capitalService = {
 
             console.log('🔍 Existing Records:', existingRecords);
 
-            return existingRecords;
+            return existingRecords || [];
         } catch (error) {
             console.error('Debug Error:', error);
             throw error;
@@ -99,7 +139,7 @@ export const capitalService = {
     },
 
     // Track capital changes based on trades
-    async trackCapitalChange(trades) {
+    async trackCapitalChange(trades: Trade[]): Promise<number> {
         try {
             // Calculate total PnL
             const totalUnrealizedPnL = trades.reduce((sum, trade) => 
@@ -119,7 +159,7 @@ export const capitalService = {
                 trades_count: trades.length,
                 trade_details: trades.map(trade => ({
                     ticker: trade.ticker,
-                    unrealized_pnl: trade.unrealized_pnl
+                    unrealized_pnl: trade.unrealized_pnl || 0
                 }))
             });
 
@@ -131,9 +171,11 @@ export const capitalService = {
     },
 
     // Get current capital from capital_changes
-    async getCurrentCapital() {
+    async getCurrentCapital(): Promise<number> {
         try {
             const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('No authenticated user');
+
             const nyTime = dayjs().tz('America/New_York');
 
             // Get the most recent capital entry
@@ -160,13 +202,19 @@ export const capitalService = {
     },
 
     // Record daily capital snapshot
-    async recordDailyCapital(capital, metadata = {}, isEndOfDay = true) {
+    async recordDailyCapital(
+        capital: number, 
+        metadata: CapitalChangeMetadata = {}, 
+        isEndOfDay: boolean = true
+    ): Promise<any> {
         try {
             const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('No authenticated user');
+
             const nyTime = dayjs().tz('America/New_York');
             
             // Prepare insert data
-            const insertData = {
+            const insertData: CapitalChangeData = {
                 user_id: user.id,
                 capital_amount: capital,
                 date: nyTime.format('YYYY-MM-DD'),
@@ -199,52 +247,29 @@ export const capitalService = {
     },
 
     // Update current capital directly
-    async updateCurrentCapital(capital, metadata = {}) {
+    async updateCurrentCapital(amount: number): Promise<any> {
         try {
             const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('No authenticated user');
+
             const nyTime = dayjs().tz('America/New_York');
-            
-            // Get current user settings to preserve starting cash
-            const currentSettings = await userSettingsService.getUserSettings();
-            const startingCash = currentSettings.starting_cash;
 
-            // Calculate current capital (total change from starting cash)
-            const currentCapital = capital;
-
-            // Update user settings - only update current_capital, keep starting_cash unchanged
-            await userSettingsService.updateUserSettings({
-                current_capital: currentCapital
+            // Update user settings with new starting cash
+            const updatedSettings = await userSettingsService.updateUserSettings({
+                starting_cash: amount
             });
 
-            // Prepare insert data for capital_changes
-            const insertData = {
-                user_id: user.id,
-                capital_amount: capital,  // Total current capital
-                date: nyTime.format('YYYY-MM-DD'),
-                created_at: nyTime.toISOString(),
-                is_end_of_day: false,
-                metadata: {
-                    ...metadata,
-                    type: 'current_capital_update',
-                    timestamp: nyTime.toISOString(),
-                    starting_cash: startingCash,
-                    current_capital: currentCapital
-                }
+            // Record the capital change
+            const recordedChange = await this.recordCapitalChange(amount, {
+                type: 'interim_snapshot' as const,  // Use a valid type
+                timestamp: nyTime.toISOString(),
+                manual_update: true  // Add additional metadata if needed
+            });
+
+            return {
+                settings: updatedSettings,
+                capitalChange: recordedChange
             };
-
-            // Upsert the record in capital_changes
-            const { data, error } = await supabase
-                .from('capital_changes')
-                .upsert(insertData, {
-                    onConflict: 'user_id,date,is_end_of_day'
-                });
-
-            if (error) {
-                console.error('Current capital update error:', error);
-                throw error;
-            }
-
-            return data;
         } catch (error) {
             console.error('Error updating current capital:', error);
             throw error;
@@ -252,31 +277,46 @@ export const capitalService = {
     },
 
     // Calculate cumulative capital changes for equity curve
-    async calculateEquityCurve(options = {}) {
+    async calculateEquityCurve(options: CapitalSnapshotOptions = {}): Promise<any[]> {
         try {
             const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('No authenticated user');
 
-            // Fetch capital change history
-            const { data: capitalHistory, error } = await supabase
+            const { 
+                startDate = dayjs().subtract(1, 'month').format('YYYY-MM-DD'), 
+                endDate = dayjs().format('YYYY-MM-DD'),
+                interval = 'daily'
+            } = options;
+
+            const { data, error } = await supabase
                 .from('capital_changes')
                 .select('*')
                 .eq('user_id', user.id)
-                .order('created_at');
+                .gte('date', startDate)
+                .lte('date', endDate)
+                .order('date', { ascending: true });
 
             if (error) throw error;
 
-            // Calculate cumulative capital
-            let cumulativeCapital = 0;
-            const equityCurve = capitalHistory.map(change => {
-                cumulativeCapital += change.capital_amount;
-                return {
-                    timestamp: change.created_at,
-                    amount: cumulativeCapital,
-                    metadata: change.metadata
-                };
-            });
-
-            return equityCurve;
+            // Group and process data based on interval
+            const processedData: EquityCurveEntry[] = data.reduce((acc: EquityCurveEntry[], entry) => {
+                const date = dayjs(entry.date);
+                const key = interval === 'daily' ? date.format('YYYY-MM-DD') :
+                            interval === 'weekly' ? date.format('YYYY-[W]WW') :
+                            date.format('YYYY-MM');
+    
+                const existingEntry = acc.find(item => item.date === key);
+                if (!existingEntry) {
+                    acc.push({
+                        date: key,
+                        capital_amount: entry.capital_amount,
+                        is_end_of_day: entry.is_end_of_day
+                    });
+                }
+                return acc;
+            }, []);
+    
+            return processedData;
         } catch (error) {
             console.error('Error calculating equity curve:', error);
             throw error;

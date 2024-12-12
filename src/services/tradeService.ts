@@ -1,11 +1,32 @@
+// tradeService.ts
 import { supabase } from '../config/supabaseClient';
-import { TRADE_STATUS, ASSET_TYPES, DIRECTIONS } from '../features/trades/tradeModel';
+import { TRADE_STATUS, ASSET_TYPES, DIRECTIONS, Trade } from '../types';
+
+interface TradeCreateData {
+    ticker: string;
+    asset_type: ASSET_TYPES;
+    direction: DIRECTIONS;
+    entry_price: number;
+    total_shares: number;
+    total_cost: number;
+    stop_loss_price: number;
+    strategy?: string;
+    setups?: string[];
+}
+
+interface TradeUpdateData {
+    remaining_shares?: number;
+    realized_pnl?: number;
+    unrealized_pnl?: number;
+    status?: TRADE_STATUS;
+    exit_price?: number;
+    exit_date?: string;
+}
 
 export const tradeService = {
     // Create a new trade
-    async createTrade(tradeData) {
+    async createTrade(tradeData: TradeCreateData): Promise<Trade> {
         try {
-            // Validate required fields
             const {
                 ticker, 
                 asset_type, 
@@ -17,9 +38,18 @@ export const tradeService = {
                 strategy,
                 setups
             } = tradeData;
-
+    
+            // Calculate risk amount
+            const riskAmount = Math.abs(total_shares * (entry_price - stop_loss_price));
+    
+            // Safely get user ID
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                throw new Error('No authenticated user found');
+            }
+    
             // Prepare trade object
-            const tradeToInsert = {
+            const tradeToInsert: Partial<Trade> = {
                 ticker,
                 asset_type,
                 direction,
@@ -33,21 +63,21 @@ export const tradeService = {
                 strategy,
                 setups,
                 
-                // Calculate initial risk metrics
-                risk_amount: Math.abs(total_shares * (entry_price - stop_loss_price)),
+                // Add risk amount
+                risk_amount: riskAmount,
                 
                 // Additional default values
                 unrealized_pnl: 0,
                 realized_pnl: 0,
                 market_value: total_shares * entry_price,
-                user_id: (await supabase.auth.getUser()).data.user.id
+                user_id: user.id
             };
-
+    
             const { data, error } = await supabase
                 .from('trades')
                 .insert(tradeToInsert)
                 .select();
-
+    
             if (error) throw error;
             return data[0];
         } catch (error) {
@@ -57,7 +87,7 @@ export const tradeService = {
     },
 
     // Update an existing trade
-    async updateTrade(tradeId, updateData) {
+    async updateTrade(tradeId: string, updateData: TradeUpdateData): Promise<Trade> {
         try {
             const { data, error } = await supabase
                 .from('trades')
@@ -74,7 +104,7 @@ export const tradeService = {
     },
 
     // Partially close a trade
-    async partialCloseTrade(tradeId, closedShares, exitPrice) {
+    async partialCloseTrade(tradeId: string, closedShares: number, exitPrice: number): Promise<Trade> {
         try {
             // Fetch current trade details
             const { data: currentTrade, error: fetchError } = await supabase
@@ -90,7 +120,7 @@ export const tradeService = {
             const realizedPnl = closedShares * (exitPrice - currentTrade.entry_price);
             const unrealizedPnl = remainingShares * (exitPrice - currentTrade.entry_price);
 
-            const updateData = {
+            const updateData: TradeUpdateData = {
                 remaining_shares: remainingShares,
                 realized_pnl: (currentTrade.realized_pnl || 0) + realizedPnl,
                 unrealized_pnl: unrealizedPnl,
@@ -107,7 +137,7 @@ export const tradeService = {
     },
 
     // Fetch user's trades
-    async getUserTrades() {
+    async getUserTrades(): Promise<Trade[]> {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             
@@ -126,7 +156,7 @@ export const tradeService = {
     },
 
     // Calculate trade metrics
-    calculateTradeMetrics(trade, currentPrice) {
+    calculateTradeMetrics(trade: Trade, currentPrice: number) {
         const unrealizedPnl = trade.remaining_shares * (currentPrice - trade.entry_price);
         const unrealizedPercentage = (unrealizedPnl / trade.total_cost) * 100;
 
