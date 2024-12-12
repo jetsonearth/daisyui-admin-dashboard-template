@@ -1,19 +1,21 @@
-const webpack = require('webpack');
+// config-overrides.js
+const path = require('path');
+const { override, addWebpackAlias } = require('customize-cra');
 
-module.exports = function override(config) {
-    config.resolve.fallback = {
-        ...config.resolve.fallback,
-        process: require.resolve('process/browser'),
-        buffer: require.resolve('buffer'),
-    };
-    
-    config.plugins = [
-        ...config.plugins,
-        new webpack.ProvidePlugin({
-            process: 'process/browser',
-            Buffer: ['buffer', 'Buffer'],
-        }),
+module.exports = override(
+  addWebpackAlias({
+    '@': path.resolve(__dirname, 'src')
+  }),
+  (config) => {
+    // Modify resolve to prefer .tsx and .ts extensions
+    config.resolve.extensions = [
+      '.tsx', 
+      '.ts', 
+      '.js', 
+      '.jsx', 
+      ...(config.resolve.extensions || [])
     ];
 
     return config;
-};
+  }
+);

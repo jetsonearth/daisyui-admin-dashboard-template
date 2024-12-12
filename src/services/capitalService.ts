@@ -52,50 +52,68 @@ interface EquityCurveEntry {
 
 export const capitalService = {
     // Record a capital change
-    async recordCapitalChange(amount: number, metadata: CapitalChangeMetadata = {}): Promise<any> {
+    recordCapitalChange: async (amount: number, metadata: CapitalChangeMetadata = {}): Promise<any> => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error('No authenticated user');
-
+    
             const nyTime = dayjs().tz('America/New_York');
-
-            // Get current settings
-            const currentSettings = await userSettingsService.getUserSettings();
-            const startingCash = currentSettings.starting_cash || 0;
-            const newCapital = startingCash + amount;
-
-            // Prepare insert data
-            const insertData: CapitalChangeData = {
+            const isEndOfDay = metadata.type === 'end_of_day_snapshot';
+    
+            // Check if a record already exists
+            const { data: existingRecord, error: checkError } = await supabase
+                .from('capital_changes')
+                .select('*')
+                .eq('user_id', user.id)
+                .eq('date', nyTime.format('YYYY-MM-DD'))
+                .eq('is_end_of_day', isEndOfDay)
+                .single();
+    
+            if (checkError && checkError.code !== 'PGRST116') {
+                // PGRST116 means no rows found, which is okay
+                throw checkError;
+            }
+    
+            const capitalChangeData = {
                 user_id: user.id,
                 capital_amount: amount,
                 date: nyTime.format('YYYY-MM-DD'),
                 created_at: nyTime.toISOString(),
-                metadata: {
+                is_end_of_day: isEndOfDay,
+                metadata: JSON.stringify({
                     ...metadata,
-                    timestamp: nyTime.toISOString(),
-                    starting_cash: startingCash,
-                    new_capital: newCapital
-                }
+                    timestamp: nyTime.toISOString()
+                })
             };
-
-            // Upsert the record
-            const { data, error } = await supabase
-                .from('capital_changes')
-                .upsert([insertData], {
-                    onConflict: 'user_id,date'
-                });
-
-            if (error) {
-                console.error('Capital change error:', error);
-                throw error;
+    
+            if (existingRecord) {
+                // Update existing record
+                const { data, error } = await supabase
+                    .from('capital_changes')
+                    .update(capitalChangeData)
+                    .eq('id', existingRecord.id)
+                    .select();
+    
+                if (error) {
+                    console.error('Error updating capital change:', error);
+                    throw error;
+                }
+    
+                return data;
+            } else {
+                // Insert new record
+                const { data, error } = await supabase
+                    .from('capital_changes')
+                    .insert(capitalChangeData)
+                    .select();
+    
+                if (error) {
+                    console.error('Error inserting capital change:', error);
+                    throw error;
+                }
+    
+                return data;
             }
-
-            // Update user settings
-            await userSettingsService.updateUserSettings({
-                starting_cash: newCapital
-            });
-
-            return data;
         } catch (error) {
             console.error('Error recording capital change:', error);
             throw error;
@@ -247,25 +265,28 @@ export const capitalService = {
     },
 
     // Update current capital directly
-    async updateCurrentCapital(amount: number): Promise<any> {
+    async updateCurrentCapital(
+        amount: number, 
+        metadata: CapitalChangeMetadata = {}
+    ): Promise<any> {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error('No authenticated user');
-
+    
             const nyTime = dayjs().tz('America/New_York');
-
+    
             // Update user settings with new starting cash
             const updatedSettings = await userSettingsService.updateUserSettings({
                 starting_cash: amount
             });
-
+    
             // Record the capital change
             const recordedChange = await this.recordCapitalChange(amount, {
-                type: 'interim_snapshot' as const,  // Use a valid type
+                type: 'interim_snapshot' as const,
                 timestamp: nyTime.toISOString(),
-                manual_update: true  // Add additional metadata if needed
+                ...metadata  // Spread additional metadata
             });
-
+    
             return {
                 settings: updatedSettings,
                 capitalChange: recordedChange

@@ -8,6 +8,8 @@
     "test": "react-app-rewired test",
     "eject": "react-app-rewired eject"
   },
+  "main": "src/index.tsx",
+  "browser": "src/index.tsx",
   "dependencies": {
     "@google-cloud/local-auth": "^3.0.1",
     "@heroicons/react": "^2.0.13",
@@ -87,11 +89,14 @@
     ]
   },
   "devDependencies": {
+    "@babel/plugin-transform-modules-commonjs": "^7.26.3",
     "@tailwindcss/typography": "^0.5.8",
+    "@types/node": "^22.10.2",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.2",
     "@types/react-router-dom": "^5.3.3",
     "autoprefixer": "^10.4.13",
+    "customize-cra": "^1.0.0",
     "daisyui": "^4.4.19",
     "postcss": "^8.4.19",
     "react-app-rewired": "^2.2.1",
