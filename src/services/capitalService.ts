@@ -275,9 +275,8 @@ export const capitalService = {
     
             const nyTime = dayjs().tz('America/New_York');
     
-            // Update user settings with new starting cash
             const updatedSettings = await userSettingsService.updateUserSettings({
-                starting_cash: amount
+                current_capital: amount
             });
     
             // Record the capital change

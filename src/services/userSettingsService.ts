@@ -1,12 +1,12 @@
 import { supabase } from '../config/supabaseClient';
 
-// Define interfaces for type safety
 interface UserSettings {
     user_id: string;
     starting_cash: number;
+    current_capital?: number;  // Add this, matching the Supabase schema
     name: string;
     email: string;
-    trading_experience?: string | null;
+    trading_experience?: number | null;
     preferred_trading_style?: string | null;
     bio?: string | null;
     automated_trade_logging: boolean;
@@ -17,8 +17,9 @@ interface UserSettings {
 
 interface PartialUserSettings {
     starting_cash?: number;
+    current_capital?: number;  // Add this here too
     name?: string;
-    trading_experience?: string | null;
+    trading_experience?: number | null;
     preferred_trading_style?: string | null;
     bio?: string | null;
     automated_trade_logging?: boolean;
