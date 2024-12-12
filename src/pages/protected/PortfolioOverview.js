@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { supabase } from '../../config/supabaseClient'
+import { toast } from 'react-toastify'
 import TitleCard from '../../components/Cards/TitleCard'
 import dayjs from 'dayjs'
 import { TRADE_STATUS } from '../../features/trades/tradeModel'
@@ -43,11 +45,58 @@ function PortfolioOverview(){
 
     const metrics = calculateMetrics()
 
-    // Update trades when Redux store changes
+    // Fetch active trades from Supabase
     useEffect(() => {
-        const openTrades = allTrades.filter(trade => trade.status === 'open')
-        setTrades(openTrades)
-    }, [allTrades])
+        const fetchActiveTrades = async () => {
+            try {
+                const { data: { user }, error: userError } = await supabase.auth.getUser()
+                
+                if (userError || !user) {
+                    console.error('Authentication error:', userError)
+                    toast.error('Authentication required')
+                    return
+                }
+
+                console.log('Authenticated User:', user.id)
+
+                const { data, error } = await supabase
+                    .from('trades')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .or(`status.eq.Open`)
+                    .order('entry_datetime', { ascending: false });
+
+                if (error) {
+                    console.error('Error fetching active trades:', error)
+                    toast.error('Failed to fetch active trades')
+                    return
+                }
+
+                console.log('Raw Trades Fetched:', {
+                    count: data.length,
+                    trades: data.map(trade => ({
+                        id: trade.id,
+                        ticker: trade.ticker,
+                        status: trade.status,
+                        shares_remaining: trade.shares_remaining,
+                        entry_date: dayjs(trade.entry_datetime).format('YYYY-MM-DD'), // Extract just the date
+                        full_entry_datetime: trade.entry_datetime
+                    }))
+                });
+
+                if (data.length === 0) {
+                    toast.info('No active trades found')
+                }
+
+                setTrades(data || [])
+            } catch (error) {
+                console.error('Unexpected error fetching active trades:', error)
+                toast.error('Unexpected error occurred')
+            }
+        }
+
+        fetchActiveTrades()
+    }, [])
 
     // Fetch starting capital from user settings
     useEffect(() => {
@@ -85,7 +134,7 @@ function PortfolioOverview(){
     const handleCloseTrade = (trade) => {
         dispatch(closeTrade({
             id: trade.id,
-            exitPrice: trade.current_price,
+            exitPrice: trade.last_price,
             exitDate: new Date().toISOString()
         }))
     }
@@ -93,11 +142,72 @@ function PortfolioOverview(){
     // Function to update market data
     const updateMarketData = async () => {
         try {
+            if (trades.length === 0) {
+                console.log('No active trades to update');
+                return;
+            }
+    
+            console.log('Trades before update:', trades);
+    
             const updatedTrades = await marketDataService.updateTradesWithMarketData(trades);
-            setTrades(updatedTrades);
+            
+            console.log('Trades after update:', updatedTrades);
+    
+            
+            // Batch update trades in Supabase
+            const updatePromises = updatedTrades.map(async (trade) => {
+                const { error } = await supabase
+                    .from('trades')
+                    .update({
+                        current_price: trade.last_price,
+                        market_value: trade.market_value,
+                        unrealized_pnl: trade.unrealized_pnl,
+                        unrealized_pnl_percentage: trade.unrealized_pnl_percentage,
+                        trimmed_percentage: trade.trimmed_percentage,
+                        portfolio_weight: trade.portfolio_weight,
+                        portfolio_impact: trade.portfolio_impact,
+                        portfolio_heat: trade.portfolio_heat,
+                        realized_pnl: trade.realized_pnl,
+                        realized_pnl_percentage: trade.realized_pnl_percentage,
+                        risk_reward_ratio: trade.risk_reward_ratio,
+                        last_update: trade.last_update
+                    })
+                    .eq('id', trade.id)
+
+                if (error) {
+                    console.error(`Error updating trade ${trade.id}:`, error)
+                }
+            })
+
+            await Promise.all(updatePromises)
+
+            // Refetch active trades after update
+            const { data: { user }, error: userError } = await supabase.auth.getUser()
+            
+            if (userError || !user) {
+                console.error('Authentication error:', userError)
+                toast.error('Authentication required')
+                return
+            }
+
+            const { data, error } = await supabase
+                .from('trades')
+                .select('*')
+                .eq('user_id', user.id)
+                .or(`status.eq.Open`)
+                .order('entry_datetime', { ascending: false });
+
+            if (error) {
+                console.error('Error refetching trades:', error)
+                toast.error('Failed to refresh trades')
+                return
+            }
+
+            setTrades(data || [])
             setLastUpdate(new Date().toLocaleTimeString());
         } catch (error) {
             console.error('Error updating market data:', error);
+            toast.error('Failed to update market data');
         }
     };
 
@@ -388,11 +498,12 @@ function PortfolioOverview(){
                         <thead>
                             <tr>
                                 <th>Ticker</th>
-                                <th>Asset Type</th>
-                                <th>Strategy</th>
                                 <th>Entry Date</th>
+                                <th>Strategy</th>
                                 <th>Avg Cost</th>
-                                <th>Shares Remaining</th>
+                                <th>Current Price</th>
+                                <th>Unrealized PnL</th>
+                                <th>Realized PnL</th>
                                 <th>% Trimmed</th>
                                 <th>Open Risk</th>
                                 <th>Position Weight</th>
@@ -400,7 +511,7 @@ function PortfolioOverview(){
                             </tr>
                         </thead>
                         <tbody>
-                            {trades.length === 0 ? (
+                        {trades.length === 0 ? (
                                 <tr>
                                     <td colSpan="10" className="text-center text-gray-500">No active positions</td>
                                 </tr>
@@ -408,14 +519,15 @@ function PortfolioOverview(){
                                 trades.map((trade, index) => (
                                     <tr key={index}>
                                         <td className="font-medium">{trade.ticker}</td>
-                                        <td>{trade.asset_type}</td>
+                                        <td>{dayjs(trade.entry_datetime).format('YYYY-MM-DD')}</td>
                                         <td>{trade.strategy}</td>
-                                        <td>{trade.entry_date}</td>
-                                        <td>${trade.avg_cost?.toFixed(2)}</td>
-                                        <td>{trade.shares_remaining}</td>
-                                        <td>{trade.trimmed || '0'}%</td>
-                                        <td>{trade.open_risk?.toFixed(2)}%</td>
-                                        <td>{trade.portfolio_weight?.toFixed(2)}%</td>
+                                        <td>${trade.entry_price?.toFixed(2) || 'N/A'}</td>
+                                        <td>${trade.last_price?.toFixed(2) || 'N/A'}</td>
+                                        <td>${trade.unrealized_pnl?.toFixed(2) || '0.00'}</td>
+                                        <td>${trade.realized_pnl?.toFixed(2) || '0.00'}</td>
+                                        <td>{trade.trimmed_percentage?.toFixed(2) || '0'}%</td>
+                                        <td>{trade.open_risk?.toFixed(2) || 'N/A'}%</td>
+                                        <td>{trade.portfolio_weight?.toFixed(2) || 'N/A'}%</td>
                                         <td>
                                             <div className="dropdown dropdown-end">
                                                 <label tabIndex={0} className="btn btn-ghost btn-xs">•••</label>

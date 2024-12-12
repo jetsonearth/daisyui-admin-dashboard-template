@@ -121,8 +121,7 @@ function TradeLog(){
                 for (const trade of updatedTrades) {
                     // Skip updates for closed trades
                     if (
-                        trade.status === TRADE_STATUS.CLOSED || 
-                        trade.status === TRADE_STATUS.EXITED
+                        trade.status === TRADE_STATUS.CLOSED
                     ) {
                         console.log(`🚫 Skipping Supabase update for closed trade: ${trade.ticker}`);
                         continue;
