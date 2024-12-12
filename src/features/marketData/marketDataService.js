@@ -1,5 +1,6 @@
 import { capitalService } from '../../services/capitalService';
 import { userSettingsService } from '../../services/userSettingsService'; // Import userSettingsService
+import {tradeService} from '../../services/tradeService';
 
 class MarketDataService {
     constructor() {
@@ -224,7 +225,7 @@ class MarketDataService {
                     // Update trade with new market data
                     return {
                         ...trade,
-                        current_price: symbolData.price,
+                        last_price: symbolData.price,
                         market_value: marketValue,
                         unrealized_pnl: unrealizedPnL,
                         unrealized_pnl_percentage: unrealizedPnLPercentage,
@@ -233,7 +234,7 @@ class MarketDataService {
                         portfolio_impact: portfolioImpact,
                         portfolio_heat: portfolioHeat,
                         realized_pnl: realizedPnL,
-                        realized_percentage: realizedPnLPercentage,
+                        realized_pnl_percentage: realizedPnLPercentage,
                         risk_reward_ratio: rrr,
                         last_update: updateTime
                     };
@@ -245,6 +246,15 @@ class MarketDataService {
             const totalCapital = startingCash + totalRealizedPnL + totalUnrealizedPnL;
             console.log('🔵 Total Capital:', totalCapital);
 
+            // Diagnostic logging for trades
+            console.log('Trades before Supabase update:', updatedTrades.map(trade => ({
+                id: trade.id,
+                trimmed_percentage: trade.trimmed_percentage,
+                total_shares: trade.total_shares,
+                remaining_shares: trade.remaining_shares,
+                last_update: trade.last_update
+            })));
+
             // Update current capital
             await capitalService.updateCurrentCapital(totalCapital, {
                 tradeCount: trades.length,
@@ -253,6 +263,40 @@ class MarketDataService {
                 realizedPnL: totalRealizedPnL,
                 unrealizedPnL: totalUnrealizedPnL
             });
+
+            // Update individual trades in Supabase
+            await Promise.all(updatedTrades.map(async (trade) => {
+                console.log(`Attempting to update trade ${trade.id}:`, {
+                    trimmed_percentage: trade.trimmed_percentage,
+                    portfolio_weight: trade.portfolio_weight,
+                    portfolio_impact: trade.portfolio_impact,
+                    portfolio_heat: trade.portfolio_heat,
+                    realized_pnl_percentage: trade.realized_pnl_percentage,
+                    risk_reward_ratio: trade.risk_reward_ratio
+                });
+
+                if (trade.last_update) {
+                    try {
+                        await tradeService.updateTrade(trade.id, {
+                            trimmed_percentage: trade.trimmed_percentage,
+                            portfolio_weight: trade.portfolio_weight,
+                            portfolio_impact: trade.portfolio_impact,
+                            portfolio_heat: trade.portfolio_heat,
+                            realized_pnl_percentage: trade.realized_pnl_percentage,
+                            risk_reward_ratio: trade.risk_reward_ratio,
+                            last_price: trade.last_price,
+                            market_value: trade.market_value,
+                            unrealized_pnl: trade.unrealized_pnl,
+                            unrealized_pnl_percentage: trade.unrealized_pnl_percentage,
+                            realized_pnl: trade.realized_pnl,
+                            realized_pnl_percentage: trade.realized_pnl_percentage
+                        });
+                        console.log(`Successfully updated trade ${trade.id}`);
+                    } catch (error) {
+                        console.error(`Failed to update trade ${trade.id}:`, error);
+                    }
+                }
+            }));
 
             return updatedTrades;
         } catch (error) {

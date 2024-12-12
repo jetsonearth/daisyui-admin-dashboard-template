@@ -128,6 +128,13 @@ function TradeLog(){
                         continue;
                     }
 
+                    console.log(`Trade ${trade.ticker} update details:`, {
+                        realized_pnl: trade.realized_pnl,
+                        realized_pnl_percentage: trade.realized_pnl_percentage,
+                        total_shares: trade.total_shares,
+                        entry_price: trade.entry_price
+                    });
+
                     const { data, error } = await supabase
                         .from('trades')
                         .update({
@@ -140,15 +147,15 @@ function TradeLog(){
                             portfolio_impact: trade.portfolio_impact,
                             portfolio_weight: trade.weight_percentage,
                             trimmed_percentage: trade.trimmed_percentage,
+                            realized_pnl: trade.realized_pnl,
+                            realized_pnl_percentage: trade.realized_pnl_percentage,
                             updated_at: currentTimestamp
                         })
                         .eq('id', trade.id)
                         .eq('user_id', user.id)
                         .select();
-    
-                    if (error) {
-                        console.error(`❌ Failed to update trade ${trade.ticker}:`, error);
-                    }
+
+                    console.log(`Supabase update result for ${trade.ticker}:`, { data, error });
                 }
             } else {
                 console.warn('🚨 No trades returned from market data update');
@@ -384,9 +391,9 @@ function TradeLog(){
                                                 </td>
                                                 <td className={`
                                                     text-center font-semibold tabular-nums
-                                                    ${trade.realized_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}
+                                                    ${trade.realized_pnl_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}
                                                 `}>
-                                                    {trade.realized_percentage > 0 ? '+' : ''}{safeToFixed(trade.realized_percentage)}%
+                                                    {trade.realized_pnl_percentage > 0 ? '+' : ''}{safeToFixed(trade.realized_pnl_percentage)}%
                                                 </td>
                                                 <td className={`
                                                     text-center font-semibold tabular-nums
