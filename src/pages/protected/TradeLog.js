@@ -344,7 +344,7 @@ function TradeLog(){
         <div className="p-4">
             <TitleCard title="Trade Log" topMargin="mt-2">
                 <div className="flex flex-col">
-                    <div className="flex items-center gap-10 mb-4">
+                <div className="flex items-center gap-6 mb-5">
                         <button 
                             onClick={openModal} 
                             className="btn btn-secondary"
@@ -431,9 +431,9 @@ function TradeLog(){
                                             <th className="text-center w-24">Trimmed %</th>
                                             <th className="text-center whitespace-normal min-w-[80px]">Strategy</th>
                                             <th className="text-center whitespace-normal min-w-[120px]">Setups</th>
-                                            <th className="text-center w-24">Initial SL</th>
                                             <th className="text-center w-24">33% SL</th>
                                             <th className="text-center w-24">66% SL</th>
+                                            <th className="text-center w-24">Final SL</th>
                                             <th className="text-center w-28">Unrealized PnL%</th>
                                             <th className="text-center w-28">Unrealized PnL</th>
                                             <th className="text-center w-28">Realized PnL%</th>
@@ -508,10 +508,10 @@ function TradeLog(){
                                                         </div>
                                                     ) : 'N/A'}
                                                 </td>
-                                                <td className="text-center">{formatCurrency(trade.stop_loss_price)}</td>
                                                 <td className="text-center">{formatCurrency(trade.stop_loss_33_percent)}</td>
                                                 <td className="text-center">{formatCurrency(trade.stop_loss_66_percent)}</td>
-                                                
+                                                <td className="text-center">{formatCurrency(trade.stop_loss_price)}</td>
+
                                                 {/* Numeric columns with color coding */}
                                                 <td className={`
                                                     text-center font-semibold tabular-nums
