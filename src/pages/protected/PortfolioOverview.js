@@ -4,8 +4,7 @@ import { supabase } from '../../config/supabaseClient'
 import { toast } from 'react-toastify'
 import TitleCard from '../../components/Cards/TitleCard'
 import dayjs from 'dayjs'
-import { TRADE_STATUS } from '../../features/trades/tradeModel'
-import { marketDataService } from '../../features/marketData/marketDataService'
+import { metricsService } from '../../features/metrics/metricsService';
 import { capitalService } from '../../services/capitalService';
 import { closeTrade } from '../../features/trades/tradesSlice'
 import { calculatePortfolioMetrics } from '../../features/metrics/metricsService'
@@ -149,7 +148,7 @@ function PortfolioOverview(){
     
             console.log('Trades before update:', trades);
     
-            const updatedTrades = await marketDataService.updateTradesWithMarketData(trades);
+            const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(trades);
             
             console.log('Trades after update:', updatedTrades);
     

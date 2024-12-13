@@ -28,6 +28,7 @@ export interface Trade {
     stop_loss_33_percent?: number;
     stop_loss_66_percent?: number;
     open_risk: number;
+    risk_amount?: number;
   
     // Performance Metrics
     realized_pnl: number;

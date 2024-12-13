@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useDispatch } from 'react-redux'; // Import useDispatch hook
 import TitleCard from '../../components/Cards/TitleCard'
 import { STRATEGIES, ASSET_TYPES, DIRECTIONS, TRADE_STATUS } from '../../features/trades/tradeModel'
-import { processTradeEntry } from '../../features/trades/tradeService' // Import addTrade action
-import { addTrade } from '../../features/trades/tradesSlice'; // Correct import for addTrade
 import PriceLadder from '../../components/PriceLadder'
 import StopLossVisualizer from '../../components/StopLossVisualizer'
 import { marketDataService } from '../../features/marketData/marketDataService'
@@ -73,7 +71,8 @@ function TradePlanner() {
         const fetchMarketPrice = async () => {
             if (inputs.ticker) {
                 try {
-                    const currentPrice = await marketDataService.getQuote(inputs.ticker)
+                    const marketData = await marketDataService.fetchSheetData();
+                    const currentPrice = marketData.get(inputs.ticker)?.price;
                     if (currentPrice?.price) {
                         setInputs(prevInputs => ({
                             ...prevInputs,

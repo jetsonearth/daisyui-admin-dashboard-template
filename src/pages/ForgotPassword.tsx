@@ -1,34 +1,35 @@
-import React, { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { authService } from '../services/authService'
+// src/pages/ForgotPassword.tsx
+import React, { useState, FormEvent } from 'react';
+import { Link } from 'react-router-dom';
+import { authService } from '../services/authService';
 
-function ForgotPassword() {
-  const [email, setEmail] = useState('')
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+function ForgotPassword(): JSX.Element {
+  const [email, setEmail] = useState<string>('');
+  const [message, setMessage] = useState<string>('');
+  const [error, setError] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(false);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setLoading(true)
-    setMessage('')
-    setError('')
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage('');
+    setError('');
 
     try {
-      const { error } = await authService.resetPasswordRequest(email)
+      const { error } = await authService.resetPasswordRequest(email);
       
       if (error) {
-        setError(error.message)
+        setError(error.message);
       } else {
-        setMessage('Check your email for the password reset link')
-        setEmail('')
+        setMessage('Check your email for the password reset link');
+        setEmail('');
       }
     } catch (err) {
-      setError('Failed to send reset email. Please try again.')
+      setError('Failed to send reset email. Please try again.');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-base-200 py-12 px-4 sm:px-6 lg:px-8">
@@ -52,9 +53,8 @@ function ForgotPassword() {
                 id="email-address"
                 name="email"
                 type="email"
-                autoComplete="email"
                 required
-                className="input input-bordered w-full"
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-primary focus:border-primary focus:z-10 sm:text-sm"
                 placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -78,15 +78,15 @@ function ForgotPassword() {
             <button
               type="submit"
               disabled={loading}
-              className="btn btn-primary w-full"
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-primary-focus focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
             >
-              {loading ? 'Sending...' : 'Send reset link'}
+              {loading ? 'Sending...' : 'Reset Password'}
             </button>
           </div>
         </form>
       </div>
     </div>
-  )
+  );
 }
 
-export default ForgotPassword
+export default ForgotPassword;

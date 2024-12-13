@@ -21,6 +21,19 @@ interface TradeUpdateData {
     status?: TRADE_STATUS;
     exit_price?: number;
     exit_date?: string;
+    
+    // Add all potential update fields from the Trade interface
+    trimmed_percentage?: number;
+    portfolio_weight?: number;
+    portfolio_impact?: number;
+    portfolio_heat?: number;
+    realized_pnl_percentage?: number;
+    risk_reward_ratio?: number;
+    last_price?: number;
+    market_value?: number;
+    unrealized_pnl_percentage?: number;
+    mae?: number;
+    mfe?: number;
 }
 
 export const tradeService = {
@@ -112,23 +125,23 @@ export const tradeService = {
                 .select('*')
                 .eq('id', tradeId)
                 .single();
-
+    
             if (fetchError) throw fetchError;
-
+    
             // Calculate partial closure metrics
             const remainingShares = currentTrade.remaining_shares - closedShares;
             const realizedPnl = closedShares * (exitPrice - currentTrade.entry_price);
             const unrealizedPnl = remainingShares * (exitPrice - currentTrade.entry_price);
-
+    
             const updateData: TradeUpdateData = {
                 remaining_shares: remainingShares,
                 realized_pnl: (currentTrade.realized_pnl || 0) + realizedPnl,
                 unrealized_pnl: unrealizedPnl,
-                status: remainingShares === 0 ? TRADE_STATUS.CLOSED : TRADE_STATUS.PARTIALLY_CLOSED,
+                status: remainingShares === 0 ? TRADE_STATUS.CLOSED : TRADE_STATUS.OPEN,
                 exit_price: exitPrice,
                 exit_date: new Date().toISOString()
             };
-
+    
             return this.updateTrade(tradeId, updateData);
         } catch (error) {
             console.error('Error in partial trade closure:', error);
@@ -136,17 +149,20 @@ export const tradeService = {
         }
     },
 
-    // Fetch user's trades
     async getUserTrades(): Promise<Trade[]> {
         try {
             const { data: { user } } = await supabase.auth.getUser();
+            
+            if (!user) {
+                throw new Error('No authenticated user found');
+            }
             
             const { data, error } = await supabase
                 .from('trades')
                 .select('*')
                 .eq('user_id', user.id)
                 .order('entry_date', { ascending: false });
-
+    
             if (error) throw error;
             return data;
         } catch (error) {

@@ -1,33 +1,32 @@
-import React, { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { supabase } from '../config/supabaseClient'
+import React, { useState, FormEvent } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { supabase } from '../config/supabaseClient';
 
-function Login() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState(null)
-  const navigate = useNavigate()
+function Login(): JSX.Element {
+  const [email, setEmail] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
-  const handleLogin = async (e) => {
-    e.preventDefault()
+  const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
     
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
-      })
+      });
       
       if (error) {
-        setError(error.message)
-        return
+        setError(error.message);
+        return;
       }
       
-      // If successful, redirect to dashboard
-      navigate('/app/welcome')
+      navigate('/app/welcome');
     } catch (err) {
-      setError('Login failed. Please try again.')
+      setError('Login failed. Please try again.');
     }
-  }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-base-200 py-12 px-4 sm:px-6 lg:px-8">
@@ -87,7 +86,7 @@ function Login() {
         </form>
       </div>
     </div>
-  )
+  );
 }
 
-export default Login
+export default Login;

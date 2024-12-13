@@ -5,16 +5,12 @@ import TitleCard from '../../components/Cards/TitleCard'
 import { TRADE_STATUS, ASSET_TYPES, DIRECTIONS, STRATEGIES } from '../../features/trades/tradeModel'
 import { metricsService } from '../../features/metrics/metricsService';
 import { toast } from 'react-toastify'
-import { TradeManager } from '../../components/TradeManager/TradeManager';
+import TradeHistoryModal from '../../features/user/components/TradeHistory/TradeHistoryModal'; // Import the modal
 import './TradeLog.css';
 
-console.log('Imported metricsService:', metricsService);
-console.log('Methods:', Object.keys(metricsService));
-console.log('Is updateTradesWithDetailedMetrics a method?', 
-    typeof metricsService.updateTradesWithDetailedMetrics === 'function'
-);
-
 function TradeLog(){
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
     const navigate = useNavigate()
     const [trades, setTrades] = useState([])
     const [loading, setLoading] = useState(true)
@@ -22,6 +18,16 @@ function TradeLog(){
     const [lastUpdate, setLastUpdate] = useState(null)
     const [isManualRefreshing, setIsManualRefreshing] = useState(false);
     const [selectedTrade, setSelectedTrade] = useState(null);
+
+    // Function to handle opening the modal
+    const openModal = () => {
+        setIsModalOpen(true);
+    };
+
+    // Function to handle closing the modal
+    const closeModal = () => {
+        setIsModalOpen(false);
+    };
 
     // Keep your existing helper functions
     const safeToFixed = (number, decimals = 2) => {
@@ -338,7 +344,14 @@ function TradeLog(){
         <div className="p-4">
             <TitleCard title="Trade Log" topMargin="mt-2">
                 <div className="flex flex-col">
-                    <div className="flex items-center gap-4 mb-4">
+                    <div className="flex items-center gap-10 mb-4">
+                        <button 
+                            onClick={openModal} 
+                            className="btn btn-secondary"
+                        >
+                            🌟 Log Historical Trades
+                        </button>
+                        {/* Auto-refresh Button */}
                         <button 
                             onClick={toggleAutoRefresh}
                             className={`btn ${isAutoRefresh ? 'btn-error' : 'btn-success'}`}
@@ -566,15 +579,23 @@ function TradeLog(){
                             </div>
                     )}
                 </div>
+
+                <TradeHistoryModal 
+                    isOpen={isModalOpen}
+                    onClose={closeModal}
+                    onTradeAdded={() => {
+                        fetchTrades(); // Refresh the trades list
+                    }}
+                />
             </TitleCard>
 
-            {selectedTrade && (
+            {/* {selectedTrade && (
                 <TradeManager
                     trade={selectedTrade}
                     onClose={() => setSelectedTrade(null)}
                     onUpdate={fetchTrades}
                 />
-            )}
+            )} */}
         </div>
     )
 }
