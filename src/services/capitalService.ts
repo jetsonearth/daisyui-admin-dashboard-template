@@ -194,8 +194,6 @@ export const capitalService = {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error('No authenticated user');
 
-            const nyTime = dayjs().tz('America/New_York');
-
             // Get the most recent capital entry
             const { data, error } = await supabase
                 .from('capital_changes')

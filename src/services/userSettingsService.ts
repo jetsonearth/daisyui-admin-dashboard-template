@@ -17,7 +17,7 @@ interface UserSettings {
 
 interface PartialUserSettings {
     starting_cash?: number;
-    current_capital?: number;  // Add this here too
+    current_capital?: number;  
     name?: string;
     trading_experience?: number | null;
     preferred_trading_style?: string | null;

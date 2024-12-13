@@ -169,7 +169,7 @@ class MarketDataService {
 
     async updateTradesWithMarketData(trades: Trade[]): Promise<Trade[]> {
         try {
-            console.log('🔄 Updating trades with market data');
+            console.log('🔄 Fetching market data for trades');
             
             const priceMap = await this.fetchSheetData();
             
@@ -177,187 +177,217 @@ class MarketDataService {
                 console.log('❌ No price data available');
                 return trades;
             }
-
-            const updateTime = new Date().toLocaleTimeString();
-            
-            // Get initial starting cash
-            const currentSettings = await userSettingsService.getUserSettings();
-            const startingCash = currentSettings.starting_cash || 0;
-            console.log('🏁 Starting Cash:', startingCash);
-
-            let totalRealizedPnL = 0;
-            let totalUnrealizedPnL = 0;
-
-            const updatedTrades = await Promise.all(trades.map(async (trade) => {
+    
+            // Only update trades with current market prices
+            return trades.map(trade => {
                 const symbolData = priceMap.get(trade.ticker);
                 
                 if (symbolData === undefined) {
                     console.log(`⚠️ No price found for ${trade.ticker}`);
                     return trade;
                 }
-
-                const shares = trade.remaining_shares || trade.remaining_shares || trade.total_shares;
-                const entryPrice = trade.entry_price;
-                
-                if (shares && entryPrice) {
-                    const marketValue = symbolData.price * shares;
-                    const priceDiff = symbolData.price - entryPrice;
-                    const unrealizedPnL = priceDiff * shares;
-                    const unrealizedPnLPercentage = (priceDiff / entryPrice) * 100;
-
-                    // Trimmed Percentage
-                    const trimmedPercentage = ((trade.total_shares - shares) / trade.total_shares) * 100;
-                    
-                    // Open Risk - use the predefined initial risk amount
-                    const initialRiskAmount = Math.abs(entryPrice - trade.stop_loss_price) * trade.total_shares;
-                    
-                    // Risk-Reward Ratio (RRR)
-                    const realizedPnL = trade.realized_pnl || 0;
-                    // Realized PnL Percentage
-                    const realizedPnLPercentage = (realizedPnL / (trade.total_shares * entryPrice)) * 100;
-                    const rrr = (unrealizedPnL + realizedPnL) / initialRiskAmount;
-
-                    // Accumulate PnL
-                    totalRealizedPnL += realizedPnL;
-                    totalUnrealizedPnL += unrealizedPnL;
-
-                    console.log('Portfolio Impact Calculation:', 
-                        unrealizedPnL,
-                        realizedPnL,
-                        startingCash,
-                        trimmedPercentage);
-
-                    // Portfolio Impact - percentage impact on total account capital
-                    const totalCapital = startingCash + totalRealizedPnL + totalUnrealizedPnL;
-                    const portfolioImpact = ((unrealizedPnL + realizedPnL) / totalCapital) * 100;
-
-                    // Portfolio Weight
-                    const portfolioWeight = (marketValue / totalCapital) * 100;
-
-                    // Dynamically updating portfolio heat
-                    const portfolioHeat = (Math.abs(trade.open_risk) / totalCapital) * 100;
-
-                    console.log('Portfolio PnL, Capital, Heat and Impact Calculation:', {
-                        unrealizedPnL,
-                        realizedPnL,
-                        totalCapital,
-                        portfolioImpact,
-                        portfolioHeat
-                    });
-
-                    // Update trade with new market data
-                    return {
-                        ...trade,
-                        last_price: symbolData.price,
-                        market_value: marketValue,
-                        unrealized_pnl: unrealizedPnL,
-                        unrealized_pnl_percentage: unrealizedPnLPercentage,
-                        trimmed_percentage: trimmedPercentage,
-                        portfolio_weight: portfolioWeight,
-                        portfolio_impact: portfolioImpact,
-                        portfolio_heat: portfolioHeat,
-                        realized_pnl: realizedPnL,
-                        realized_pnl_percentage: realizedPnLPercentage,
-                        risk_reward_ratio: rrr,
-                        last_update: updateTime
-                    };
-                }
-                return trade;
-            }));
-
-            // Calculate total capital
-            const totalCapital = startingCash + totalRealizedPnL + totalUnrealizedPnL;
-            console.log('🔵 Total Capital:', totalCapital);
-
-            // Diagnostic logging for trades
-            console.log('Trades before Supabase update:', updatedTrades.map(trade => ({
-                id: trade.id,
-                trimmed_percentage: trade.trimmed_percentage,
-                total_shares: trade.total_shares,
-                remaining_shares: trade.remaining_shares,
-                last_update: trade.updated_at
-            })));
-
-            // Update current capital
-            await capitalService.updateCurrentCapital(totalCapital, {
-                tradeCount: trades.length,
-                marketDataUpdateTime: new Date().toISOString(),
-                updatedTradesCount: updatedTrades.filter(trade => trade.updated_at).length,
-                realizedPnL: totalRealizedPnL,
-                unrealizedPnL: totalUnrealizedPnL
+    
+                return {
+                    ...trade,
+                    last_price: symbolData.price  // Only update last_price
+                };
             });
-
-            // After calculating totalCapital
-            try {
-                await userSettingsService.updateUserSettings({
-                    current_capital: totalCapital
-                });
-                console.log('🔄 Updated current capital:', totalCapital);
-            } catch (error) {
-                console.error('❌ Error updating current capital:', error);
-            }
-            
-            // Update individual trades in Supabase
-            await Promise.all(updatedTrades.map(async (trade) => {
-                console.log(`Attempting to update trade ${trade.id}:`, {
-                    trimmed_percentage: trade.trimmed_percentage,
-                    portfolio_weight: trade.portfolio_weight,
-                    portfolio_impact: trade.portfolio_impact,
-                    portfolio_heat: trade.portfolio_heat,
-                    realized_pnl_percentage: trade.realized_pnl_percentage,
-                    risk_reward_ratio: trade.risk_reward_ratio
-                });
-
-                if (trade.updated_at) {
-                    try {
-                        await tradeService.updateTrade(trade.id, {
-                            trimmed_percentage: trade.trimmed_percentage,
-                            portfolio_weight: trade.portfolio_weight,
-                            portfolio_impact: trade.portfolio_impact,
-                            portfolio_heat: trade.portfolio_heat,
-                            risk_reward_ratio: trade.risk_reward_ratio,
-                            last_price: trade.last_price,
-                            market_value: trade.market_value,
-                            unrealized_pnl: trade.unrealized_pnl,
-                            unrealized_pnl_percentage: trade.unrealized_pnl_percentage,
-                            realized_pnl: trade.realized_pnl,
-                            realized_pnl_percentage: trade.realized_pnl_percentage
-                        });
-                        console.log(`Successfully updated trade ${trade.id}`);
-                    } catch (error) {
-                        console.error(`Failed to update trade ${trade.id}:`, error);
-                    }
-                }
-            }));
-
-            return updatedTrades;
         } catch (error) {
-            console.error('❌ Error updating trades:', error);
-            throw error;
+            console.error('❌ Error updating trades with market data:', error);
+            return trades;
         }
     }
-
+    
     // Helper method to clear cache if needed
     clearCache() {
         this.priceMap.clear();
         this.lastFetchTime = 0;
-        console.log('🧹 Cache cleared');
+        this.cache.clear();  // Also clear the quote cache
+        console.log('🧹 Market data cache cleared');
     }
-
 }
 
 export const marketDataService = new MarketDataService();
 
 
+//     async updateTradesWithMarketData(trades: Trade[]): Promise<Trade[]> {
+//         try {
+//             console.log('🔄 Updating trades with market data');
+            
+//             const priceMap = await this.fetchSheetData();
+            
+//             if (priceMap.size === 0) {
+//                 console.log('❌ No price data available');
+//                 return trades;
+//             }
 
+//             const updateTime = new Date().toLocaleTimeString();
+            
+//             // Get initial starting cash
+//             const currentSettings = await userSettingsService.getUserSettings();
+//             const startingCash = currentSettings.starting_cash || 0;
+//             console.log('🏁 Starting Cash:', startingCash);
 
+//             let totalRealizedPnL = 0;
+//             let totalUnrealizedPnL = 0;
 
+//             const updatedTrades = await Promise.all(trades.map(async (trade) => {
+//                 const symbolData = priceMap.get(trade.ticker);
+                
+//                 if (symbolData === undefined) {
+//                     console.log(`⚠️ No price found for ${trade.ticker}`);
+//                     return trade;
+//                 }
 
+//                 const shares = trade.remaining_shares || trade.remaining_shares || trade.total_shares;
+//                 const entryPrice = trade.entry_price;
+                
+//                 if (shares && entryPrice) {
+//                     const marketValue = symbolData.price * shares;
+//                     const priceDiff = symbolData.price - entryPrice;
+//                     const unrealizedPnL = priceDiff * shares;
+//                     const unrealizedPnLPercentage = (priceDiff / entryPrice) * 100;
 
+//                     // Trimmed Percentage
+//                     const trimmedPercentage = ((trade.total_shares - shares) / trade.total_shares) * 100;
+                    
+//                     // Open Risk - use the predefined initial risk amount
+//                     const initialRiskAmount = Math.abs(entryPrice - trade.stop_loss_price) * trade.total_shares;
+                    
+//                     // Risk-Reward Ratio (RRR)
+//                     const realizedPnL = trade.realized_pnl || 0;
+//                     // Realized PnL Percentage
+//                     const realizedPnLPercentage = (realizedPnL / (trade.total_shares * entryPrice)) * 100;
+//                     const rrr = (unrealizedPnL + realizedPnL) / initialRiskAmount;
 
+//                     // Accumulate PnL
+//                     totalRealizedPnL += realizedPnL;
+//                     totalUnrealizedPnL += unrealizedPnL;
 
+//                     console.log('Portfolio Impact Calculation:', 
+//                         unrealizedPnL,
+//                         realizedPnL,
+//                         startingCash,
+//                         trimmedPercentage);
 
+//                     // Portfolio Impact - percentage impact on total account capital
+//                     const totalCapital = startingCash + totalRealizedPnL + totalUnrealizedPnL;
+//                     const portfolioImpact = ((unrealizedPnL + realizedPnL) / totalCapital) * 100;
 
+//                     // Portfolio Weight
+//                     const portfolioWeight = (marketValue / totalCapital) * 100;
+
+//                     // Dynamically updating portfolio heat
+//                     const portfolioHeat = (Math.abs(trade.open_risk) / totalCapital) * 100;
+
+//                     console.log('Portfolio PnL, Capital, Heat and Impact Calculation:', {
+//                         unrealizedPnL,
+//                         realizedPnL,
+//                         totalCapital,
+//                         portfolioImpact,
+//                         portfolioHeat
+//                     });
+
+//                     // Update trade with new market data
+//                     return {
+//                         ...trade,
+//                         last_price: symbolData.price,
+//                         market_value: marketValue,
+//                         unrealized_pnl: unrealizedPnL,
+//                         unrealized_pnl_percentage: unrealizedPnLPercentage,
+//                         trimmed_percentage: trimmedPercentage,
+//                         portfolio_weight: portfolioWeight,
+//                         portfolio_impact: portfolioImpact,
+//                         portfolio_heat: portfolioHeat,
+//                         realized_pnl: realizedPnL,
+//                         realized_pnl_percentage: realizedPnLPercentage,
+//                         risk_reward_ratio: rrr,
+//                         last_update: updateTime
+//                     };
+//                 }
+//                 return trade;
+//             }));
+
+//             // Calculate total capital
+//             const totalCapital = startingCash + totalRealizedPnL + totalUnrealizedPnL;
+//             console.log('🔵 Total Capital:', totalCapital);
+
+//             // Diagnostic logging for trades
+//             console.log('Trades before Supabase update:', updatedTrades.map(trade => ({
+//                 id: trade.id,
+//                 trimmed_percentage: trade.trimmed_percentage,
+//                 total_shares: trade.total_shares,
+//                 remaining_shares: trade.remaining_shares,
+//                 last_update: trade.updated_at
+//             })));
+
+//             // Update current capital
+//             await capitalService.updateCurrentCapital(totalCapital, {
+//                 tradeCount: trades.length,
+//                 marketDataUpdateTime: new Date().toISOString(),
+//                 updatedTradesCount: updatedTrades.filter(trade => trade.updated_at).length,
+//                 realizedPnL: totalRealizedPnL,
+//                 unrealizedPnL: totalUnrealizedPnL
+//             });
+
+//             // After calculating totalCapital
+//             try {
+//                 await userSettingsService.updateUserSettings({
+//                     current_capital: totalCapital
+//                 });
+//                 console.log('🔄 Updated current capital:', totalCapital);
+//             } catch (error) {
+//                 console.error('❌ Error updating current capital:', error);
+//             }
+            
+//             // Update individual trades in Supabase
+//             await Promise.all(updatedTrades.map(async (trade) => {
+//                 console.log(`Attempting to update trade ${trade.id}:`, {
+//                     trimmed_percentage: trade.trimmed_percentage,
+//                     portfolio_weight: trade.portfolio_weight,
+//                     portfolio_impact: trade.portfolio_impact,
+//                     portfolio_heat: trade.portfolio_heat,
+//                     realized_pnl_percentage: trade.realized_pnl_percentage,
+//                     risk_reward_ratio: trade.risk_reward_ratio
+//                 });
+
+//                 if (trade.updated_at) {
+//                     try {
+//                         await tradeService.updateTrade(trade.id, {
+//                             trimmed_percentage: trade.trimmed_percentage,
+//                             portfolio_weight: trade.portfolio_weight,
+//                             portfolio_impact: trade.portfolio_impact,
+//                             portfolio_heat: trade.portfolio_heat,
+//                             risk_reward_ratio: trade.risk_reward_ratio,
+//                             last_price: trade.last_price,
+//                             market_value: trade.market_value,
+//                             unrealized_pnl: trade.unrealized_pnl,
+//                             unrealized_pnl_percentage: trade.unrealized_pnl_percentage,
+//                             realized_pnl: trade.realized_pnl,
+//                             realized_pnl_percentage: trade.realized_pnl_percentage
+//                         });
+//                         console.log(`Successfully updated trade ${trade.id}`);
+//                     } catch (error) {
+//                         console.error(`Failed to update trade ${trade.id}:`, error);
+//                     }
+//                 }
+//             }));
+
+//             return updatedTrades;
+//         } catch (error) {
+//             console.error('❌ Error updating trades:', error);
+//             throw error;
+//         }
+//     }
+
+//     // Helper method to clear cache if needed
+//     clearCache() {
+//         this.priceMap.clear();
+//         this.lastFetchTime = 0;
+//         console.log('🧹 Cache cleared');
+//     }
+
+// }
 
 
 // class MarketDataService {

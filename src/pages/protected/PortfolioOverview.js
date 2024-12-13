@@ -159,7 +159,7 @@ function PortfolioOverview(){
                 const { error } = await supabase
                     .from('trades')
                     .update({
-                        current_price: trade.last_price,
+                        last_price: trade.last_price,
                         market_value: trade.market_value,
                         unrealized_pnl: trade.unrealized_pnl,
                         unrealized_pnl_percentage: trade.unrealized_pnl_percentage,
@@ -170,7 +170,7 @@ function PortfolioOverview(){
                         realized_pnl: trade.realized_pnl,
                         realized_pnl_percentage: trade.realized_pnl_percentage,
                         risk_reward_ratio: trade.risk_reward_ratio,
-                        last_update: trade.last_update
+                        update_at: trade.update_at
                     })
                     .eq('id', trade.id)
 
@@ -474,7 +474,7 @@ function PortfolioOverview(){
             </div>
 
             {/* Active Trades */}
-            <div className="mt-6">
+            <div className="mt-6 max-h-[800px]">  
                 <div className="flex items-center justify-between mb-4">
                     <div className="text-lg font-bold">Active Trades</div>
                     <div className="flex items-center gap-4">
@@ -493,7 +493,7 @@ function PortfolioOverview(){
                         {lastUpdate && <span className="text-sm text-gray-500">Last update: {lastUpdate}</span>}
                     </div>
                 </div>
-                <div className="bg-base-100 rounded-lg shadow overflow-x-auto">
+                <div className="bg-base-100 rounded-lg shadow">
                     <table className="table w-full">
                         <thead>
                             <tr>
@@ -512,35 +512,42 @@ function PortfolioOverview(){
                         </thead>
                         <tbody>
                         {trades.length === 0 ? (
-                                <tr>
-                                    <td colSpan="10" className="text-center text-gray-500">No active positions</td>
+                            <tr>
+                                <td colSpan="10" className="text-center text-gray-500">No active positions</td>
+                            </tr>
+                        ) : (
+                            trades.map((trade, index) => (
+                                <tr key={index} className="hover:bg-base-200">
+                                    <td className="font-medium">
+                                        <div className="flex items-center">
+                                            {trade.ticker}
+                                            {/* <span className="ml-2 badge badge-sm badge-primary">
+                                                Active
+                                            </span> */}
+                                        </div>
+                                    </td>
+                                    <td>{dayjs(trade.entry_datetime).format('YYYY-MM-DD')}</td>
+                                    <td>{trade.strategy}</td>
+                                    <td>${trade.entry_price?.toFixed(2) || 'N/A'}</td>
+                                    <td>${trade.last_price?.toFixed(2) || 'N/A'}</td>
+                                    <td>${trade.unrealized_pnl?.toFixed(2) || '0.00'}</td>
+                                    <td>${trade.realized_pnl?.toFixed(2) || '0.00'}</td>
+                                    <td>{trade.trimmed_percentage?.toFixed(2) || '0'}%</td>
+                                    <td>{trade.open_risk?.toFixed(2) || 'N/A'}%</td>
+                                    <td>{trade.portfolio_weight?.toFixed(2) || 'N/A'}%</td>
+                                    <td>
+                                        <div className="dropdown dropdown-end">
+                                            <label tabIndex={0} className="btn btn-ghost btn-xs">•••</label>
+                                            <ul tabIndex={0} className="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52">
+                                                <li><a onClick={() => handleCloseTrade(trade)}>Close Position</a></li>
+                                                <li><a onClick={() => handleCloseTrade({ ...trade, shares: trade.shares_remaining * 0.5 })}>Close Half</a></li>
+                                                <li><a onClick={() => handleCloseTrade({ ...trade, shares: trade.shares_remaining * 0.33 })}>Close Third</a></li>
+                                            </ul>
+                                        </div>
+                                    </td>
                                 </tr>
-                            ) : (
-                                trades.map((trade, index) => (
-                                    <tr key={index}>
-                                        <td className="font-medium">{trade.ticker}</td>
-                                        <td>{dayjs(trade.entry_datetime).format('YYYY-MM-DD')}</td>
-                                        <td>{trade.strategy}</td>
-                                        <td>${trade.entry_price?.toFixed(2) || 'N/A'}</td>
-                                        <td>${trade.last_price?.toFixed(2) || 'N/A'}</td>
-                                        <td>${trade.unrealized_pnl?.toFixed(2) || '0.00'}</td>
-                                        <td>${trade.realized_pnl?.toFixed(2) || '0.00'}</td>
-                                        <td>{trade.trimmed_percentage?.toFixed(2) || '0'}%</td>
-                                        <td>{trade.open_risk?.toFixed(2) || 'N/A'}%</td>
-                                        <td>{trade.portfolio_weight?.toFixed(2) || 'N/A'}%</td>
-                                        <td>
-                                            <div className="dropdown dropdown-end">
-                                                <label tabIndex={0} className="btn btn-ghost btn-xs">•••</label>
-                                                <ul tabIndex={0} className="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52">
-                                                    <li><a onClick={() => handleCloseTrade(trade)}>Close Position</a></li>
-                                                    <li><a onClick={() => handleCloseTrade({ ...trade, shares: trade.shares_remaining * 0.5 })}>Close Half</a></li>
-                                                    <li><a onClick={() => handleCloseTrade({ ...trade, shares: trade.shares_remaining * 0.33 })}>Close Third</a></li>
-                                                </ul>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
+                            ))
+                        )}
                         </tbody>
                     </table>
                 </div>
