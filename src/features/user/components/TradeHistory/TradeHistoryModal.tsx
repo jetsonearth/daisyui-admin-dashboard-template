@@ -24,6 +24,7 @@ interface TradeHistoryModalProps {
 
 
 const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, onTradeAdded }) => {
+
     const [tradeDetails, setTradeDetails] = useState<{
         ticker: string;
         direction: string;
@@ -45,6 +46,12 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
 
     const [selectedStrategy, setSelectedStrategy] = useState<STRATEGIES | undefined>(undefined);
     const [selectedSetups, setSelectedSetups] = useState<string[]>([]);
+
+    const [activeTab, setActiveTab] = useState('general'); // 'general' or 'notes'
+    const [notes, setNotes] = useState('');
+    const [mistakes, setMistakes] = useState('');
+
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
     // Handle strategy change
     const handleStrategyChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
@@ -237,185 +244,232 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
         }
     };
 
+
+
+
     return (
         isOpen ? (
             <div className="modal modal-open">
                 {loading && <div className="spinner">Loading...</div>}
                 <div className="modal-box max-w-4xl">
-                    <h3 className="font-bold text-lg mb-4">Trade View</h3>
-                    
-                    {/* Top Section */}
-                    <div className="grid grid-cols-4 gap-4 mb-6">
-                        <div>
-                            <label className="label">Market</label>
-                            <select
-                                className="select select-bordered w-full"
-                                value={tradeDetails.assetType}
-                                onChange={e => setTradeDetails(prev => ({ ...prev, assetType: e.target.value }))}
-                            >
-                                <option value={ASSET_TYPES.STOCK}>STOCK</option>
-                                <option value={ASSET_TYPES.OPTION}>OPTION</option>
-                                <option value={ASSET_TYPES.ETF}>ETF</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="label">Ticker</label>
-                            <input
-                                type="text"
-                                className="input input-bordered w-full"
-                                value={tradeDetails.ticker}
-                                onChange={e => setTradeDetails(prev => ({ ...prev, ticker: e.target.value.toUpperCase() }))}
-                            />
-                        </div>
-                        <div>
-                            <label className="label">Stop-Loss</label>
-                            <input
-                                type="number"
-                                className="input input-bordered w-full"
-                                value={tradeDetails.stopLossPrice}
-                                onChange={e => setTradeDetails(prev => ({ ...prev, stopLossPrice: e.target.value }))}
-                            />
-                        </div>
-                        <div>
-                            <label className="label">Direction</label>
-                            <button 
-                                className={`btn w-full ${tradeDetails.direction === DIRECTIONS.LONG ? 'btn-success' : 'btn-error'}`}
-                                onClick={() => setTradeDetails(prev => ({
-                                    ...prev,
-                                    direction: prev.direction === DIRECTIONS.LONG ? DIRECTIONS.SHORT : DIRECTIONS.LONG
-                                }))}
-                            >
-                                {tradeDetails.direction}
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Strategy and Setups Dropdowns in the same row */}
-                    <div className="grid grid-cols-2 gap-4 mb-6">
-                        {/* Strategy Dropdown */}
-                        <div>
-                            <label className="label">Strategy:</label>
-                            <div className="dropdown">
-                                <div tabIndex={0} role="button" className="btn select select-bordered w-full" onClick={() => {}}>
-                                    {selectedStrategy || "Select Strategy"}
-                                </div>
-                                <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[1] w-full p-2 shadow">
-                                    {Object.values(STRATEGIES).map(strategy => (
-                                        <li key={strategy} onClick={() => setSelectedStrategy(strategy)}>
-                                            <a>{strategy}</a>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        </div>
-
-                        {/* Setups Dropdown */}
-                        <div>
-                            <label className="label">Setups:</label>
-                            <div className="dropdown">
-                                <div tabIndex={0} role="button" className="btn select select-bordered w-full" onClick={() => {}}>
-                                    {selectedSetups.length > 0 ? selectedSetups.join(', ') : "Select Setups"}
-                                </div>
-                                <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[1] w-full p-2 shadow">
-                                    {SETUPS.map(setup => (
-                                        <li key={setup}>
-                                            <label className="flex items-center">
-                                                <input
-                                                    type="checkbox"
-                                                    value={setup}
-                                                    checked={selectedSetups.includes(setup)}
-                                                    onChange={(e) => {
-                                                        const value = e.target.value;
-                                                        setSelectedSetups(prev => 
-                                                            prev.includes(value) ? prev.filter(s => s !== value) : [...prev, value]
-                                                        );
-                                                    }}
-                                                    className="mr-2"
-                                                />
-                                                {setup}
-                                            </label>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Actions Table */}
-                    <div className="overflow-x-auto mb-6">
-                        <table className="table w-full">
-                            <thead>
-                                <tr>
-                                    <th>Action</th>
-                                    <th>Date/Time</th>
-                                    <th>Quantity</th>
-                                    <th>Price</th>
-                                    <th></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {tradeDetails.actions.map((action, index) => (
-                                    <tr key={index}>
-                                        <td>
-                                            <button
-                                                onClick={() => toggleActionType(index)}
-                                                className={`btn btn-sm w-24 ${action.type === 'BUY' ? 'btn-success' : 'btn-error'}`}
-                                            >
-                                                {action.type}
-                                            </button>
-                                        </td>
-                                        <td>
-                                            <DatePicker
-                                                selected={action.date}
-                                                onChange={date => {
-                                                    if (date) {
-                                                        handleActionChange(index, 'date', date);
-                                                    }
-                                                }}
-                                                className="input input-bordered input-sm w-full"
-                                                showTimeSelect
-                                                dateFormat="MM/dd/yyyy, hh:mm aa"
-                                            />
-                                        </td>
-                                        <td>
-                                            <input
-                                                type="number"
-                                                className="input input-bordered input-sm w-24"
-                                                value={action.shares}
-                                                onChange={e => handleActionChange(index, 'shares', e.target.value)}
-                                            />
-                                        </td>
-                                        <td>
-                                            <input
-                                                type="number"
-                                                className="input input-bordered input-sm w-24"
-                                                value={action.price}
-                                                onChange={e => handleActionChange(index, 'price', e.target.value)}
-                                            />
-                                        </td>
-                                        <td>
-                                            <button
-                                                className="btn btn-ghost btn-sm"
-                                                onClick={() => removeAction(index)}
-                                            >
-                                                ×
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {/* Add Action Button */}
-                    <div className="flex justify-center mt-4 mb-6">
-                        <button
-                            onClick={addAction}
-                            className="btn btn-circle btn-sm btn-primary"
+                    {/* Tabs */}
+                    <div className="tabs tabs-boxed mb-4">
+                        <a 
+                            className={`tab ${activeTab === 'general' ? 'tab-active' : ''}`}
+                            onClick={() => setActiveTab('general')}
                         >
-                            +
-                        </button>
+                            General
+                        </a>
+                        <a 
+                            className={`tab ${activeTab === 'notes' ? 'tab-active' : ''}`}
+                            onClick={() => setActiveTab('notes')}
+                        >
+                            Notes & Mistakes
+                        </a>
                     </div>
+
+                    {activeTab === 'general' ? (
+                        <>
+                            <h3 className="font-bold text-lg mb-4">Trade View</h3>
+                            
+                            {/* Top Section - 4 columns */}
+                            <div className="grid grid-cols-4 gap-4 mb-6">
+                                <div>
+                                    <label className="label">Market</label>
+                                    <select
+                                        className="select select-bordered w-full"
+                                        value={tradeDetails.assetType}
+                                        onChange={e => setTradeDetails(prev => ({ ...prev, assetType: e.target.value }))}
+                                    >
+                                        <option value={ASSET_TYPES.STOCK}>STOCK</option>
+                                        <option value={ASSET_TYPES.OPTION}>OPTION</option>
+                                        <option value={ASSET_TYPES.ETF}>ETF</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="label">Ticker</label>
+                                    <input
+                                        type="text"
+                                        className="input input-bordered w-full"
+                                        value={tradeDetails.ticker}
+                                        onChange={e => setTradeDetails(prev => ({ ...prev, ticker: e.target.value.toUpperCase() }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="label">Stop-Loss</label>
+                                    <input
+                                        type="number"
+                                        className="input input-bordered w-full"
+                                        value={tradeDetails.stopLossPrice}
+                                        onChange={e => setTradeDetails(prev => ({ ...prev, stopLossPrice: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="label">Direction</label>
+                                    <button 
+                                        className={`btn w-full ${tradeDetails.direction === DIRECTIONS.LONG ? 'btn-success' : 'btn-error'}`}
+                                        onClick={() => setTradeDetails(prev => ({
+                                            ...prev,
+                                            direction: prev.direction === DIRECTIONS.LONG ? DIRECTIONS.SHORT : DIRECTIONS.LONG
+                                        }))}
+                                    >
+                                        {tradeDetails.direction}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Strategy and Setups Section */}
+                            <div className="flex gap-4 mb-6">
+                                <div className="w-1/3">
+                                    <label className="label">Strategy:</label>
+                                    <div className="dropdown w-full">
+                                        <div tabIndex={0} role="button" className="btn select select-bordered w-full" onClick={() => {}}>
+                                            {selectedStrategy || "Select Strategy"}
+                                        </div>
+                                        <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[1] w-full p-2 shadow">
+                                            {Object.values(STRATEGIES).map(strategy => (
+                                                <li key={strategy} onClick={() => setSelectedStrategy(strategy)}>
+                                                    <a>{strategy}</a>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                <div className="w-2/3">
+                                    <label className="label">Setups:</label>
+                                    <div className="dropdown w-full" id="dropdown-id">
+                                        <div tabIndex={0} role="button" className="btn select select-bordered w-full" onClick={() => setIsDropdownOpen(prev => !prev)}>
+                                            {selectedSetups.length > 0 ? selectedSetups.join(', ') : "Select Setups"}
+                                        </div>
+                                        {isDropdownOpen && (
+                                            <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[1] w-full p-3 shadow grid grid-cols-5 gap-3">
+                                                {SETUPS.map(setup => (
+                                                    <li key={setup}>
+                                                        <div className="form-control">
+                                                            <label className="label cursor-pointer flex items-center">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    value={setup}
+                                                                    checked={selectedSetups.includes(setup)}
+                                                                    onChange={(e) => {
+                                                                        const value = e.target.value;
+                                                                        setSelectedSetups(prev => 
+                                                                            prev.includes(value) ? prev.filter(s => s !== value) : [...prev, value]
+                                                                        );
+                                                                    }}
+                                                                    className="checkbox checkbox-primary mr-2" // Added margin-right for spacing
+                                                                />
+                                                                <span className="label-text">{setup}</span>
+                                                            </label>
+                                                        </div>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Actions Table */}
+                            <div className="overflow-x-auto mb-6">
+                                <table className="table w-full">
+                                    <thead>
+                                        <tr>
+                                            <th>Action</th>
+                                            <th>Date/Time</th>
+                                            <th>Quantity</th>
+                                            <th>Price</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {tradeDetails.actions.map((action, index) => (
+                                            <tr key={index}>
+                                                <td>
+                                                    <button
+                                                        onClick={() => toggleActionType(index)}
+                                                        className={`btn btn-sm w-24 ${action.type === 'BUY' ? 'btn-success' : 'btn-error'}`}
+                                                    >
+                                                        {action.type}
+                                                    </button>
+                                                </td>
+                                                <td>
+                                                    <DatePicker
+                                                        selected={action.date}
+                                                        onChange={date => {
+                                                            if (date) {
+                                                                handleActionChange(index, 'date', date);
+                                                            }
+                                                        }}
+                                                        className="input input-bordered input-sm w-full"
+                                                        showTimeSelect
+                                                        dateFormat="MM/dd/yyyy, hh:mm aa"
+                                                    />
+                                                </td>
+                                                <td>
+                                                    <input
+                                                        type="number"
+                                                        className="input input-bordered input-sm w-24"
+                                                        value={action.shares}
+                                                        onChange={e => handleActionChange(index, 'shares', e.target.value)}
+                                                    />
+                                                </td>
+                                                <td>
+                                                    <input
+                                                        type="number"
+                                                        className="input input-bordered input-sm w-24"
+                                                        value={action.price}
+                                                        onChange={e => handleActionChange(index, 'price', e.target.value)}
+                                                    />
+                                                </td>
+                                                <td>
+                                                    <button
+                                                        className="btn btn-ghost btn-sm"
+                                                        onClick={() => removeAction(index)}
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Add Action Button */}
+                            <div className="flex justify-center mt-4 mb-6">
+                                <button
+                                    onClick={addAction}
+                                    className="btn btn-circle btn-sm btn-primary"
+                                >
+                                    +
+                                </button>
+                            </div>
+                        </>
+                    ) : (
+                        // Notes & Mistakes Tab
+                        <div className="space-y-4">
+                            <div>
+                                <label className="label">Trade Notes</label>
+                                <textarea
+                                    className="textarea textarea-bordered w-full h-32"
+                                    placeholder="Enter your trade notes here..."
+                                    value={notes}
+                                    onChange={(e) => setNotes(e.target.value)}
+                                />
+                            </div>
+                            <div>
+                                <label className="label">Mistakes & Lessons</label>
+                                <textarea
+                                    className="textarea textarea-bordered w-full h-32"
+                                    placeholder="Document any mistakes or lessons learned..."
+                                    value={mistakes}
+                                    onChange={(e) => setMistakes(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                    )}
 
                     {/* Modal Actions */}
                     <div className="modal-action">

@@ -73,9 +73,9 @@ export enum DIRECTIONS {
 }
 
 export enum STRATEGIES {
-    EP = 'EP',
-    MB = 'MB',
-    PBB = 'PBB'
+    EP = 'Episodic Pivot',
+    MB = 'Momentum Breakout',
+    PBB = 'Pullback Buy'
 }
 
 // Setups as const array
@@ -83,7 +83,7 @@ export const SETUPS = [
     'EP', 'VCP', 'Inside Day', 'Inside Week', 'HTF', 
     'Flat Base', 'Bull Flag', 'PB', 'IPO Base', 
     'Triangle', 'Falling Wedge', 'Double Inside Week',
-    'Double Inside Day', 'HVE', 'HVY', 'HVQ'
+    'Double Inside Day', 'HVE', 'HVY', 'HVQ', 'Rocket Base'
 ] as const;
 
 // Utility function
