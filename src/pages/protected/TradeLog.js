@@ -474,6 +474,14 @@ function TradeLog(){
 
                                                 <td className={`
                                                     text-center font-semibold tabular-nums
+                                                    ${trade.realized_pnl_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}
+                                                `}>
+                                                    {trade.realized_pnl_percentage > 0 ? '+' : ''}
+                                                    {safeToFixed(trade.realized_pnl_percentage)}%
+                                                </td>
+
+                                                <td className={`
+                                                    text-center font-semibold tabular-nums
                                                     ${trade.realized_pnl > 0 ? 'text-emerald-400' : 'text-rose-400'}
                                                 `}>
                                                     {trade.realized_pnl > 0 ? '+' : ''}
@@ -492,14 +500,21 @@ function TradeLog(){
                                                     text-center font-semibold tabular-nums
                                                     ${trade.open_risk > 0 ? 'text-rose-400' : 'text-emerald-400'}
                                                 `}>
-                                                    {safeToFixed(trade.open_risk, 1)}%
+                                                    {trade.open_risk > 0 ? '-' : ''}{safeToFixed(trade.open_risk, 2)}%
                                                 </td>
 
                                                 <td className={`
                                                     text-center font-semibold tabular-nums
                                                     ${trade.portfolio_heat > 0 ? 'text-rose-400' : 'text-emerald-400'}
                                                 `}>
-                                                    {safeToFixed(trade.portfolio_heat, 3)}%
+                                                    {trade.portfolio_heat > 0 ? '-' : ''}{safeToFixed(trade.portfolio_heat, 3)}%
+                                                </td>
+
+                                                <td className={`
+                                                    text-center font-semibold tabular-nums
+                                                    ${trade.portfolio_impact > 0 ? 'text-emerald-400' : 'text-rose-400'}
+                                                `}>
+                                                    {trade.portfolio_impact > 0 ? '+' : ''}{safeToFixed(trade.portfolio_impact, 2)}%
                                                 </td>
 
                                                 {/* Performance Metrics */}
