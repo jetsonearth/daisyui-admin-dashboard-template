@@ -10,6 +10,7 @@ import './TradeLog.css';
 
 function TradeLog(){
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedTrade, setSelectedTrade] = useState(null);
 
     const navigate = useNavigate()
     const [trades, setTrades] = useState([])
@@ -17,16 +18,37 @@ function TradeLog(){
     const [isAutoRefresh, setIsAutoRefresh] = useState(true)
     const [lastUpdate, setLastUpdate] = useState(null)
     const [isManualRefreshing, setIsManualRefreshing] = useState(false);
-    const [selectedTrade, setSelectedTrade] = useState(null);
 
     // Function to handle opening the modal
-    const openModal = () => {
+    const openModal = (trade = null) => {
+        setSelectedTrade(trade);
         setIsModalOpen(true);
     };
 
     // Function to handle closing the modal
     const closeModal = () => {
+        setSelectedTrade(null);
         setIsModalOpen(false);
+    };
+
+    // Function to handle trade click
+    const handleTradeClick = async (tradeId) => {
+        console.log("Fetching trade with ID:", tradeId); // Log the trade ID being fetched
+
+        const { data: trade, error } = await supabase
+            .from('trades')
+            .select('*') // Adjust to fetch the necessary fields
+            .eq('id', tradeId)
+            .single();
+
+        if (error) {
+            toast.error('Failed to fetch trade details');
+            console.error("Error fetching trade:", error); // Log the error for debugging
+            return;
+        }
+
+        // Open the modal with the fetched trade data
+        openModal(trade);
     };
 
     // Keep your existing helper functions
@@ -167,139 +189,6 @@ function TradeLog(){
         };
     }, [isAutoRefresh]); // Keep only isAutoRefresh in dependencies
 
-    // const updateMarketData = async () => {
-    //     console.log('🔄 Starting market data update. Current trades:', trades.length);
-    //     try {
-    //         // Filter out closed trades before updating
-    //         const activeTrades = trades.filter(trade => 
-    //             trade.status !== TRADE_STATUS.CLOSED
-    //         );
-
-    //         console.log(`🔍 Filtering active trades. Total: ${trades.length}, Active: ${activeTrades.length}`);
-
-    //         // If no active trades, skip update
-    //         if (activeTrades.length === 0) {
-    //             console.log('🚫 No active trades to update');
-    //             return;
-    //         }
-
-
-    //         const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(activeTrades);
-                
-
-    //         console.log('🎯 Updated Trades:', updatedTrades.map(trade => ({
-    //             ticker: trade.ticker,
-    //             unrealized_pnl: trade.unrealized_pnl,
-    //             realized_pnl: trade.realized_pnl,
-    //             total_shares: trade.total_shares,
-    //             risk_reward_ratio: trade.risk_reward_ratio,
-    //             openRisk: trade.open_risk
-    //         })));
-
-            
-    //         if (updatedTrades && updatedTrades.length > 0) {
-    //             // Merge updated trades with original trades, keeping closed trades unchanged
-    //             const mergedTrades = trades.map(originalTrade => {
-    //                 const updatedTrade = updatedTrades.find(ut => ut.id === originalTrade.id);
-                    
-    //                 // If trade is closed, return original trade
-    //                 if (
-    //                     originalTrade.status === TRADE_STATUS.CLOSED 
-    //                 ) {
-    //                     console.log(`🔒 Skipping update for closed trade: ${originalTrade.ticker}`);
-    //                     return originalTrade;
-    //                 }
-
-    //                 // If updatedTrade exists, merge with original trade, preserving open_risk
-    //                 if (updatedTrade) {
-    //                     return {
-    //                         ...updatedTrade,
-    //                         open_risk: originalTrade.open_risk
-    //                     };
-    //                 }                
-    //             });
-
-    //             // Update trades state with merged trades
-    //             setTrades(mergedTrades);
-
-    //             // Continue with Supabase update for active trades
-    //             const currentTimestamp = new Date().toISOString();
-                
-    //             const { data: { user }, error: userError } = await supabase.auth.getUser();
-    //             if (userError) {
-    //                 throw new Error(`Auth error: ${userError.message}`);
-    //             }
-    
-    //             for (const trade of updatedTrades) {
-    //                 // Skip updates for closed trades
-    //                 if (
-    //                     trade.status === TRADE_STATUS.CLOSED
-    //                 ) {
-    //                     console.log(`🚫 Skipping Supabase update for closed trade: ${trade.ticker}`);
-    //                     continue;
-    //                 }
-
-    //                 console.log(`Trade ${trade.ticker} update details:`, {
-    //                     unrealized_pnl: trade.unrealized_pnl,
-    //                     unrealized_pnl_percentage: trade.unrealized_pnl_percentage,
-    //                     realized_pnl: trade.realized_pnl,
-    //                     realized_pnl_percentage: trade.realized_pnl_percentage,
-    //                     total_shares: trade.total_shares,
-    //                     entry_price: trade.entry_price
-    //                 });
-
-    //                 const { data, error } = await supabase
-    //                     .from('trades')
-    //                     .update({
-    //                         last_price: trade.last_price,
-    //                         market_value: trade.market_value,
-    //                         unrealized_pnl: trade.unrealized_pnl,
-    //                         unrealized_pnl_percentage: trade.unrealized_pnl_percentage,
-    //                         risk_reward_ratio: trade.risk_reward_ratio,
-    //                         mae: trade.mae,
-    //                         mfe: trade.mfe,
-    //                         portfolio_impact: trade.portfolio_impact,
-    //                         portfolio_weight: trade.weight_percentage,
-    //                         trimmed_percentage: trade.trimmed_percentage,
-    //                         realized_pnl: trade.realized_pnl,
-    //                         realized_pnl_percentage: trade.realized_pnl_percentage,
-    //                         updated_at: currentTimestamp
-    //                     })
-    //                     .eq('id', trade.id)
-    //                     .eq('user_id', user.id)
-    //                     .select();
-
-    //                 console.log(`Supabase update result for ${trade.ticker}:`, { data, error });
-    //             }
-    //         } else {
-    //             console.warn('🚨 No trades returned from market data update');
-    //         }
-    //     } catch (error) {
-    //         console.error('❌ Full error in updateMarketData:', error);
-    //         console.error('Error message:', error.message);
-    //         console.error('Error stack:', error.stack);
-    //     }
-    // };
-
-    // // Keep your existing useEffect for auto-refresh
-    // useEffect(() => {
-    //     let intervalId;
-    //     if (isAutoRefresh) {
-    //         const fetchData = async () => {
-    //             await updateMarketData(); // Fetch market data
-    //             const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(trades); // Compute metrics
-    //             setTrades(updatedTrades); // Update state with new trades
-    //         };
-    
-    //         fetchData(); // Initial fetch
-    //         intervalId = setInterval(fetchData, 1800000); // 30 minutes
-    //     }
-    //     return () => {
-    //         if (intervalId) clearInterval(intervalId);
-    //     };
-    // }, [isAutoRefresh]); // Remove trades from dependencies
-
-
     // Add useEffect for initial data fetch
     useEffect(() => {
         fetchTrades()
@@ -346,7 +235,7 @@ function TradeLog(){
                 <div className="flex flex-col">
                 <div className="flex items-center gap-6 mb-5">
                         <button 
-                            onClick={openModal} 
+                            onClick={() => openModal()} 
                             className="btn btn-secondary"
                         >
                             🌟 Log Historical Trades
@@ -456,7 +345,7 @@ function TradeLog(){
                                             <tr 
                                                 key={trade.id} 
                                                 className="hover cursor-pointer"
-                                                onClick={() => setSelectedTrade(trade)}
+                                                onClick={() => handleTradeClick(trade.id)}
                                             >
                                                 <td className="text-center font-medium">{trade.ticker || 'N/A'}</td>
                                                 <td className="text-center">{trade.asset_type || 'N/A'}</td>
@@ -584,18 +473,12 @@ function TradeLog(){
                     isOpen={isModalOpen}
                     onClose={closeModal}
                     onTradeAdded={() => {
-                        fetchTrades(); // Refresh the trades list
+                        closeModal();
+                        fetchTrades();
                     }}
+                    existingTrade={selectedTrade}
                 />
             </TitleCard>
-
-            {/* {selectedTrade && (
-                <TradeManager
-                    trade={selectedTrade}
-                    onClose={() => setSelectedTrade(null)}
-                    onUpdate={fetchTrades}
-                />
-            )} */}
         </div>
     )
 }

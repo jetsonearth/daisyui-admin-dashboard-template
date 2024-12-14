@@ -20,28 +20,54 @@ interface TradeHistoryModalProps {
     isOpen: boolean;
     onClose: () => void;
     onTradeAdded: () => void;
+    existingTrade?: Trade;
 }
 
 
-const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, onTradeAdded }) => {
-
+const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, onTradeAdded, existingTrade }) => {
     const [tradeDetails, setTradeDetails] = useState<{
         ticker: string;
         direction: string;
         assetType: string;
         stopLossPrice: string;
-        actions: Action[];
-    }>({
-        ticker: '',
-        direction: DIRECTIONS.LONG,
-        assetType: ASSET_TYPES.STOCK,
-        stopLossPrice: '',
-        actions: [{
-            type: 'BUY',
-            date: new Date(),
-            shares: '',
-            price: '',
-        }]
+        actions: Action[]; // Ensure this matches the Action type
+    }>(() => {
+        // Initialize with existingTrade data if available
+        if (existingTrade) {
+            const actions: Action[] = existingTrade.action_types?.map((type, index) => ({
+                type: type as 'BUY' | 'SELL', // Cast to the specific type
+                date: new Date(existingTrade.action_datetimes?.[index] || Date.now()), // Handle undefined
+                price: existingTrade.action_prices?.[index]?.toString() || '',
+                shares: '', // Placeholder for shares
+            })) || [{
+                type: 'BUY',
+                date: new Date(),
+                shares: '',
+                price: '',
+            }];
+
+            return {
+                ticker: existingTrade.ticker,
+                direction: existingTrade.direction,
+                assetType: existingTrade.asset_type,
+                stopLossPrice: existingTrade.stop_loss_price?.toString() || '',
+                actions,
+            };
+        }
+
+        // Default initialization remains the same
+        return {
+            ticker: '',
+            direction: DIRECTIONS.LONG,
+            assetType: ASSET_TYPES.STOCK,
+            stopLossPrice: '',
+            actions: [{
+                type: 'BUY',
+                date: new Date(),
+                shares: '',
+                price: '',
+            }]
+        };
     });
 
     const [selectedStrategy, setSelectedStrategy] = useState<STRATEGIES | undefined>(undefined);
@@ -64,6 +90,26 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
         setSelectedSetups(prev => 
             prev.includes(value) ? prev.filter(s => s !== value) : [...prev, value]
         );
+    };
+
+
+    const handleDeleteTrade = async () => {
+        if (!existingTrade) return;
+
+        const { error } = await supabase
+            .from('trades')
+            .delete()
+            .eq('id', existingTrade.id);
+
+        if (error) {
+            toast.error('Failed to delete trade');
+            console.error("Error deleting trade:", error);
+            return;
+        }
+
+        toast.success('Trade deleted successfully');
+        onTradeAdded(); // Refresh the trade list
+        onClose(); // Close the modal
     };
 
     const [loading, setLoading] = useState(false);
@@ -143,6 +189,11 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
 
             let lastSellAction = null; // Track the last sell action
 
+            // Format actions into arrays
+            const action_types = tradeDetails.actions.map(a => a.type);
+            const action_datetimes = tradeDetails.actions.map(a => a.date.toISOString());
+            const action_prices = tradeDetails.actions.map(a => parseFloat(a.price));
+
             // Calculate shares and validate actions
             for (const action of tradeDetails.actions) {
                 if (action.type === 'BUY') {
@@ -193,7 +244,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             riskAmount = totalShares * entryPrice * openRisk;
             trimmedPercentage = ((totalShares - remainingShares) / totalShares) * 100;
 
-            // Create the trade record
+            // Create or update the trade record
             const tradeRecord = {
                 user_id: user.id,
                 ticker: tradeDetails.ticker,
@@ -218,27 +269,44 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 stop_loss_33_percent: stop33,
                 stop_loss_66_percent: stop66,
                 r_target_2: target2R,
-                r_target_3: target3R
+                r_target_3: target3R,
+                action_types,
+                action_datetimes,
+                action_prices,
+                notes,
+                mistakes
             }; 
 
-            // Insert the trade
-            const { data: trade, error: tradeError } = await supabase
-                .from('trades')
-                .insert([tradeRecord])
-                .select()
-                .single();
+            let result;
+            if (existingTrade) {
+                // Update existing trade
+                const { data, error } = await supabase
+                    .from('trades')
+                    .update(tradeRecord)
+                    .eq('id', existingTrade.id)
+                    .eq('user_id', user.id)
+                    .select();
 
-            if (tradeError) {
-                console.error('Error inserting trade:', tradeError);
-                toast.error('Failed to insert trade: ' + tradeError.message);
-                return;
+                if (error) throw error;
+                result = data;
+                toast.success('Trade updated successfully!');
+            } else {
+                // Create new trade
+                const { data, error } = await supabase
+                    .from('trades')
+                    .insert([tradeRecord])
+                    .select();
+
+                if (error) throw error;
+                result = data;
+                toast.success('Trade added successfully!');
             }
 
             onTradeAdded(); // Refresh the trade list
             onClose(); // Close the modal
         } catch (error: any) { // Type assertion for error
             const errorMessage = error?.message || 'An unknown error occurred';
-            toast.error('Failed to add trade: ' + errorMessage);
+            toast.error(existingTrade ? 'Failed to update trade' : 'Failed to add trade');
         } finally {
             setLoading(false); // Reset loading state
         }
@@ -438,12 +506,15 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                             </div>
 
                             {/* Add Action Button */}
-                            <div className="flex justify-center mt-4 mb-6">
+                            <div className="flex justify-center mt-6 mb-6 gap-8"> {/* Increased gap */}
                                 <button
                                     onClick={addAction}
-                                    className="btn btn-circle btn-sm btn-primary"
+                                    className="btn btn-danger btn-primary"
                                 >
-                                    +
+                                    Add Actions
+                                </button>
+                                <button onClick={handleDeleteTrade} className="btn btn-danger btn-secondary">
+                                    Delete Trade
                                 </button>
                             </div>
                         </>

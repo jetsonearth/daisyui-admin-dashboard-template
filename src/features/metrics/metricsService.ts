@@ -58,13 +58,13 @@ interface PortfolioMetrics {
 
 export class MetricsService {
     // Safely convert value to number with optional default
-    private safeNumeric(value: any, defaultValue: number = 0): number {
+    public safeNumeric(value: any, defaultValue: number = 0): number {
         const numValue = Number(value);
         return isNaN(numValue) ? defaultValue : numValue;
     }
 
     // Validate and clean trades input
-    private validateTrades(trades: Trade[]): Trade[] {
+    public validateTrades(trades: Trade[]): Trade[] {
         log('info', 'Validating trades', { tradesCount: trades.length });
         
         return trades.filter(trade => {
@@ -81,9 +81,10 @@ export class MetricsService {
         });
     }
 
-    private async calculateTradeMetrics(
+    public async calculateTradeMetrics(
         trade: Trade, 
-        marketData: Map<string, { price: number; low: number }>, 
+        // marketData: Map<string, { price: number; low: number }>, 
+        marketData: Map<string, { price: number}>,
         startingCash: number, 
         totalCapital: number
     ): Promise<{
@@ -170,7 +171,7 @@ export class MetricsService {
 
 
     // Calculate performance metrics for trades
-    private calculateTradePerformanceMetrics(trades: Trade[]): PerformanceMetrics {
+    public calculateTradePerformanceMetrics(trades: Trade[]): PerformanceMetrics {
         log('info', 'Calculating trade performance metrics');
 
         const closedTrades = trades.filter(trade => 
@@ -217,7 +218,7 @@ export class MetricsService {
     }
 
     // Calculate current capital based on trades
-    private async calculateCurrentCapital(trades: Trade[], startingCapital: number): Promise<{ 
+    public async calculateCurrentCapital(trades: Trade[], startingCapital: number): Promise<{ 
         currentCapital: number, 
         totalRealizedPnL: number, 
         totalUnrealizedPnL: number 
@@ -283,7 +284,7 @@ export class MetricsService {
     }
 
     // Calculate exposure metrics
-    private async calculateExposureMetrics(trades: Trade[], currentCapital: number): Promise<ExposureMetrics> {
+    public async calculateExposureMetrics(trades: Trade[], currentCapital: number): Promise<ExposureMetrics> {
         log('info', 'Calculating exposure metrics');
     
         // Fetch latest market data
@@ -514,7 +515,7 @@ export class MetricsService {
     }
     
     // Helper method to retrieve starting capital
-    private async retrieveStartingCapital(): Promise<number> {
+    public async retrieveStartingCapital(): Promise<number> {
         try {
             const currentSettings = await userSettingsService.getUserSettings();
             return this.safeNumeric(currentSettings.starting_cash) || 25000; // Default to 25000 if not found

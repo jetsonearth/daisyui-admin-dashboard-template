@@ -34,7 +34,7 @@ function TradePlanner() {
                 // Fallback to a default value if needed
                 setInputs(prev => ({
                     ...prev,
-                    accountSize: 13000
+                    accountSize: 25000
                 }));
                 toast.error('Failed to fetch account size. Using default.');
             }
@@ -73,11 +73,14 @@ function TradePlanner() {
                 try {
                     const marketData = await marketDataService.fetchSheetData();
                     const currentPrice = marketData.get(inputs.ticker)?.price;
-                    if (currentPrice?.price) {
+                    console.log('Market Data:', marketData);
+                    console.log('Current Price from Sheet:', currentPrice);
+                    if (currentPrice) {
                         setInputs(prevInputs => ({
                             ...prevInputs,
-                            entryPrice: currentPrice.price.toString(),
-                            lowOfDay: currentPrice.low ? currentPrice.low.toString() : ''
+                            entryPrice: currentPrice.toString(),
+                            // entryPrice: currentPrice.price.toString(),
+                            // lowOfDay: currentPrice.low ? currentPrice.low.toString() : ''
                         }))
                         
                         // Update price info
@@ -233,15 +236,6 @@ function TradePlanner() {
         const positionSize = Math.max(1, Math.floor(riskAmount / riskPerShare))
 
         console.log('Stop Loss Calculations:', {
-            // price,
-            // stopDistanceTiered,
-            // fullStopPrice,
-            // stop33,
-            // stop66,
-            // fullStopLoss: fullStopLoss.toFixed(2) + '%',
-            // stop33Loss: stop33Loss.toFixed(2) + '%', 
-            // stop66Loss: stop66Loss.toFixed(2) + '%',
-            // riskPerShare,
             openRisk: openRisk.toFixed(2) + '%'
         })
 
@@ -253,7 +247,6 @@ function TradePlanner() {
         const dollarExposure = positionSize * price
         // const openRisk = ((price - fullStopPrice) / price) * 100
         // Compute Open Risk as a weighted average of the three stop levels
-
         const portfolioWeight = (results.positionSize * parseFloat(inputs.entryPrice) / accountSize) * 100
 
         // Calculate break-even including commission
