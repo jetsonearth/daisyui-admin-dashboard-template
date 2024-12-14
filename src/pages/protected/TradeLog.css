@@ -6,3 +6,24 @@
 .trade-row:hover {
     background-color: rgba(255, 255, 255, 0.05);
 }
+
+table {
+    table-layout: auto; /* Allow dynamic sizing */
+    width: 100%; /* Full width */
+}
+
+th, td {
+    white-space: nowrap; /* Prevent wrapping */
+}
+
+.setups-container {
+    display: flex; /* Use flexbox */
+    flex-wrap: wrap; /* Allow wrapping if necessary */
+    gap: 8px; /* Space between badges */
+}
+
+.badge {
+    /* Add any additional styling for badges here */
+    padding: 4px 8px; /* Example padding */
+    border-radius: 12px; /* Rounded corners */
+}
