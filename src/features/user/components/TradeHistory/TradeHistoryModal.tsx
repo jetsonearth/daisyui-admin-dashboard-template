@@ -3,11 +3,8 @@ import React, { useState } from 'react';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import { supabase } from '../../../../config/supabaseClient';
-import { ASSET_TYPES, DIRECTIONS, TRADE_STATUS } from '../../../../types/index';
 import { toast } from 'react-toastify';
-import { metricsService } from '../../../../features/metrics/metricsService';
-import { Trade, STRATEGIES, SETUPS } from '../../../../types'; // Adjust the import path as necessary
-
+import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from '../../../../types'; 
 
 interface Action {
     type: 'BUY' | 'SELL';
@@ -38,7 +35,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 type: type as 'BUY' | 'SELL', // Cast to the specific type
                 date: new Date(existingTrade.action_datetimes?.[index] || Date.now()), // Handle undefined
                 price: existingTrade.action_prices?.[index]?.toString() || '',
-                shares: '', // Placeholder for shares
+                shares: existingTrade.total_shares?.toString() || '', // Initialize shares from total_shares
             })) || [{
                 type: 'BUY',
                 date: new Date(),
@@ -70,13 +67,16 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
         };
     });
 
-    const [selectedStrategy, setSelectedStrategy] = useState<STRATEGIES | undefined>(undefined);
-    const [selectedSetups, setSelectedSetups] = useState<string[]>([]);
+    const [selectedStrategy, setSelectedStrategy] = useState<STRATEGIES | undefined>(
+        existingTrade?.strategy as STRATEGIES || undefined
+    );
+    const [selectedSetups, setSelectedSetups] = useState<string[]>(
+        existingTrade?.setups || []
+    );
 
     const [activeTab, setActiveTab] = useState('general'); // 'general' or 'notes'
-    const [notes, setNotes] = useState('');
-    const [mistakes, setMistakes] = useState('');
-
+    const [notes, setNotes] = useState(existingTrade?.notes || '');
+    const [mistakes, setMistakes] = useState(existingTrade?.mistakes || '');
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
     // Handle strategy change
@@ -277,6 +277,9 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 mistakes
             }; 
 
+            console.log("Mistakes:", mistakes);
+            console.log("Notes:", notes);
+            
             let result;
             if (existingTrade) {
                 // Update existing trade
@@ -311,8 +314,6 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             setLoading(false); // Reset loading state
         }
     };
-
-
 
 
     return (
@@ -513,7 +514,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                                 >
                                     Add Actions
                                 </button>
-                                <button onClick={handleDeleteTrade} className="btn btn-danger btn-secondary">
+                                <button onClick={handleDeleteTrade} className="btn btn-error">
                                     Delete Trade
                                 </button>
                             </div>
