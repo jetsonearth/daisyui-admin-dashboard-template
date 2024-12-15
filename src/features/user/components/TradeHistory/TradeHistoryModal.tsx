@@ -1,5 +1,5 @@
 // src/components/TradeHistory/TradeHistoryModal.tsx
-import React, { useState } from 'react';
+import React, { useEffect,useState } from 'react';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import { supabase } from '../../../../config/supabaseClient';
@@ -27,15 +27,15 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
         direction: string;
         assetType: string;
         stopLossPrice: string;
-        actions: Action[]; // Ensure this matches the Action type
+        actions: Action[];
     }>(() => {
         // Initialize with existingTrade data if available
         if (existingTrade) {
             const actions: Action[] = existingTrade.action_types?.map((type, index) => ({
-                type: type as 'BUY' | 'SELL', // Cast to the specific type
-                date: new Date(existingTrade.action_datetimes?.[index] || Date.now()), // Handle undefined
+                type: type as 'BUY' | 'SELL',
+                date: new Date(existingTrade.action_datetimes?.[index] || Date.now()),
                 price: existingTrade.action_prices?.[index]?.toString() || '',
-                shares: existingTrade.total_shares?.toString() || '', // Initialize shares from total_shares
+                shares: existingTrade.action_shares?.[index]?.toString() || '',
             })) || [{
                 type: 'BUY',
                 date: new Date(),
@@ -52,7 +52,6 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             };
         }
 
-        // Default initialization remains the same
         return {
             ticker: '',
             direction: DIRECTIONS.LONG,
@@ -66,6 +65,32 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             }]
         };
     });
+
+    // Add this useEffect
+    useEffect(() => {
+        if (existingTrade) {
+            const actions: Action[] = existingTrade.action_types?.map((type, index) => ({
+                type: type as 'BUY' | 'SELL',
+                date: new Date(existingTrade.action_datetimes?.[index] || Date.now()),
+                price: existingTrade.action_prices?.[index]?.toString() || '',
+                shares: existingTrade.action_shares?.[index]?.toString() || '',
+            })) || [{
+                type: 'BUY',
+                date: new Date(),
+                shares: '',
+                price: '',
+            }];
+
+            setTradeDetails({
+                ticker: existingTrade.ticker,
+                direction: existingTrade.direction,
+                assetType: existingTrade.asset_type,
+                stopLossPrice: existingTrade.stop_loss_price?.toString() || '',
+                actions,
+            });
+        }
+    }, [existingTrade]);  // This will run whenever existingTrade changes
+
 
     const [selectedStrategy, setSelectedStrategy] = useState<STRATEGIES | undefined>(
         existingTrade?.strategy as STRATEGIES || undefined
@@ -154,6 +179,34 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
         }));
     };
 
+    const fetchHighLowPrices = async (ticker: string, entryDate: Date, exitDate: Date) => {
+        try {
+            const response = await fetch('https://script.google.com/macros/s/AKfycbyehfxdfnSYpStqu9akTdp6NNBfRer7HFUjwCaS-SbiVptT3hviadPRuSidpQR_YYYwLQ/exec', {
+                method: 'POST',
+                body: JSON.stringify({
+                    ticker,
+                    entryDate: entryDate.toISOString(),
+                    exitDate: exitDate.toISOString()
+                }),
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+    
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+    
+            const data = await response.json();
+            return {
+                minPrice: data.minPrice, // Adjust based on your API response structure
+                maxPrice: data.maxPrice, // Adjust based on your API response structure
+            };
+        } catch (error) {
+            console.error('Error fetching high and low prices:', error);
+            return null; // Return null or handle the error as needed
+        }
+    };
 
     const handleSubmit = async () => { 
         setLoading(true); 
@@ -187,12 +240,16 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             let stopLoss66Percent = 0;
             let fullStopLoss = 0;
 
+            let mae = 0;
+            let mfe = 0;
+
             let lastSellAction = null; // Track the last sell action
 
             // Format actions into arrays
             const action_types = tradeDetails.actions.map(a => a.type);
             const action_datetimes = tradeDetails.actions.map(a => a.date.toISOString());
             const action_prices = tradeDetails.actions.map(a => parseFloat(a.price));
+            const action_shares = tradeDetails.actions.map(a => parseFloat(a.shares));
 
             // Calculate shares and validate actions
             for (const action of tradeDetails.actions) {
@@ -235,14 +292,27 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                     lastSellAction = action;
 
                     if (remainingShares === 0) {
-                        exitPrice = parseFloat(action.price);
-                        exitDate = action.date.toISOString();
+                        exitPrice = parseFloat(lastSellAction.price);
+                        exitDate = lastSellAction.date.toISOString();
                     }
                 }
             }
 
             riskAmount = totalShares * entryPrice * openRisk;
             trimmedPercentage = ((totalShares - remainingShares) / totalShares) * 100;
+
+            const status = remainingShares > 0 ? TRADE_STATUS.OPEN : TRADE_STATUS.CLOSED;
+
+            // Fetch high and low prices only if the trade is closed, for mae and mfe computations
+            if (status === TRADE_STATUS.CLOSED) {
+                const prices = await fetchHighLowPrices(tradeDetails.ticker, new Date(tradeDetails.actions[0].date), new Date(exitDate));
+                if (prices) {
+                    const { minPrice, maxPrice } = prices;
+                    // Calculate MAE and MFE
+                    mae = entryPrice - minPrice; // Calculate MAE
+                    mfe = maxPrice - entryPrice; // Calculate MFE
+                }
+            }
 
             // Create or update the trade record
             const tradeRecord = {
@@ -251,7 +321,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 direction: tradeDetails.direction,
                 asset_type: tradeDetails.assetType,
                 stop_loss_price: tradeDetails.stopLossPrice,
-                status: totalShares > 0 ? TRADE_STATUS.OPEN : TRADE_STATUS.CLOSED,
+                status: status,
                 created_at: new Date().toISOString(),
                 entry_datetime: tradeDetails.actions[0].date.toISOString(),
                 entry_price: entryPrice,
@@ -273,13 +343,13 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 action_types,
                 action_datetimes,
                 action_prices,
+                action_shares,
                 notes,
-                mistakes
+                mistakes,
+                mae,
+                mfe
             }; 
 
-            console.log("Mistakes:", mistakes);
-            console.log("Notes:", notes);
-            
             let result;
             if (existingTrade) {
                 // Update existing trade

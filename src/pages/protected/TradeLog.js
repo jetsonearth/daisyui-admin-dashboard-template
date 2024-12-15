@@ -19,39 +19,61 @@ function TradeLog(){
     const [lastUpdate, setLastUpdate] = useState(null)
     const [isManualRefreshing, setIsManualRefreshing] = useState(false);
 
-    // Function to handle opening the modal
-    const openModal = (trade = null) => {
-        setSelectedTrade(trade);
+    // Fetch additional trade info when selectedTrade changes
+    useEffect(() => {
+        if (selectedTrade) {
+            console.log('In Tradelog, 😎, Fetching selected trade info for', selectedTrade);
+        }
+    }, [selectedTrade]);
+
+    const fetchTradeDetails = async (tradeId) => {
+        try {
+            const { data: trade, error } = await supabase
+                .from('trades')
+                .select(`
+                    *,
+                    action_types,
+                    action_datetimes,
+                    action_prices,
+                    action_shares,
+                    notes,
+                    mistakes
+                `)
+                .eq('id', tradeId)
+                .single();
+
+            if (error) {
+                console.error('Error fetching trade details:', error);
+                toast.error('Failed to fetch trade details');
+                return;
+            }
+
+            console.log('Fetched trade details:', trade);
+            setSelectedTrade(trade);
+            setIsModalOpen(true);
+        } catch (error) {
+            console.error('Error fetching trade details:', error);
+            toast.error('Failed to fetch trade details');
+        }
+    };
+
+    const handleTradeClick = (tradeId) => {
+        console.log("Fetching trade with ID:", tradeId);
+        fetchTradeDetails(tradeId);
+    };
+
+    // Function to open modal for new trade
+    const openNewTradeModal = () => {
+        setSelectedTrade(null);
         setIsModalOpen(true);
     };
 
     // Function to handle closing the modal
     const closeModal = () => {
-        setSelectedTrade(null);
         setIsModalOpen(false);
+        setSelectedTrade(null);
     };
 
-    // Function to handle trade click
-    const handleTradeClick = async (tradeId) => {
-        console.log("Fetching trade with ID:", tradeId); // Log the trade ID being fetched
-
-        const { data: trade, error } = await supabase
-            .from('trades')
-            .select('*') // Adjust to fetch the necessary fields
-            .eq('id', tradeId)
-            .single();
-
-        if (error) {
-            toast.error('Failed to fetch trade details');
-            console.error("Error fetching trade:", error); // Log the error for debugging
-            return;
-        }
-
-        // Open the modal with the fetched trade data
-        openModal(trade);
-    };
-
-    // Keep your existing helper functions
     const safeToFixed = (number, decimals = 2) => {
         if (number === undefined || number === null) return '0.00';
         return Number(number).toFixed(decimals);
@@ -235,7 +257,7 @@ function TradeLog(){
                 <div className="flex flex-col">
                 <div className="flex items-center gap-6 mb-5">
                         <button 
-                            onClick={() => openModal()} 
+                            onClick={openNewTradeModal} 
                             className="btn btn-secondary"
                         >
                             🌟 Log Historical Trades
@@ -552,6 +574,9 @@ function TradeLog(){
                 />
             </TitleCard>
         </div>
+
+
+
     );
 };
 

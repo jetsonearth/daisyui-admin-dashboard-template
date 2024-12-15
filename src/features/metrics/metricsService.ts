@@ -402,16 +402,10 @@ export class MetricsService {
             totalRealizedPnL, 
             totalUnrealizedPnL 
         } = await this.calculateCurrentCapital(trades, startingCapital);
-
-        console.log("🚀 Inside PortfolioMetric Computations - Current Capital:", currentCapital);
-        console.log("🚀 Total Realized PnL:", totalRealizedPnL);
     
         // Calculate metrics
         const performanceMetrics = this.calculateTradePerformanceMetrics(trades);
         const exposureMetrics = await this.calculateExposureMetrics(trades, currentCapital);
-
-        console.log("🚀 Inside PortfolioMetric Computations, but after - Current Capital:", currentCapital);
-
     
         // Placeholder for streak and drawdown metrics
         const streakMetrics: StreakMetrics = {

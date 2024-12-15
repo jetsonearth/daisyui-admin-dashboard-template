@@ -17,9 +17,7 @@ function Profile(){
     useEffect(() => {
         const fetchUserSettings = async () => {
             const startTime = performance.now();
-            try {
-                console.time('fetchUserSettings');
-                
+            try {                
                 const settings = await userSettingsService.getUserSettings();
                 
                 // Set current balance

@@ -57,6 +57,7 @@ export interface Trade {
     action_types?: string[];
     action_datetimes?: string[];
     action_prices?: number[];
+    action_shares?: number[];
 
     // Documenting notes
     notes?: string[];

@@ -27,6 +27,7 @@ function PortfolioOverview(){
     const [activeTrades, setActiveTrades] = useState([])
     const [currentDate] = useState(dayjs().format('MMMM D, YYYY'))
     const [selectedTimeFilter, setSelectedTimeFilter] = useState(timeFilters[0])
+    const [selectedTradeDetails, setSelectedTradeDetails] = useState(null);  // Add this line
     const [isAutoRefresh, setIsAutoRefresh] = useState(true)
     const [lastUpdate, setLastUpdate] = useState(null)
     const [startingCapital, setStartingCapital] = useState(0)
@@ -35,14 +36,54 @@ function PortfolioOverview(){
     const [selectedTrade, setSelectedTrade] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
-    const handleTradeClick = (trade) => {
-        setSelectedTrade(trade);
-        setIsModalOpen(true);
+    // Modified useEffect
+    useEffect(() => {
+        if (selectedTrade) {
+            console.log('In Overview, Fetching selected trade info for', selectedTrade);
+            fetchTradeDetails(selectedTrade.id);
+        }
+    }, [selectedTrade?.id]); // Only depend on the ID
+    
+    const fetchTradeDetails = async (tradeId) => {
+        try {
+            const { data: trade, error } = await supabase
+                .from('trades')
+                .select(`
+                    *,
+                    action_types,
+                    action_datetimes,
+                    action_prices,
+                    action_shares,
+                    notes,
+                    mistakes
+                `)
+                .eq('id', tradeId)
+                .single();
+    
+            if (error) {
+                console.error('Error fetching trade details:', error);
+                toast.error('Failed to fetch trade details');
+                return;
+            }
+    
+            console.log('Fetched trade details:', trade);
+            setSelectedTradeDetails(trade);
+            setIsModalOpen(true); // Move this here to avoid flicker
+        } catch (error) {
+            console.error('Error fetching trade details:', error);
+            toast.error('Failed to fetch trade details');
+        }
     };
-
+    
+    // Function to handle closing the modal
     const closeModal = () => {
         setIsModalOpen(false);
         setSelectedTrade(null);
+    };
+
+    const handleTradeClick = (trade) => {
+        console.log("Fetching trade with ID:", trade.id);
+        fetchTradeDetails(trade.id);
     };
 
     const safeToFixed = (number, decimals = 2) => {
@@ -687,14 +728,11 @@ function PortfolioOverview(){
                 </div>
             </div>
 
-                    <TradeHistoryModal 
+                    <TradeHistoryModal
                         isOpen={isModalOpen}
                         onClose={closeModal}
-                        onTradeAdded={() => {
-                            closeModal();
-                            fetchActiveTrades(); // Make sure this function exists to refresh the active trades
-                        }}
-                        existingTrade={selectedTrade}
+                        onTradeAdded={fetchActiveTrades}
+                        existingTrade={selectedTradeDetails}  // Pass the details instead
                     />
                 </TitleCard>
             </div>
