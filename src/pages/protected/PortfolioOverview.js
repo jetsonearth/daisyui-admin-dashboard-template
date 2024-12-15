@@ -473,9 +473,6 @@ function PortfolioOverview(){
                         </div>
                     </div>
 
-
-
-
                     {/* Average Loss, New and Open Exposure */}
                     <div className="grid grid-cols-3 gap-4">
 
@@ -588,7 +585,7 @@ function PortfolioOverview(){
                         <tbody>
                             {activeTrades.length === 0 ? (
                                 <tr>
-                                    <td colSpan="14" className="text-center text-gray-500">No active positions</td>
+                                    <td colSpan="14" className="text-center flex items-center text-gray-500">No active positions</td>
                                 </tr>
                             ) : (
                                 activeTrades.map((trade, index) => {
@@ -596,6 +593,8 @@ function PortfolioOverview(){
                                     const unrealizedPnL = trade.unrealized_pnl || 0;
                                     const realizedPnL = trade.realized_pnl || 0;
                                     const isProfitable = (totalCost + unrealizedPnL + realizedPnL) > totalCost;
+
+                                    console.log("RRR not showing hmmmmmmm: ", trade.risk_reward_ratio);
 
                                     const getPortfolioWeightClass = (weight) => {
                                         if (weight > 30) {

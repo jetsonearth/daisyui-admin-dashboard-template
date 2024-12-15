@@ -179,32 +179,38 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
         }));
     };
 
+    // Update the fetchHighLowPrices function to accept parameters
     const fetchHighLowPrices = async (ticker: string, entryDate: Date, exitDate: Date) => {
         try {
-            const response = await fetch('https://script.google.com/macros/s/AKfycbyehfxdfnSYpStqu9akTdp6NNBfRer7HFUjwCaS-SbiVptT3hviadPRuSidpQR_YYYwLQ/exec', {
+            // Log the data we're about to send
+            console.log('Sending data:', {
+                ticker,
+                entryDate: entryDate.toISOString(),
+                exitDate: exitDate.toISOString()
+            });
+    
+            const response = await fetch('https://script.google.com/macros/s/AKfycbwCnlStDT4DbWWXefhqX5aJ60IX9vsPRSE6Ai7YsO6f5Z8q5CwM62VzVgBzynqu_CpD/exec', {
                 method: 'POST',
+                headers: {
+                    'Content-Type': 'text/plain;charset=utf-8',
+                },
                 body: JSON.stringify({
                     ticker,
                     entryDate: entryDate.toISOString(),
                     exitDate: exitDate.toISOString()
                 }),
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                redirect: 'follow'
             });
     
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                throw new Error(`HTTP error! Status: ${response.status}`);
             }
     
             const data = await response.json();
-            return {
-                minPrice: data.minPrice, // Adjust based on your API response structure
-                maxPrice: data.maxPrice, // Adjust based on your API response structure
-            };
+            console.log('Received data:', data); // Log the received data
+            return data;
         } catch (error) {
             console.error('Error fetching high and low prices:', error);
-            return null; // Return null or handle the error as needed
         }
     };
 
@@ -311,6 +317,8 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                     // Calculate MAE and MFE
                     mae = entryPrice - minPrice; // Calculate MAE
                     mfe = maxPrice - entryPrice; // Calculate MFE
+                    console.log("MAE:", mae);
+                    console.log("MFE:", mfe);   
                 }
             }
 
