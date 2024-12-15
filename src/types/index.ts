@@ -52,6 +52,11 @@ export interface Trade {
     // Timestamps
     created_at?: string;
     updated_at?: string;
+
+    // Documenting actions
+    action_types?: string[];
+    action_datetimes?: string[];
+    action_prices?: number[];
   }
 
 
@@ -82,8 +87,9 @@ export enum STRATEGIES {
 export const SETUPS = [
     'EP', 'VCP', 'Inside Day', 'Inside Week', 'HTF', 
     'Flat Base', 'Bull Flag', 'PB', 'IPO Base', 
-    'Triangle', 'Falling Wedge', 'Double Inside Week',
-    'Double Inside Day', 'HVE', 'HVY', 'HVQ', 'Rocket Base'
+    'Ascending Triangle', 'Symmetric Triangle', 'Falling Wedge', 
+    'Double Inside Week', 'Double Inside Day', 'HVE', 'HVY', 'HVQ', 
+    'Rocket Base', 'Power Earning Gap'
 ] as const;
 
 // Utility function

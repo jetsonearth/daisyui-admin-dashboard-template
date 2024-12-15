@@ -5,10 +5,11 @@ import { toast } from 'react-toastify'
 import TitleCard from '../../components/Cards/TitleCard'
 import dayjs from 'dayjs'
 import { metricsService } from '../../features/metrics/metricsService';
-import { capitalService } from '../../services/capitalService';
 import { closeTrade } from '../../features/trades/tradesSlice'
 import { calculatePortfolioMetrics } from '../../features/metrics/metricsService'
 import { userSettingsService } from '../../services/userSettingsService'
+import TradeHistoryModal from '../../features/user/components/TradeHistory/TradeHistoryModal';
+import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from '../../types/index'; 
 
 // Time filter buttons configuration
 const timeFilters = [
@@ -23,6 +24,7 @@ function PortfolioOverview(){
     const dispatch = useDispatch()
     const allTrades = useSelector(state => state.trades.trades)
     const [trades, setTrades] = useState([])
+    const [activeTrades, setActiveTrades] = useState([])
     const [currentDate] = useState(dayjs().format('MMMM D, YYYY'))
     const [selectedTimeFilter, setSelectedTimeFilter] = useState(timeFilters[0])
     const [isAutoRefresh, setIsAutoRefresh] = useState(true)
@@ -30,72 +32,42 @@ function PortfolioOverview(){
     const [startingCapital, setStartingCapital] = useState(0)
     const [currentCapital, setCurrentCapital] = useState(0);
     
-    // Calculate metrics
-    const calculateMetrics = () => {
-        const metrics = calculatePortfolioMetrics(allTrades, startingCapital)
-        console.log("starting capital:", startingCapital);
-        console.log("current capital:", currentCapital);
-        
-        // Override currentCapital with the state value
-        metrics.currentCapital = currentCapital;
-        
-        return metrics
-    }
+    const [selectedTrade, setSelectedTrade] = useState(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
-    const metrics = calculateMetrics()
+    const handleTradeClick = (trade) => {
+        setSelectedTrade(trade);
+        setIsModalOpen(true);
+    };
 
-    // Fetch active trades from Supabase
-    useEffect(() => {
-        const fetchActiveTrades = async () => {
-            try {
-                const { data: { user }, error: userError } = await supabase.auth.getUser()
-                
-                if (userError || !user) {
-                    console.error('Authentication error:', userError)
-                    toast.error('Authentication required')
-                    return
-                }
+    const closeModal = () => {
+        setIsModalOpen(false);
+        setSelectedTrade(null);
+    };
 
-                console.log('Authenticated User:', user.id)
+    const safeToFixed = (number, decimals = 2) => {
+        if (number === undefined || number === null) return '0.00';
+        return Number(number).toFixed(decimals);
+    };
 
-                const { data, error } = await supabase
-                    .from('trades')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .or(`status.eq.Open`)
-                    .order('entry_datetime', { ascending: false });
+    const formatCurrency = (amount) => {
+        if (amount === undefined || amount === null) return '$0.00';
+        return `$${safeToFixed(amount)}`;
+    };
 
-                if (error) {
-                    console.error('Error fetching active trades:', error)
-                    toast.error('Failed to fetch active trades')
-                    return
-                }
-
-                console.log('Raw Trades Fetched:', {
-                    count: data.length,
-                    trades: data.map(trade => ({
-                        id: trade.id,
-                        ticker: trade.ticker,
-                        status: trade.status,
-                        shares_remaining: trade.shares_remaining,
-                        entry_date: dayjs(trade.entry_datetime).format('YYYY-MM-DD'), // Extract just the date
-                        full_entry_datetime: trade.entry_datetime
-                    }))
-                });
-
-                if (data.length === 0) {
-                    toast.info('No active trades found')
-                }
-
-                setTrades(data || [])
-            } catch (error) {
-                console.error('Unexpected error fetching active trades:', error)
-                toast.error('Unexpected error occurred')
-            }
-        }
-
-        fetchActiveTrades()
-    }, [])
+    const TitleCard = ({ title, headerContent, children, topMargin }) => {
+        return (
+            <div className={`card w-full bg-base-100 shadow-lg ${topMargin}`}>
+                <div className="card-body">
+                    <div className="flex justify-between items-center border-b border-base-300 pb-2">
+                        <h2 className="card-title">{title}</h2>
+                        {headerContent}
+                    </div>
+                    {children}
+                </div>
+            </div>
+        );
+    };
 
     // Fetch starting capital from user settings
     useEffect(() => {
@@ -112,22 +84,69 @@ function PortfolioOverview(){
     }, [])
 
 
-    useEffect(() => {
-        const fetchCurrentCapital = async () => {
-            try {
-                // Change this line to use capitalService
-                const capital = await capitalService.getCurrentCapital();
-                setCurrentCapital(capital);
-                
-                // Optional: track capital change if needed
-                await capitalService.trackCapitalChange(allTrades);
-            } catch (error) {
-                console.error('Failed to fetch current capital:', error);
+    // Calculate metrics
+    const calculateMetrics = async () => {
+        const metrics = await calculatePortfolioMetrics(allTrades, startingCapital)
+        
+        // Override currentCapital with the state value
+        setCurrentCapital(metrics.currentCapital); // Update the state if needed
+        return metrics
+    }
+ 
+    const metrics = calculateMetrics()
+
+    // Fetch active trades from Supabase
+    const fetchActiveTrades = async () => {
+        try {
+            const { data: { user }, error: userError } = await supabase.auth.getUser()
+            
+            if (userError || !user) {
+                console.error('Authentication error:', userError)
+                toast.error('Authentication required')
+                return
             }
+
+            console.log('Authenticated User:', user.id)
+
+            const { data, error } = await supabase
+                .from('trades')
+                .select('*')
+                .eq('user_id', user.id)
+                .or(`status.eq.Open`)
+                .order('entry_datetime', { ascending: false });
+
+            if (error) {
+                console.error('Error fetching active trades:', error)
+                toast.error('Failed to fetch active trades')
+                return
+            }
+
+            console.log('Raw Trades Fetched:', {
+                count: data.length,
+                trades: data.map(trade => ({
+                    id: trade.id,
+                    ticker: trade.ticker,
+                    status: trade.status,
+                    shares_remaining: trade.shares_remaining,
+                    entry_date: dayjs(trade.entry_datetime).format('YYYY-MM-DD'), // Extract just the date
+                    full_entry_datetime: trade.entry_datetime
+                }))
+            });
+
+            if (data.length === 0) {
+                toast.info('No active trades found')
+            }
+
+            setActiveTrades(data || [])
+        } catch (error) {
+            console.error('Unexpected error fetching active trades:', error)
+            toast.error('Unexpected error occurred')
         }
-    
-        fetchCurrentCapital();
-    }, [allTrades, startingCapital]);
+    };
+
+    useEffect(() => {
+        fetchActiveTrades();
+    }, []);
 
     // Function to handle trade closure
     const handleCloseTrade = (trade) => {
@@ -292,7 +311,7 @@ function PortfolioOverview(){
                     <div className="flex justify-between items-center mb-4">
                         <h2 className="text-lg font-bold">Equity Curve</h2>
                         <div className="text-sm text-gray-500 bg-base-200 px-3 py-1 rounded-full">
-                            Starting Capital: <span className="font-semibold text-primary">${startingCapital.toLocaleString()}</span>
+                            Starting Capital: <span className="font-semibold text-gray-400">${startingCapital.toLocaleString()}</span>
                         </div>
                     </div>
                     <div className="h-[300px] flex items-center justify-center text-gray-500">
@@ -471,85 +490,213 @@ function PortfolioOverview(){
                     </div>
                 </div>
             </div>
+            
 
             {/* Active Trades */}
             <div className="mt-6 max-h-[800px]">  
-                <div className="flex items-center justify-between mb-4">
-                    <div className="text-lg font-bold">Active Trades</div>
-                    <div className="flex items-center gap-4">
-                        <button 
-                            onClick={() => setIsAutoRefresh(!isAutoRefresh)}
-                            className={`btn btn-sm ${isAutoRefresh ? 'btn-error' : 'btn-success'}`}
-                        >
-                            {isAutoRefresh ? 'Stop Auto Update' : 'Start Auto Update'}
-                        </button>
-                        <button 
-                            onClick={updateMarketData}
-                            className="btn btn-sm btn-primary"
-                        >
-                            Update Prices
-                        </button>
-                        {lastUpdate && <span className="text-sm text-gray-500">Last update: {lastUpdate}</span>}
-                    </div>
+    <TitleCard 
+        title={
+            <div className="w-full flex justify-between items-center gap-4">
+                <h2 className="text-xl top-2 font-semibold items-center gap-4">Active Trades</h2>
+                <div className="absolute top-5 right-4 flex items-center gap-4">
+                    <button 
+                        onClick={() => setIsAutoRefresh(!isAutoRefresh)}
+                        className={`btn btn-sm ${isAutoRefresh ? 'btn-error' : 'btn-success'}`}
+                    >
+                        {isAutoRefresh ? 'Stop Auto Update' : 'Start Auto Update'}
+                    </button>
+                    <button 
+                        onClick={updateMarketData}
+                        className="btn btn-sm btn-primary"
+                    >
+                        Update Prices
+                    </button>
+                    {lastUpdate && <span className="text-sm text-gray-500">Last update: {lastUpdate}</span>}
                 </div>
-                <div className="bg-base-100 rounded-lg shadow">
-                    <table className="table w-full">
-                        <thead>
-                            <tr>
-                                <th>Ticker</th>
-                                <th>Entry Date</th>
-                                <th>Strategy</th>
-                                <th>Avg Cost</th>
-                                <th>Current Price</th>
-                                <th>Unrealized PnL</th>
-                                <th>Realized PnL</th>
-                                <th>% Trimmed</th>
-                                <th>Open Risk</th>
-                                <th>Position Weight</th>
-                                <th>Actions</th>
+            </div>
+        } 
+        topMargin="mt-2"
+    >
+        <div>
+            {/* Active Trades Table */}
+            <div className="bg-base-100 rounded-lg shadow">
+                <table className="table w-full">
+                    <thead>
+                        <tr>
+                            <th className="text-center whitespace-nowrap">Ticker</th>
+                            <th className="text-center whitespace-nowrap">Direction</th>
+                            <th className="text-center whitespace-nowrap">Entry Date</th>
+                            <th className="text-center whitespace-nowrap">Avg Cost</th>
+                            <th className="text-center whitespace-nowrap">Current Price</th>
+                            <th className="text-center whitespace-nowrap">Position Weight</th>
+                            <th className="text-center whitespace-nowrap">Trimmed %</th>
+                            <th className="text-center whitespace-nowrap">Unrealized PnL%</th>
+                            <th className="text-center whitespace-nowrap">Realized PnL%</th>
+                            <th className="text-center whitespace-nowrap">RRR</th>
+                            <th className="text-center whitespace-nowrap">Open Risk</th>
+                            <th className="text-center whitespace-nowrap">Portfolio Heat</th>
+                            <th className="text-center whitespace-nowrap">Portfolio Impact</th>
+                            <th className="text-center whitespace-nowrap">MAE</th>
+                            <th className="text-center whitespace-nowrap">MFE</th>
+                            <th className="text-center whitespace-nowrap">Strategy</th>
+                            <th className="text-center whitespace-nowrap">33% SL</th>
+                            <th className="text-center whitespace-nowrap">66% SL</th>
+                            <th className="text-center whitespace-nowrap">Final SL</th>
                             </tr>
                         </thead>
                         <tbody>
-                        {trades.length === 0 ? (
-                            <tr>
-                                <td colSpan="10" className="text-center text-gray-500">No active positions</td>
-                            </tr>
-                        ) : (
-                            trades.map((trade, index) => (
-                                <tr key={index} className="hover:bg-base-200">
-                                    <td className="font-medium">
-                                        <div className="flex items-center">
-                                            {trade.ticker}
-                                            {/* <span className="ml-2 badge badge-sm badge-primary">
-                                                Active
-                                            </span> */}
-                                        </div>
-                                    </td>
-                                    <td>{dayjs(trade.entry_datetime).format('YYYY-MM-DD')}</td>
-                                    <td>{trade.strategy}</td>
-                                    <td>${trade.entry_price?.toFixed(2) || 'N/A'}</td>
-                                    <td>${trade.last_price?.toFixed(2) || 'N/A'}</td>
-                                    <td>${trade.unrealized_pnl?.toFixed(2) || '0.00'}</td>
-                                    <td>${trade.realized_pnl?.toFixed(2) || '0.00'}</td>
-                                    <td>{trade.trimmed_percentage?.toFixed(2) || '0'}%</td>
-                                    <td>{trade.open_risk?.toFixed(2) || 'N/A'}%</td>
-                                    <td>{trade.portfolio_weight?.toFixed(2) || 'N/A'}%</td>
-                                    <td>
-                                        <div className="dropdown dropdown-end">
-                                            <label tabIndex={0} className="btn btn-ghost btn-xs">•••</label>
-                                            <ul tabIndex={0} className="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52">
-                                                <li><a onClick={() => handleCloseTrade(trade)}>Close Position</a></li>
-                                                <li><a onClick={() => handleCloseTrade({ ...trade, shares: trade.shares_remaining * 0.5 })}>Close Half</a></li>
-                                                <li><a onClick={() => handleCloseTrade({ ...trade, shares: trade.shares_remaining * 0.33 })}>Close Third</a></li>
-                                            </ul>
-                                        </div>
-                                    </td>
+                            {activeTrades.length === 0 ? (
+                                <tr>
+                                    <td colSpan="14" className="text-center text-gray-500">No active positions</td>
                                 </tr>
-                            ))
-                        )}
+                            ) : (
+                                activeTrades.map((trade, index) => {
+                                    const totalCost = trade.total_cost;
+                                    const unrealizedPnL = trade.unrealized_pnl || 0;
+                                    const realizedPnL = trade.realized_pnl || 0;
+                                    const isProfitable = (totalCost + unrealizedPnL + realizedPnL) > totalCost;
+
+                                    const getPortfolioWeightClass = (weight) => {
+                                        if (weight > 30) {
+                                            return 'bg-yellow-300'; // Yellow background for weights over 30%
+                                        }
+                                        return ''; // Default class for other weights
+                                    };
+                                    
+                                    return (
+                                        <tr 
+                                            key={index} 
+                                            className="hover:bg-base-200 cursor-pointer" 
+                                            onClick={() => handleTradeClick(trade)}
+                                        >
+                                            <td className="text-center font-medium">
+                                                {trade.ticker || 'N/A'}
+                                                <span 
+                                                    className={`indicator ${isProfitable ? 'bg-green-500' : 'bg-red-500'}`}
+                                                    style={{ 
+                                                        width: '12px', 
+                                                        height: '12px', 
+                                                        borderRadius: '50%', 
+                                                        display: 'inline-block', 
+                                                        marginLeft: '8px' 
+                                                    }}
+                                                />
+                                            </td>
+                                            <td className="text-center">
+                                                    <span className={`
+                                                        badge badge-pill 
+                                                        ${trade.direction === DIRECTIONS.LONG ? 'bg-emerald-600 text-white' : 'bg-rose-500 text-white'}
+                                                    `}>
+                                                        {trade.direction || 'N/A'}
+                                                    </span>
+                                            </td>
+
+                                            {/* Dates and Numbers */}
+                                            <td className="text-center whitespace-nowrap">
+                                                {trade.entry_datetime ? 
+                                                    new Date(trade.entry_datetime).toISOString().split('T')[0] : ''}
+                                            </td>                                            <td>${trade.entry_price?.toFixed(2) || 'N/A'}</td>
+
+                                            <td className="text-center font-medium">
+                                                    {formatCurrency(trade.last_price)}
+                                            </td>                                            
+                                            
+                                            <td className={`text-center ${getPortfolioWeightClass(trade.portfolio_weight)}`}>
+                                                {safeToFixed(trade.portfolio_weight)}%
+                                            </td>                                      
+                                                                  
+                                            <td className="text-center">
+                                                    {safeToFixed(trade.trimmed_percentage)}%
+                                            </td>                                            
+                                            
+                                            <td className={`
+                                                text-center font-semibold tabular-nums
+                                                ${trade.unrealized_pnl_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}
+                                            `}>
+                                                {trade.unrealized_pnl_percentage > 0 ? '+' : ''}
+                                                {safeToFixed(trade.unrealized_pnl_percentage)}%
+                                            </td>
+                                                
+
+                                            <td className={`
+                                                text-center font-semibold tabular-nums
+                                                ${trade.realized_pnl_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}
+                                            `}>
+                                                {trade.realized_pnl_percentage > 0 ? '+' : ''}
+                                                {safeToFixed(trade.realized_pnl_percentage)}%
+                                            </td>
+
+                                            <td className={`
+                                                    text-center font-semibold tabular-nums
+                                                    ${trade.risk_reward_ratio > 1 ? 'text-emerald-400' : 'text-rose-400'}
+                                                `}>
+                                                    {safeToFixed(trade.risk_reward_ratio, 1)}
+                                            </td>
+
+                                            <td className={`
+                                                    text-center font-semibold tabular-nums
+                                                    ${trade.open_risk > 0 ? 'text-rose-400' : 'text-emerald-400'}
+                                                `}>
+                                                    {trade.open_risk > 0 ? '-' : ''}{safeToFixed(trade.open_risk, 2)}%
+                                            </td>
+
+                                            <td className={`
+                                                text-center font-semibold tabular-nums
+                                                ${trade.portfolio_heat > 0 ? 'text-rose-400' : 'text-emerald-400'}
+                                            `}>
+                                                {trade.portfolio_heat > 0 ? '-' : ''}{safeToFixed(trade.portfolio_heat, 3)}%
+                                            </td>
+
+                                            <td className={`
+                                                text-center font-semibold tabular-nums
+                                                ${trade.portfolio_impact > 0 ? 'text-emerald-400' : 'text-rose-400'}
+                                            `}>
+                                                {trade.portfolio_impact > 0 ? '+' : ''}{safeToFixed(trade.portfolio_impact, 2)}%
+                                            </td>
+
+                                            <td className="text-center font-semibold tabular-nums text-rose-400">
+                                                {safeToFixed(trade.mae, 1)}%
+                                            </td>
+                                            <td className="text-center font-semibold tabular-nums text-emerald-400">
+                                                {safeToFixed(trade.mfe, 1)}%
+                                            </td>
+
+                                            <td className="text-center">
+                                                {trade.strategy ? (
+                                                    <span className="badge badge-pill bg-purple-500 text-white">
+                                                        {trade.strategy}
+                                                    </span>
+                                                ) : 'N/A'}
+                                            </td>
+
+                                            <td className="text-center">
+                                                    {formatCurrency(trade.stop_loss_33_percent)}
+                                            </td>
+                                            <td className="text-center">
+                                                {formatCurrency(trade.stop_loss_66_percent)}
+                                            </td>
+                                            <td className="text-center">
+                                                {formatCurrency(trade.stop_loss_price)}
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+                    <TradeHistoryModal 
+                        isOpen={isModalOpen}
+                        onClose={closeModal}
+                        onTradeAdded={() => {
+                            closeModal();
+                            fetchActiveTrades(); // Make sure this function exists to refresh the active trades
+                        }}
+                        existingTrade={selectedTrade}
+                    />
+                </TitleCard>
             </div>
         </div>
     )

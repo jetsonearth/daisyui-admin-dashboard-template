@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../config/supabaseClient'
 import TitleCard from '../../components/Cards/TitleCard'
-import { TRADE_STATUS, ASSET_TYPES, DIRECTIONS, STRATEGIES } from '../../features/trades/tradeModel'
+import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from '../../types/index'; 
 import { metricsService } from '../../features/metrics/metricsService';
 import { toast } from 'react-toastify'
 import TradeHistoryModal from '../../features/user/components/TradeHistory/TradeHistoryModal'; // Import the modal

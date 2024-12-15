@@ -368,7 +368,7 @@ export class MetricsService {
         if (startingCapital === null) {
             try {
                 const userSettings = await userSettingsService.getUserSettings();
-                startingCapital = userSettings.starting_cash || 13000;
+                startingCapital = userSettings.starting_cash || 25000;
                 
                 log('info', 'Starting capital retrieved', { 
                     startingCapital,
@@ -377,9 +377,9 @@ export class MetricsService {
             } catch (error) {
                 log('warn', 'Failed to retrieve starting capital', {
                     errorMessage: (error as Error).message,
-                    usingDefaultValue: 13000
+                    usingDefaultValue: 25000
                 });
-                startingCapital = 13000;
+                startingCapital = 25000;
             }
         }
     
@@ -402,10 +402,16 @@ export class MetricsService {
             totalRealizedPnL, 
             totalUnrealizedPnL 
         } = await this.calculateCurrentCapital(trades, startingCapital);
+
+        console.log("🚀 Inside PortfolioMetric Computations - Current Capital:", currentCapital);
+        console.log("🚀 Total Realized PnL:", totalRealizedPnL);
     
         // Calculate metrics
         const performanceMetrics = this.calculateTradePerformanceMetrics(trades);
         const exposureMetrics = await this.calculateExposureMetrics(trades, currentCapital);
+
+        console.log("🚀 Inside PortfolioMetric Computations, but after - Current Capital:", currentCapital);
+
     
         // Placeholder for streak and drawdown metrics
         const streakMetrics: StreakMetrics = {

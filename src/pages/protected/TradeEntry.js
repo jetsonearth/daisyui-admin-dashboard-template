@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch } from 'react-redux'; // Import useDispatch hook
 import TitleCard from '../../components/Cards/TitleCard'
-import { STRATEGIES, ASSET_TYPES, DIRECTIONS, TRADE_STATUS } from '../../features/trades/tradeModel'
+import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from '../../types/index'; 
 import PriceLadder from '../../components/PriceLadder'
 import StopLossVisualizer from '../../components/StopLossVisualizer'
 import { marketDataService } from '../../features/marketData/marketDataService'
