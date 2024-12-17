@@ -87,83 +87,75 @@ function TradeLog(){
     // Fetch trades from Supabase
     const fetchTrades = async () => {
         try {
-            const { data: { user }, error: userError } = await supabase.auth.getUser()
+            const { data: { user }, error: userError } = await supabase.auth.getUser();
             
             if (userError || !user) {
-                toast.error('Please log in to view trades')
-                setLoading(false)
-                return
+                toast.error('Please log in to view trades');
+                setLoading(false);
+                return;
             }
-
+    
             const { data, error } = await supabase
                 .from('trades')
                 .select('*')
                 .eq('user_id', user.id)
-                .order('entry_datetime', { ascending: false })
+                .order('entry_datetime', { ascending: false });
+    
+            console.log('Fetched trades:', data); // Debug log
+    
+            if (error) throw error;
+    
+            setTrades(data);
+            console.log('Trades after fetching 🚀:', data); // Log the fetched trades
 
-            console.log('Fetched trades:', data) // Debug log
-
-            if (error) throw error
-
-            setTrades(data)
-            setLoading(false)
+            setLoading(false);
+    
+            // Call updateMarketData after setting trades
+            await updateMarketData(); // Ensure this runs after trades are set
         } catch (err) {
-            console.error('Error fetching trades:', err)
-            toast.error('Failed to load trades')
-            setLoading(false)
+            console.error('Error fetching trades:', err);
+            toast.error('Failed to load trades');
+            setLoading(false);
         }
-    }
+    };
+    
+    // UseEffect to fetch trades on component mount
+    useEffect(() => {
+        fetchTrades(); // Call the fetch function
+    }, []); // Empty dependency array means this runs once on mount
 
-    // Modified updateMarketData to work with Supabase data
+    useEffect(() => {
+        console.log('Updated trades:', trades); // Log the trades after they have been updated
+    }, [trades]); // This effect will run whenever trades change
 
     const updateMarketData = async () => {
         console.log('🔄 Starting market data update. Current trades:', trades.length);
         try {
-            const activeTrades = trades.filter(trade => 
-                trade.status !== TRADE_STATUS.CLOSED
-            );
-    
-            console.log(`🔍 Filtering active trades. Total: ${trades.length}, Active: ${activeTrades.length}`);
-    
+            const allTrades = trades;
+            const activeTrades = allTrades.filter(trade => trade.status !== TRADE_STATUS.CLOSED);
+
+            console.log(`🔍 Filtering active trades. Total: ${allTrades.length}, Active: ${activeTrades.length}`);
+
             if (activeTrades.length === 0) {
                 console.log('🚫 No active trades to update');
-                return;
+                return allTrades;
             }
-    
-            const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(activeTrades);
 
-            console.log('🎯 Updated Trades:', updatedTrades.map(trade => ({
-                ticker: trade.ticker,
-                unrealized_pnl: trade.unrealized_pnl,
-                realized_pnl: trade.realized_pnl,
-                total_shares: trade.total_shares,
-                risk_reward_ratio: trade.risk_reward_ratio,
-                openRisk: trade.open_risk
-            })));
-    
-            // Continue with Supabase update for active trades
-            const currentTimestamp = new Date().toISOString();
+            const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(activeTrades);
             const { data: { user }, error: userError } = await supabase.auth.getUser();
+            
             if (userError) {
                 throw new Error(`Auth error: ${userError.message}`);
             }
-    
-            for (const trade of updatedTrades) {
+
+            // Update all active trades in parallel
+            await Promise.all(updatedTrades.map(async (trade) => {
                 if (trade.status === TRADE_STATUS.CLOSED) {
-                    console.log(`🚫 Skipping Supabase update for closed trade: ${trade.ticker}`);
-                    continue;
+                    return;
                 }
-    
-                console.log(`Trade ${trade.ticker} update details:`, {
-                    unrealized_pnl: trade.unrealized_pnl,
-                    unrealized_pnl_percentage: trade.unrealized_pnl_percentage,
-                    realized_pnl: trade.realized_pnl,
-                    realized_pnl_percentage: trade.realized_pnl_percentage,
-                    total_shares: trade.total_shares,
-                    entry_price: trade.entry_price
-                });
-    
-                const { data, error } = await supabase
+
+                const currentTimestamp = new Date().toISOString();
+                return supabase
                     .from('trades')
                     .update({
                         last_price: trade.last_price,
@@ -181,15 +173,27 @@ function TradeLog(){
                         updated_at: currentTimestamp
                     })
                     .eq('id', trade.id)
-                    .eq('user_id', user.id)
-                    .select();
-    
-                console.log(`Supabase update result for ${trade.ticker}:`, { data, error });
+                    .eq('user_id', user.id);
+            }));
+
+            // Fetch fresh data after updates
+            const { data: freshTrades, error: fetchError } = await supabase
+                .from('trades')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false });
+
+            if (fetchError) {
+                throw new Error(`Failed to fetch updated trades: ${fetchError.message}`);
             }
+
+            return freshTrades || allTrades;
+
         } catch (error) {
             console.error('❌ Full error in updateMarketData:', error);
             console.error('Error message:', error.message);
             console.error('Error stack:', error.stack);
+            return trades;
         }
     };
     
@@ -198,9 +202,8 @@ function TradeLog(){
         let intervalId;
         if (isAutoRefresh) {
             const fetchData = async () => {
-                await updateMarketData(); // Fetch market data
-                const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(trades); // Compute metrics
-                setTrades(updatedTrades); // Update state with new trades
+                const updatedTrades = await updateMarketData(); // Fetch market data
+                setTrades(updatedTrades); // Update state with the new trades
             };
     
             fetchData(); // Initial fetch
@@ -226,11 +229,8 @@ function TradeLog(){
             // Set manual refresh state to true
             setIsManualRefreshing(true);
             
-            // Call update market data
-            await updateMarketData();
-
-            // After updating market data, compute trade-level metrics
-            const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(trades);
+            // Call update market data and get the updated trades
+            const updatedTrades = await updateMarketData(); // Fetch market data and return updated trades
             
             // Update state with the newly computed trades
             setTrades(updatedTrades);
@@ -339,7 +339,7 @@ function TradeLog(){
                                         <th className="text-center whitespace-nowrap">Realized PnL%</th>
                                         <th className="text-center whitespace-nowrap">Realized PnL</th>
                                         <th className="text-center whitespace-nowrap">RRR</th>
-                                        {/* <th className="text-center whitespace-nowrap">Current Price</th> */}
+                                        <th className="text-center whitespace-nowrap">Current Price</th>
                                         <th className="text-center whitespace-nowrap">Strategy</th>
                                         <th className="text-center whitespace-nowrap">Setups</th>
                                         <th className="text-center whitespace-nowrap">33% SL</th>
@@ -422,9 +422,7 @@ function TradeLog(){
                                                 <td className="text-center">
                                                     {formatCurrency(trade.entry_price)}
                                                 </td>
-                                                {/* <td className="text-center font-medium">
-                                                    {formatCurrency(trade.last_price)}
-                                                </td> */}
+
                                                 {/* PnL and Metrics */}
                                                 <td className={`
                                                     text-center font-semibold tabular-nums
@@ -466,6 +464,9 @@ function TradeLog(){
                                                     {safeToFixed(trade.risk_reward_ratio, 1)}
                                                 </td>
 
+                                                <td className="text-center font-medium">
+                                                    {formatCurrency(trade.last_price)}
+                                                </td>
 
                                                 {/* Strategy and Setups */}
                                                 <td className="text-center">

@@ -127,6 +127,12 @@ function TradePlanner() {
         stopLossPercent: 0
     })
 
+    // Initialize action arrays
+    const [actionTypes, setActionTypes] = useState([]);
+    const [actionDatetimes, setActionDatetimes] = useState([]);
+    const [actionPrices, setActionPrices] = useState([]);
+    const [actionShares, setActionShares] = useState([]);
+
     const calculateResults = async () => {
         const {
             entryPrice,
@@ -217,6 +223,7 @@ function TradePlanner() {
     
         // Calculate position sizing based on risk
         const riskAmount = accountSize * portfolioHeat
+        console.log('Risk Amount:', riskAmount)
 
         // 3-Tiered Stop-Loss Risk Calculation
         const fullStopLoss = ((price - fullStopPrice) / price) * 100
@@ -277,7 +284,8 @@ function TradePlanner() {
             atrStopPrice,
             lodStopPrice,
             percentStopPrice: parseFloat(percentStopPrice.toFixed(2)),
-            stopLossPercent: parseFloat(stopLossPercent.toFixed(2))
+            stopLossPercent: parseFloat(stopLossPercent.toFixed(2)),
+            riskAmount
         })
     }
 
@@ -292,7 +300,7 @@ function TradePlanner() {
         // Validation Checks
         const errors = [];
 
-        console.log("🔍 Starting Trade Submission Validation");
+        console.log("🔍 ------------ Starting Trade Submission Validation ------------- ");
         console.log("Current Inputs:", inputs);
         console.log("Current Results:", results);
 
@@ -335,16 +343,16 @@ function TradePlanner() {
 
         try {
             // Step 2: Authenticate User
-            console.log("🔐 Checking User Authentication");
+            // console.log("🔐 Checking User Authentication");
             const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-            console.log("📦 Current Session:", session);
+            // console.log("📦 Current Session:", session);
             
             const { data: { user }, error: userError } = await supabase.auth.getUser()
-            console.log("👤 Current User:", user);
+            // console.log("👤 Current User:", user);
 
-            // Add these debugging lines
-            console.log('Supabase object:', supabase)
-            console.log('Supabase auth methods:', Object.keys(supabase.auth))
+            // // Add these debugging lines
+            // console.log('Supabase object:', supabase)
+            // console.log('Supabase auth methods:', Object.keys(supabase.auth))
             
             // Check if user method exists
             if (typeof supabase.auth.user === 'function') {
@@ -363,7 +371,14 @@ function TradePlanner() {
             }
 
             // Step 3: Prepare Trade Object
-            console.log("📝 Preparing Trade Object");
+            console.log("-------- 📝 Inside TradeEntry form, Preparing Trade Object -------- ");
+
+            // Prepare the action arrays
+            const entry_price = parseFloat(inputs.entryPrice)
+            const action_types = ['BUY']; // Action type is always 'BUY'
+            const action_prices = [entry_price]; // Entry price
+            const action_datetimes = [new Date().toISOString()]; // Current date
+            const action_shares = [results.positionSize]; // Total shares
 
             const newTrade = {
                 trade_id: `${inputs.ticker}-${new Date().toISOString().split('T')[0]}-${inputs.direction}`,
@@ -374,7 +389,7 @@ function TradePlanner() {
                 total_shares: results.positionSize,
                 total_cost: results.totalCost,
                 remaining_shares: results.positionSize,
-                entry_price: parseFloat(inputs.entryPrice),
+                entry_price: entry_price,
                 last_price: parseFloat(inputs.entryPrice),
                 
                 // Optional fields with defaults
@@ -398,9 +413,15 @@ function TradePlanner() {
                 portfolio_heat: results.portfolioHeat,
                 portfolio_impact: 0,
                 trimmed_percentage: 0,
-                
                 created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
+                updated_at: new Date().toISOString(),
+                risk_amount: results.riskAmount,
+
+                // Add action arrays
+                action_types: action_types,
+                action_datetimes: action_datetimes,
+                action_prices: action_prices,
+                action_shares: action_shares,
             }
 
             console.log("🚀 Prepared Trade Object:", newTrade);
@@ -410,15 +431,15 @@ function TradePlanner() {
                 openRisk: results.openRisk
             });
 
-            console.log('Detailed Open Risk Breakdown:', {
-                fullStopLoss: ((parseFloat(inputs.entryPrice) - results.fullStopPrice) / parseFloat(inputs.entryPrice)) * 100,
-                stop33Loss: ((parseFloat(inputs.entryPrice) - results.stop33) / parseFloat(inputs.entryPrice)) * 100,
-                stop66Loss: ((parseFloat(inputs.entryPrice) - results.stop66) / parseFloat(inputs.entryPrice)) * 100,
-                calculatedOpenRisk: results.openRisk
-            });
+            // console.log('Detailed Open Risk Breakdown:', {
+            //     fullStopLoss: ((parseFloat(inputs.entryPrice) - results.fullStopPrice) / parseFloat(inputs.entryPrice)) * 100,
+            //     stop33Loss: ((parseFloat(inputs.entryPrice) - results.stop33) / parseFloat(inputs.entryPrice)) * 100,
+            //     stop66Loss: ((parseFloat(inputs.entryPrice) - results.stop66) / parseFloat(inputs.entryPrice)) * 100,
+            //     calculatedOpenRisk: results.openRisk
+            // });
 
             // Supabase insertion
-            console.log("💾 Inserting Trade into Supabase");
+            console.log("------------ 💾 Inside TradeEntry, Inserting Trade into Supabase -----------");
             const { data, error } = await supabase
                 .from('trades')
                 .insert(newTrade)
@@ -432,14 +453,14 @@ function TradePlanner() {
             console.log("✅ Trade Successfully Inserted:", data);
 
             // Success Toast
-            toast.success('Trade successfully logged!', {
-                position: "top-right",
-                autoClose: 3000,
-                hideProgressBar: false,
-                closeOnClick: true,
-                pauseOnHover: true,
-                draggable: true
-            })
+            // toast.success('Trade successfully logged!', {
+            //     position: "top-right",
+            //     autoClose: 3000,
+            //     hideProgressBar: false,
+            //     closeOnClick: true,
+            //     pauseOnHover: true,
+            //     draggable: true
+            // })
 
             // Navigate to trade log
             navigate('/app/trades')

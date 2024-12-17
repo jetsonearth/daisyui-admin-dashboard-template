@@ -557,7 +557,7 @@ function PortfolioOverview(){
     >
         <div>
             {/* Active Trades Table */}
-            <div className="bg-base-100 rounded-lg shadow">
+            <div className="overflow-x-auto bg-base-100 rounded-lg shadow">
                 <table className="table w-full">
                     <thead>
                         <tr>
@@ -594,11 +594,9 @@ function PortfolioOverview(){
                                     const realizedPnL = trade.realized_pnl || 0;
                                     const isProfitable = (totalCost + unrealizedPnL + realizedPnL) > totalCost;
 
-                                    console.log("RRR not showing hmmmmmmm: ", trade.risk_reward_ratio);
-
                                     const getPortfolioWeightClass = (weight) => {
                                         if (weight > 30) {
-                                            return 'bg-yellow-300'; // Yellow background for weights over 30%
+                                            return 'text-rose-400';
                                         }
                                         return ''; // Default class for other weights
                                     };

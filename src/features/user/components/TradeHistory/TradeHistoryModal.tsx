@@ -28,6 +28,9 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
         assetType: string;
         stopLossPrice: string;
         actions: Action[];
+        strategy: string; // Include strategy
+        setups: string[]; // Include setups
+
     }>(() => {
         // Initialize with existingTrade data if available
         if (existingTrade) {
@@ -49,7 +52,9 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 assetType: existingTrade.asset_type,
                 stopLossPrice: existingTrade.stop_loss_price?.toString() || '',
                 actions,
-            };
+                strategy: existingTrade.strategy || '', // Initialize strategy
+                setups: existingTrade.setups || [], // Initialize setups
+            };        
         }
 
         return {
@@ -62,7 +67,9 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 date: new Date(),
                 shares: '',
                 price: '',
-            }]
+            }],
+            strategy: '', // Initialize strategy
+            setups: [], // Initialize setups
         };
     });
 
@@ -87,6 +94,8 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 assetType: existingTrade.asset_type,
                 stopLossPrice: existingTrade.stop_loss_price?.toString() || '',
                 actions,
+                strategy: existingTrade.strategy || '', // Initialize strategy
+                setups: existingTrade.setups || [], // Initialize setups
             });
         }
     }, [existingTrade]);  // This will run whenever existingTrade changes
@@ -229,6 +238,9 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             let entryPrice = 0;
             let realizedPnl = 0;
             let realizedPnlPercentage = 0;
+            let unrealizedPnl = 0;
+            let uneralizedPnlPercentage = 0;
+            let market_value = 0;
             let exitPrice = 0;
             let exitDate = '';
             let trimmedPercentage = 0;
@@ -249,7 +261,11 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             let mae = 0;
             let mfe = 0;
 
+            let holdingPeriod = 0;
+
             let lastSellAction = null; // Track the last sell action
+
+            let tradeId: string | undefined; // Declare tradeId as a string or undefined
 
             // Format actions into arrays
             const action_types = tradeDetails.actions.map(a => a.type);
@@ -291,36 +307,57 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                         toast.error('Cannot sell more shares than owned.');
                         return;
                     }
+                    console.log('----------- In Modal, Selling! -----------');
                     remainingShares -= sharesToSell;
                     realizedPnl += sharesToSell * (parseFloat(action.price) - entryPrice);
+                    console.log('Realized PnL:', realizedPnl);
                     realizedPnlPercentage = (realizedPnl / totalCost) * 100;
+                    console.log('Realized PnL Percentage:', realizedPnlPercentage);
 
                     lastSellAction = action;
 
                     if (remainingShares === 0) {
+                        console.log('----------- 🐯 In Modal, Trade Closed 🙏! -----------');
                         exitPrice = parseFloat(lastSellAction.price);
                         exitDate = lastSellAction.date.toISOString();
+                    
+                        // Calculate entry date
+                        const entryDate = new Date(tradeDetails.actions[0].date); // Assuming the first action is the entry date
+                        const exitDateObj = new Date(exitDate); // Convert exitDate to a Date object
+                    
+                        // Fetch high and low prices only if the trade is closed, for MAE and MFE computations
+                        const prices = await fetchHighLowPrices(tradeDetails.ticker, entryDate, exitDateObj);
+                        const holdingPeriod = Math.ceil((exitDateObj.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24)); // Calculate holding period in days
+                        trimmedPercentage = 0;
+                        unrealizedPnl = 0;
+                        uneralizedPnlPercentage = 0;
+                        console.log('Trimmed Percentage:', trimmedPercentage);
+
+                        console.log(`Holding Period for ${tradeDetails.ticker}: ${holdingPeriod} days`);
+                    
+                        if (prices) {
+                            const { minPrice, maxPrice } = prices;
+                    
+                            // Calculate MAE and MFE
+                            const mae_val = entryPrice - minPrice; // Dollar MAE
+                            const mfe_val = maxPrice - entryPrice; // Dollar MFE
+                    
+                            // Calculate MAE and MFE as percentages
+                            const mae = (mae_val / entryPrice) * 100; // Percentage MAE
+                            const mfe = (mfe_val / entryPrice) * 100; // Percentage MFE
+                    
+                            console.log("MAE:", mae);
+                            console.log("MFE:", mfe);
+                        }
                     }
                 }
             }
 
-            riskAmount = totalShares * entryPrice * openRisk;
+            riskAmount = totalShares * entryPrice * openRisk / 100;
+            console.log("------ Validating Risk Amount ------:", riskAmount);
             trimmedPercentage = ((totalShares - remainingShares) / totalShares) * 100;
 
             const status = remainingShares > 0 ? TRADE_STATUS.OPEN : TRADE_STATUS.CLOSED;
-
-            // Fetch high and low prices only if the trade is closed, for mae and mfe computations
-            if (status === TRADE_STATUS.CLOSED) {
-                const prices = await fetchHighLowPrices(tradeDetails.ticker, new Date(tradeDetails.actions[0].date), new Date(exitDate));
-                if (prices) {
-                    const { minPrice, maxPrice } = prices;
-                    // Calculate MAE and MFE
-                    mae = entryPrice - minPrice; // Calculate MAE
-                    mfe = maxPrice - entryPrice; // Calculate MFE
-                    console.log("MAE:", mae);
-                    console.log("MFE:", mfe);   
-                }
-            }
 
             // Create or update the trade record
             const tradeRecord = {
@@ -355,8 +392,11 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 notes,
                 mistakes,
                 mae,
-                mfe
+                mfe,
+                holding_period: holdingPeriod
             }; 
+
+            console.log('Trade Record to be upserted:', tradeRecord);
 
             let result;
             if (existingTrade) {

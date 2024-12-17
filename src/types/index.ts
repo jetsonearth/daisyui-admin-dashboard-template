@@ -64,6 +64,8 @@ export interface Trade {
 
     // Documenting mistakes
     mistakes?: string[];
+
+    holding_period?: string;
   }
 
 
