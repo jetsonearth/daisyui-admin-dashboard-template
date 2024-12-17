@@ -48,6 +48,10 @@ export interface Trade {
     // Additional Metrics
     mae?: number;
     mfe?: number;
+    mae_dollars?: number;
+    mfe_dollars?: number;
+    mae_r?: number;
+    mfe_r?: number;
     
     // Timestamps
     created_at?: string;
@@ -77,8 +81,9 @@ export enum TRADE_STATUS {
 
 export enum ASSET_TYPES {
     STOCK = 'Stock',
-    ETF = 'ETF',
-    OPTION = 'Option'
+    OPTION = 'Option',
+    CRYPTO = 'Crypto',
+    FOREX = 'Forex'
 }
 
 export enum DIRECTIONS {

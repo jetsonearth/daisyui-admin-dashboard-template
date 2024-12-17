@@ -5,6 +5,7 @@ import "react-datepicker/dist/react-datepicker.css";
 import { supabase } from '../../../../config/supabaseClient';
 import { toast } from 'react-toastify';
 import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from '../../../../types'; 
+import { metricsService } from '../../../../features/metrics/metricsService';
 import { L, p } from 'chart.js/dist/chunks/helpers.core';
 
 interface Action {
@@ -262,8 +263,12 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             let stopLoss66Percent = 0;
             let fullStopLoss = 0;
 
-            let tempMae = 0;
-            let tempMfe = 0;
+            let maePercent = 0;
+            let mfePercent = 0;
+            let maeDollars = 0;
+            let mfeDollars = 0;
+            let maeR = 0;
+            let mfeR = 0;
 
             let tempHoldingPeriod = 0;
 
@@ -340,16 +345,57 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                         rrr = realizedPnl / riskAmount;
                         market_value = totalCost + realizedPnl;
 
+                        // Inside handleSubmit, where you currently calculate MAE and MFE:
+                        // Then in your calculation block:
                         if (prices) {
                             const { minPrice, maxPrice } = prices;
-                    
-                            // Calculate MAE and MFE
-                            const mae_val = entryPrice - minPrice; // Dollar MAE
-                            const mfe_val = maxPrice - entryPrice; // Dollar MFE
-                    
-                            // Calculate MAE and MFE as percentages
-                            tempMae = (mae_val / entryPrice) * 100; // Percentage MAE
-                            tempMfe = (mfe_val / entryPrice) * 100; // Percentage MFE
+                            
+                            if (tradeDetails.direction === DIRECTIONS.LONG) {
+                                // If price never went below entry (no drawdown)
+                                if (minPrice >= entryPrice) {
+                                    maeDollars = 0;
+                                    maePercent = 0;
+                                    maeR = 0;
+                                } else {
+                                    maeDollars = (entryPrice - minPrice) * totalShares;
+                                    maePercent = ((entryPrice - minPrice) / entryPrice) * 100;
+                                    maeR = (entryPrice - minPrice) / (entryPrice - parseFloat(tradeDetails.stopLossPrice));
+                                }
+                        
+                                // If price never went above entry (no profit potential)
+                                if (maxPrice <= entryPrice) {
+                                    mfeDollars = 0;
+                                    mfePercent = 0;
+                                    mfeR = 0;
+                                } else {
+                                    mfeDollars = (maxPrice - entryPrice) * totalShares;
+                                    mfePercent = ((maxPrice - entryPrice) / entryPrice) * 100;
+                                    mfeR = (maxPrice - entryPrice) / (entryPrice - parseFloat(tradeDetails.stopLossPrice));
+                                }
+                            } else {
+                                // SHORT trades
+                                // If price never went above entry (no drawdown)
+                                if (maxPrice <= entryPrice) {
+                                    maeDollars = 0;
+                                    maePercent = 0;
+                                    maeR = 0;
+                                } else {
+                                    maeDollars = (maxPrice - entryPrice) * totalShares;
+                                    maePercent = ((maxPrice - entryPrice) / entryPrice) * 100;
+                                    maeR = (maxPrice - entryPrice) / (parseFloat(tradeDetails.stopLossPrice) - entryPrice);
+                                }
+                        
+                                // If price never went below entry (no profit potential)
+                                if (minPrice >= entryPrice) {
+                                    mfeDollars = 0;
+                                    mfePercent = 0;
+                                    mfeR = 0;
+                                } else {
+                                    mfeDollars = (entryPrice - minPrice) * totalShares;
+                                    mfePercent = ((entryPrice - minPrice) / entryPrice) * 100;
+                                    mfeR = (entryPrice - minPrice) / (parseFloat(tradeDetails.stopLossPrice) - entryPrice);
+                                }
+                            }
                         }
                     }
                 }
@@ -358,6 +404,17 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             trimmedPercentage = ((totalShares - remainingShares) / totalShares) * 100;
 
             const status = remainingShares > 0 ? TRADE_STATUS.OPEN : TRADE_STATUS.CLOSED;
+
+            // Calculate portfolio metrics if the trade is not closed
+            if (status === TRADE_STATUS.OPEN) {
+
+
+
+            } else {
+                // Set portfolio metrics to 0 when the trade is closed
+                portfolioHeat = 0;
+                portfolioImpact = 0;
+            }
 
             // Create or update the trade record
             const tradeRecord = {
@@ -395,8 +452,12 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 action_shares,
                 notes,
                 mistakes,
-                mae: tempMae || 0,
-                mfe: tempMfe || 0,
+                mae: maePercent || 0,
+                mfe: mfePercent || 0,
+                mae_dollars: maeDollars || 0,
+                mfe_dollars: mfeDollars || 0,
+                mae_r: maeR || 0,
+                mfe_r: mfeR || 0,
                 holding_period: tempHoldingPeriod || 0,
                 market_value: market_value,  // Add this
                 last_price: exitPrice || entryPrice,  // Add this
@@ -478,7 +539,8 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                                     >
                                         <option value={ASSET_TYPES.STOCK}>STOCK</option>
                                         <option value={ASSET_TYPES.OPTION}>OPTION</option>
-                                        <option value={ASSET_TYPES.ETF}>ETF</option>
+                                        <option value={ASSET_TYPES.CRYPTO}>CRYPTO</option>
+                                        <option value={ASSET_TYPES.FOREX}>FOREX</option>
                                     </select>
                                 </div>
                                 <div>
