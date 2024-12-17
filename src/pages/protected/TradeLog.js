@@ -128,74 +128,72 @@ function TradeLog(){
         console.log('Updated trades:', trades); // Log the trades after they have been updated
     }, [trades]); // This effect will run whenever trades change
 
-    const updateMarketData = async () => {
-        console.log('🔄 Starting market data update. Current trades:', trades.length);
-        try {
-            const allTrades = trades;
-            const activeTrades = allTrades.filter(trade => trade.status !== TRADE_STATUS.CLOSED);
-
-            console.log(`🔍 Filtering active trades. Total: ${allTrades.length}, Active: ${activeTrades.length}`);
-
-            if (activeTrades.length === 0) {
-                console.log('🚫 No active trades to update');
-                return allTrades;
-            }
-
-            const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(activeTrades);
-            const { data: { user }, error: userError } = await supabase.auth.getUser();
-            
-            if (userError) {
-                throw new Error(`Auth error: ${userError.message}`);
-            }
-
-            // Update all active trades in parallel
-            await Promise.all(updatedTrades.map(async (trade) => {
-                if (trade.status === TRADE_STATUS.CLOSED) {
-                    return;
-                }
-
-                const currentTimestamp = new Date().toISOString();
-                return supabase
-                    .from('trades')
-                    .update({
-                        last_price: trade.last_price,
-                        market_value: trade.market_value,
-                        unrealized_pnl: trade.unrealized_pnl,
-                        unrealized_pnl_percentage: trade.unrealized_pnl_percentage,
-                        risk_reward_ratio: trade.risk_reward_ratio,
-                        mae: trade.mae,
-                        mfe: trade.mfe,
-                        portfolio_impact: trade.portfolio_impact,
-                        portfolio_weight: trade.weight_percentage,
-                        trimmed_percentage: trade.trimmed_percentage,
-                        realized_pnl: trade.realized_pnl,
-                        realized_pnl_percentage: trade.realized_pnl_percentage,
-                        updated_at: currentTimestamp
-                    })
-                    .eq('id', trade.id)
-                    .eq('user_id', user.id);
-            }));
-
-            // Fetch fresh data after updates
-            const { data: freshTrades, error: fetchError } = await supabase
-                .from('trades')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false });
-
-            if (fetchError) {
-                throw new Error(`Failed to fetch updated trades: ${fetchError.message}`);
-            }
-
-            return freshTrades || allTrades;
-
-        } catch (error) {
-            console.error('❌ Full error in updateMarketData:', error);
-            console.error('Error message:', error.message);
-            console.error('Error stack:', error.stack);
-            return trades;
+const updateMarketData = async () => {
+    console.log('🔄 Starting market data update. Current trades:', trades.length);
+    try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        
+        if (userError) {
+            throw new Error(`Auth error: ${userError.message}`);
         }
-    };
+
+        // Fetch all trades for the user
+        const { data: allTrades, error: fetchError } = await supabase
+            .from('trades')
+            .select('*')
+            .eq('user_id', user.id);
+
+        if (fetchError) {
+            throw new Error(`Failed to fetch trades: ${fetchError.message}`);
+        }
+
+        const activeTrades = allTrades.filter(trade => trade.status !== TRADE_STATUS.CLOSED);
+
+        console.log(`🔍 Filtering active trades. Total: ${allTrades.length}, Active: ${activeTrades.length}`);
+
+        if (activeTrades.length === 0) {
+            console.log('🚫 No active trades to update');
+            return allTrades; // Return all trades if no active trades
+        }
+
+        setTrades(allTrades);
+
+        const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(activeTrades);
+
+        // Update all active trades in parallel
+        await Promise.all(updatedTrades.map(async (trade) => {
+            const currentTimestamp = new Date().toISOString();
+            return supabase
+                .from('trades')
+                .update({
+                    last_price: trade.last_price,
+                    market_value: trade.market_value,
+                    unrealized_pnl: trade.unrealized_pnl,
+                    unrealized_pnl_percentage: trade.unrealized_pnl_percentage,
+                    risk_reward_ratio: trade.risk_reward_ratio,
+                    mae: trade.mae,
+                    mfe: trade.mfe,
+                    portfolio_impact: trade.portfolio_impact,
+                    portfolio_weight: trade.weight_percentage,
+                    trimmed_percentage: trade.trimmed_percentage,
+                    realized_pnl: trade.realized_pnl,
+                    realized_pnl_percentage: trade.realized_pnl_percentage,
+                    updated_at: currentTimestamp
+                })
+                .eq('id', trade.id)
+                .eq('user_id', user.id);
+        }));
+
+        // Fetch fresh data after updates
+        return allTrades; // Return all trades including updated ones
+
+    } catch (error) {
+        console.error('❌ Full error in updateMarketData:', error);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+        return trades; // Return the current trades in case of error
+    }
+};
     
     // Auto-refresh logic
     useEffect(() => {
@@ -207,7 +205,7 @@ function TradeLog(){
             };
     
             fetchData(); // Initial fetch
-            intervalId = setInterval(fetchData, 1800000); // 30 minutes
+            intervalId = setInterval(fetchData, 900000); // 30 minutes
         }
         return () => {
             if (intervalId) clearInterval(intervalId);
@@ -428,16 +426,28 @@ function TradeLog(){
                                                     text-center font-semibold tabular-nums
                                                     ${trade.unrealized_pnl_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}
                                                 `}>
-                                                    {trade.unrealized_pnl_percentage > 0 ? '+' : ''}
-                                                    {safeToFixed(trade.unrealized_pnl_percentage)}%
+                                                    {trade.unrealized_pnl === 0 ? (
+                                                        <span className="text-white">-</span>
+                                                    ) : (
+                                                        <>
+                                                            {trade.unrealized_pnl_percentage > 0 ? '+' : ''}
+                                                            {safeToFixed(trade.unrealized_pnl_percentage)}%
+                                                        </>
+                                                    )}
                                                 </td>
                                                 
                                                 <td className={`
                                                     text-center font-semibold tabular-nums
                                                     ${trade.unrealized_pnl > 0 ? 'text-emerald-400' : 'text-rose-400'}
                                                 `}>
-                                                    {trade.unrealized_pnl > 0 ? '+' : ''}
-                                                    {formatCurrency(trade.unrealized_pnl)}
+                                                    {trade.unrealized_pnl === 0 ? (
+                                                        <span className="text-white">-</span>
+                                                    ) : (
+                                                        <>
+                                                            {trade.unrealized_pnl > 0 ? '+' : ''}
+                                                            {formatCurrency(trade.unrealized_pnl)}
+                                                        </>
+                                                    )}
                                                 </td>
 
                                                 <td className={`
@@ -550,11 +560,13 @@ function TradeLog(){
                                                 </td>
 
                                                 {/* Trade Details */}
-                                                <td className="text-center">
-                                                    {trade.exit_date || 'N/A'}
+                                                <td className="text-center whitespace-nowrap">
+                                                    {trade.exit_datetime ? 
+                                                        new Date(trade.exit_datetime).toISOString().split('T')[0] : ''}
                                                 </td>
+                                                {/* Holding Period */}
                                                 <td className="text-center">
-                                                    {trade.holding_period || 'N/A'}
+                                                    {trade.holding_period ? `${trade.holding_period} days` : 'N/A'}
                                                 </td>
                                             </tr>
                                         );

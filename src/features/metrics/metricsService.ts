@@ -100,6 +100,7 @@ export class MetricsService {
         realizedPnL: number;
         realizedPnLPercentage: number;
     }> {
+
         const symbolData = marketData.get(trade.ticker);
         if (!symbolData) {
             log('warn', `No market data found for ticker: ${trade.ticker}`);
@@ -131,7 +132,7 @@ export class MetricsService {
     
         // Unrealized PnL
         const priceDiff = marketPrice - entryPrice;
-        const unrealizedPnL = priceDiff * shares;
+        const unrealizedPnL = priceDiff * trade.remaining_shares;
         const unrealizedPnLPercentage = (priceDiff / entryPrice) * 100;
     
         // Open Risk - use the predefined initial risk amount
@@ -217,7 +218,6 @@ export class MetricsService {
         };
     }
 
-    // Calculate current capital based on trades
     public async calculateCurrentCapital(trades: Trade[], startingCapital: number): Promise<{ 
         currentCapital: number, 
         totalRealizedPnL: number, 
@@ -227,55 +227,59 @@ export class MetricsService {
             startingCapital, 
             tradesCount: trades.length 
         });
-    
+
         // Fetch latest market data
         const marketData = await marketDataService.fetchSheetData();
-    
+
         let totalRealizedPnL = 0;
         let totalUnrealizedPnL = 0;
-    
+
         const processedTrades = trades.map(trade => {
+            // First accumulate realized PnL for all trades
+            totalRealizedPnL += this.safeNumeric(trade.realized_pnl);
+
+            // Only calculate unrealized PnL for open trades
+            if (trade.status === TRADE_STATUS.CLOSED) {
+                return { trade, unrealizedPnL: 0 };
+            }
+
             const symbolData = marketData.get(trade.ticker);
             
             if (symbolData === undefined) {
                 log('warn', `No price found for ${trade.ticker}`);
                 return { trade, unrealizedPnL: 0 };
             }
-    
-            const shares = trade.remaining_shares || trade.total_shares;
+
+            const shares = trade.remaining_shares || 0; // Only use remaining shares for unrealized
             const entryPrice = trade.entry_price;
             
             if (shares && entryPrice) {
                 const marketValue = symbolData.price * shares;
                 const priceDiff = symbolData.price - entryPrice;
                 const unrealizedPnL = priceDiff * shares;
-    
-                // Accumulate PnL
-                totalRealizedPnL += this.safeNumeric(trade.realized_pnl);
+
+                // Only accumulate unrealized PnL for open trades
                 totalUnrealizedPnL += unrealizedPnL;
-    
+
                 return { 
                     trade, 
                     unrealizedPnL,
                     marketPrice: symbolData.price
                 };
             }
-    
+
             return { trade, unrealizedPnL: 0 };
         });
-    
-        console.log("🚀 Total Realized PnL:", totalRealizedPnL);
-        console.log("🚀 Total Unrealized PnL:", totalUnrealizedPnL);
-    
+
         const currentCapital = this.safeNumeric(startingCapital) + totalRealizedPnL + totalUnrealizedPnL;
-    
+
         log('info', 'Current capital detailed breakdown', {
             startingCapital,
             totalRealizedPnL,
             totalUnrealizedPnL,
             currentCapital
         });
-    
+
         return { 
             currentCapital, 
             totalRealizedPnL, 
@@ -289,7 +293,7 @@ export class MetricsService {
     
         // Fetch latest market data
         const marketData = await marketDataService.fetchSheetData();
-    
+
         const totalExposure = trades.reduce((sum, trade) => {
             const marketQuote = marketData.get(trade.ticker);
             if (!marketQuote) {
@@ -383,20 +387,36 @@ export class MetricsService {
             }
         }
     
-        // Fetch market data for all trade tickers
+        // // Fetch market data for all trade tickers
         const marketData = await marketDataService.fetchSheetData();
-    
-        // Calculate trade-level metrics
-        const tradeMetrics = await Promise.all(
-            trades.map(trade => this.calculateTradeMetrics(
+
+        // Separate trades into open and closed
+        const openTrades = trades.filter(trade => trade.status === TRADE_STATUS.OPEN);
+        const closedTrades = trades.filter(trade => trade.status === TRADE_STATUS.CLOSED);
+
+        // If you have already computed metrics for open trades, retrieve them
+        // Assuming you have a method to get existing metrics
+        // Calculate metrics for open trades
+        const existingOpenTradeMetrics = await Promise.all(
+            openTrades.map(trade => this.calculateTradeMetrics(
                 trade, 
-                marketData, 
-                startingCapital, 
-                startingCapital // This will be updated in calculateCurrentCapital
+                marketData,            // Pass the market data
+                startingCapital,       // Pass the starting cash
+                startingCapital        // Pass the total capital
             ))
         );
     
-        // Calculate current capital
+        // // Calculate trade-level metrics
+        // const tradeMetrics = await Promise.all(
+        //     trades.map(trade => this.calculateTradeMetrics(
+        //         trade, 
+        //         marketData, 
+        //         startingCapital, 
+        //         startingCapital // This will be updated in calculateCurrentCapital
+        //     ))
+        // );
+    
+        // Calculate current capital (maybe already did this)
         const { 
             currentCapital, 
             totalRealizedPnL, 

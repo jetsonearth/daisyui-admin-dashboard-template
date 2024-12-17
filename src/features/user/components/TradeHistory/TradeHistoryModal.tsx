@@ -5,6 +5,7 @@ import "react-datepicker/dist/react-datepicker.css";
 import { supabase } from '../../../../config/supabaseClient';
 import { toast } from 'react-toastify';
 import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from '../../../../types'; 
+import { L, p } from 'chart.js/dist/chunks/helpers.core';
 
 interface Action {
     type: 'BUY' | 'SELL';
@@ -239,7 +240,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             let realizedPnl = 0;
             let realizedPnlPercentage = 0;
             let unrealizedPnl = 0;
-            let uneralizedPnlPercentage = 0;
+            let unrealizedPnlPercentage = 0;
             let market_value = 0;
             let exitPrice = 0;
             let exitDate = '';
@@ -250,7 +251,10 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
 
             let openRisk = 0;
             let riskAmount = 0;
-
+            let rrr = 0;
+            let portfolioHeat = 0;
+            let portfolioImpact = 0;
+        
             let stopDistance = 0;
             let stop33 = 0;
             let stop66 = 0;
@@ -258,10 +262,10 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             let stopLoss66Percent = 0;
             let fullStopLoss = 0;
 
-            let mae = 0;
-            let mfe = 0;
+            let tempMae = 0;
+            let tempMfe = 0;
 
-            let holdingPeriod = 0;
+            let tempHoldingPeriod = 0;
 
             let lastSellAction = null; // Track the last sell action
 
@@ -322,19 +326,20 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                         exitDate = lastSellAction.date.toISOString();
                     
                         // Calculate entry date
-                        const entryDate = new Date(tradeDetails.actions[0].date); // Assuming the first action is the entry date
-                        const exitDateObj = new Date(exitDate); // Convert exitDate to a Date object
+                        const entryDate = new Date(tradeDetails.actions[0].date);
+                        const exitDateObj = new Date(exitDate);
                     
-                        // Fetch high and low prices only if the trade is closed, for MAE and MFE computations
+                        // Fetch high and low prices only if the trade is closed
                         const prices = await fetchHighLowPrices(tradeDetails.ticker, entryDate, exitDateObj);
-                        const holdingPeriod = Math.ceil((exitDateObj.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24)); // Calculate holding period in days
+                        tempHoldingPeriod = Math.ceil((exitDateObj.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
                         trimmedPercentage = 0;
                         unrealizedPnl = 0;
-                        uneralizedPnlPercentage = 0;
-                        console.log('Trimmed Percentage:', trimmedPercentage);
+                        unrealizedPnlPercentage = 0;
 
-                        console.log(`Holding Period for ${tradeDetails.ticker}: ${holdingPeriod} days`);
-                    
+                        riskAmount = totalShares * entryPrice * openRisk / 100;
+                        rrr = realizedPnl / riskAmount;
+                        market_value = totalCost + realizedPnl;
+
                         if (prices) {
                             const { minPrice, maxPrice } = prices;
                     
@@ -343,18 +348,13 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                             const mfe_val = maxPrice - entryPrice; // Dollar MFE
                     
                             // Calculate MAE and MFE as percentages
-                            const mae = (mae_val / entryPrice) * 100; // Percentage MAE
-                            const mfe = (mfe_val / entryPrice) * 100; // Percentage MFE
-                    
-                            console.log("MAE:", mae);
-                            console.log("MFE:", mfe);
+                            tempMae = (mae_val / entryPrice) * 100; // Percentage MAE
+                            tempMfe = (mfe_val / entryPrice) * 100; // Percentage MFE
                         }
                     }
                 }
             }
 
-            riskAmount = totalShares * entryPrice * openRisk / 100;
-            console.log("------ Validating Risk Amount ------:", riskAmount);
             trimmedPercentage = ((totalShares - remainingShares) / totalShares) * 100;
 
             const status = remainingShares > 0 ? TRADE_STATUS.OPEN : TRADE_STATUS.CLOSED;
@@ -370,16 +370,20 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 created_at: new Date().toISOString(),
                 entry_datetime: tradeDetails.actions[0].date.toISOString(),
                 entry_price: entryPrice,
-                total_shares: totalShares, // Update total shares
+                total_shares: totalShares,
                 remaining_shares: remainingShares,
                 realized_pnl: realizedPnl,
+                realized_pnl_percentage: realizedPnlPercentage,
+                unrealized_pnl: unrealizedPnl,  // Add this
+                unrealized_pnl_percentage: unrealizedPnlPercentage,  // Add this
                 total_cost: totalCost,
-                strategy: selectedStrategy || null, // Include strategy if selected
-                setups: selectedSetups.length > 0 ? selectedSetups : null, // Include setups if any are selected
+                strategy: selectedStrategy || null,
+                setups: selectedSetups.length > 0 ? selectedSetups : null,
                 exit_price: exitPrice || null,
                 exit_datetime: exitDate || null,
                 trimmed_percentage: trimmedPercentage,
                 risk_amount: riskAmount,
+                risk_reward_ratio: rrr,
                 open_risk: openRisk,
                 stop_loss_33_percent: stop33,
                 stop_loss_66_percent: stop66,
@@ -391,9 +395,13 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 action_shares,
                 notes,
                 mistakes,
-                mae,
-                mfe,
-                holding_period: holdingPeriod
+                mae: tempMae || 0,
+                mfe: tempMfe || 0,
+                holding_period: tempHoldingPeriod || 0,
+                market_value: market_value,  // Add this
+                last_price: exitPrice || entryPrice,  // Add this
+                portfolio_heat: portfolioHeat,
+                portfolio_impact: portfolioImpact
             }; 
 
             console.log('Trade Record to be upserted:', tradeRecord);
