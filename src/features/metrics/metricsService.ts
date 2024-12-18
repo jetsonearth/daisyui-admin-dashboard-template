@@ -39,9 +39,6 @@ interface PerformanceMetrics {
     breakEvenTradesCount: number;
     largestWin: number;          // Biggest winning trade
     largestLoss: number;         // Biggest losing trade
-    currentStreak: number;
-    longestWinStreak: number;
-    longestLossStreak: number;
 }
 
 interface StreakMetrics {
@@ -108,10 +105,13 @@ interface CapitalSnapshot {
 
 
 export class MetricsService {
-    private sum(numbers: number[]): number {
-        return numbers.reduce((acc, curr) => acc + curr, 0);
-    }
+    private metricsCache: {
+        data: any;
+        timestamp: number;
+    } | null = null;
 
+    private readonly CACHE_DURATION = 15 * 60 * 1000; // 15 minutes in milliseconds
+    
     // Safely convert value to number with optional default
     public safeNumeric(value: any, defaultValue: number = 0): number {
         const numValue = Number(value);
@@ -391,7 +391,36 @@ export class MetricsService {
     }
 
     //////////////
+    public async fetchLatestPortfolioMetrics(userId: string, forceRefresh: boolean = false): Promise<any> {
+        // Return cached data if available and not expired
+        if (!forceRefresh && this.metricsCache && 
+            (Date.now() - this.metricsCache.timestamp) < this.CACHE_DURATION) {
+            console.log('🟢 Using cached metrics data');
+            return this.metricsCache.data;
+        }
 
+        const { data, error } = await supabase
+            .from('trading_metrics')
+            .select('*')
+            .eq('user_id', userId)
+            .order('date', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (error) {
+            console.error('Error fetching metrics:', error);
+            return null;
+        }
+
+        // Update cache
+        this.metricsCache = {
+            data,
+            timestamp: Date.now()
+        };
+        console.log('🔵 Fetched fresh metrics data');
+
+        return data;
+    }
 
     // Calculate exposure metrics
     public async calculateExposureMetrics(trades: Trade[], currentCapital: number): Promise<ExposureMetrics> {
@@ -732,10 +761,10 @@ export class MetricsService {
                     break_even_trades_count: performanceMetrics.breakEvenTradesCount,
                     largest_win: performanceMetrics.largestWin,
                     largest_loss: performanceMetrics.largestLoss,
-                    // Add streak fields
-                    current_streak: performanceMetrics.currentStreak,
-                    longest_win_streak: performanceMetrics.longestWinStreak,
-                    longest_loss_streak: performanceMetrics.longestLossStreak,
+                    // // Add streak fields
+                    // current_streak: performanceMetrics.currentStreak,
+                    // longest_win_streak: performanceMetrics.longestWinStreak,
+                    // longest_loss_streak: performanceMetrics.longestLossStreak,
                     updated_at: new Date().toISOString()
                 },
                 {
@@ -751,6 +780,12 @@ export class MetricsService {
         }
     
         console.log(`Successfully upserted performance metrics for user ${userId} on ${today}`);
+    }
+
+    // Add method to invalidate cache when metrics change
+    public invalidateMetricsCache(): void {
+        this.metricsCache = null;
+        console.log('🔴 Metrics cache invalidated');
     }
 
     // public async upsertTradingMetrics(
@@ -809,3 +844,5 @@ export const calculatePortfolioMetrics = (
     trades: Trade[] | null = null, 
     startingCapital: number | null = null
 ) => metricsService.calculatePortfolioMetrics(trades, startingCapital);
+
+export const fetchLatestPortfolioMetrics = metricsService.fetchLatestPortfolioMetrics.bind(metricsService);

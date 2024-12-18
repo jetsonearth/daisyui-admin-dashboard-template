@@ -10,6 +10,12 @@ import TradeHistoryModal from '../../features/user/components/TradeHistory/Trade
 import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from '../../types/index'; 
 import { capitalService } from '../../services/capitalService'
 import { marketDataService } from '../../features/marketData/marketDataService'
+import { userSettingsService } from '../../services/userSettingsService'
+import { fetchLatestPortfolioMetrics } from '../../features/metrics/metricsService';
+
+// At the top of PortfolioOverview.js, after imports
+// console.log('metricsService:', metricsService);
+// console.log('Available methods:', Object.getOwnPropertyNames(metricsService.prototype));
 
 // Time filter buttons configuration
 const timeFilters = [
@@ -33,11 +39,35 @@ function PortfolioOverview(){
     const [startingCapital, setStartingCapital] = useState(0)
     const [currentCapital, setCurrentCapital] = useState(0);
 
+    useEffect(() => {
+        const fetchUserSettings = async () => {
+            try {
+                const settings = await userSettingsService.getUserSettings();
+                setStartingCapital(settings.starting_cash ?? 25000); // Fallback to 25000 if not set
+            } catch (error) {
+                console.error('Error fetching user settings:', error);
+                // Optionally handle the error, e.g., show a toast notification
+            }
+        };
+
+        fetchUserSettings();
+    }, []); // Empty dependency array to run only once on mount
+
     // Initialize metrics with default values
     const [metrics, setMetrics] = useState({
         exposureMetrics: null,
         maxDrawdown: 0,
         maxRunup: 0,
+        profitFactor: 0,
+        avgRRR: 0,
+        winRate: 0,
+        expectancy: 0,
+        totalTrades: 0,
+        profitableTradesCount: 0,
+        lossTradesCount: 0,
+        currentStreak: 0,
+        longestWinStreak: 0,
+        longestLossStreak: 0
     });
     
     const [selectedTrade, setSelectedTrade] = useState(null);
@@ -304,6 +334,54 @@ function PortfolioOverview(){
         };
     }, [isAutoRefresh]);
 
+    // In PortfolioOverview.js
+    const fetchMetrics = async (forceRefresh = false) => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                console.error('No authenticated user found');
+                return; 
+            }
+
+            console.log("------------------------ FETCH PF METRICS ------------------------");
+
+            const latestMetrics = await metricsService.fetchLatestPortfolioMetrics(user.id, forceRefresh);
+
+            console.log("Metrics: ---------------", latestMetrics); 
+            if (latestMetrics) {
+                setMetrics(prevMetrics => ({
+                    ...prevMetrics,
+                    profitFactor: latestMetrics.profit_factor || 0,
+                    avgRRR: latestMetrics.avg_rrr || 0,
+                    winRate: latestMetrics.win_rate || 0,
+                    expectancy: latestMetrics.expectancy || 0,
+                    totalTrades: latestMetrics.total_trades || 0,
+                    profitableTradesCount: latestMetrics.profitable_trades_count || 0,
+                    lossTradesCount: latestMetrics.loss_trades_count || 0,
+                    currentStreak: latestMetrics.current_streak || 0,
+                    longestWinStreak: latestMetrics.longest_win_streak || 0,
+                    longestLossStreak: latestMetrics.longest_loss_streak || 0 
+                }));
+                console.log('Updated metrics state:', metrics); // Add this line
+            }
+        } catch (error) {
+            console.error('Error fetching metrics:', error);
+        }
+    };
+
+    // Initial load and auto-refresh
+    useEffect(() => {
+        const fetchData = async () => {
+            await fetchMetrics(false); // Use cache if available
+        };
+
+        fetchData();
+        if (isAutoRefresh) {
+            const intervalId = setInterval(() => fetchMetrics(true), 30000); // Force refresh every 30 seconds if auto-refresh is on
+            return () => clearInterval(intervalId);
+        }
+    }, [isAutoRefresh]);
+
     return(
         <div className="p-4">
             {/* Top Header with Date and Time Filters */}
@@ -354,8 +432,8 @@ function PortfolioOverview(){
                 <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[110px]">
                     <div className="text-xs text-gray-500 truncate mb-1">RRR</div>
                     <div className="text-2xl font-semibold truncate">
-                        {typeof metrics.rrr === 'number' 
-                            ? metrics.rrr.toFixed(2) 
+                        {typeof metrics.avgRRR === 'number' 
+                            ? metrics.avgRRR.toFixed(2) 
                             : '0.00'}
                     </div>
                     <div className="text-xs text-green-500 truncate mt-auto">+4.2% from last</div>

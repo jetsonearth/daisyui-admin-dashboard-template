@@ -526,6 +526,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                     console.log('------ 🦈🦈🦈 Combined Metrics to be upserted 🦈🦈🦈 ------- :', combinedMetrics);
             
                     await metricsService.upsertPerformanceMetrics(user.id, combinedMetrics);
+                    metricsService.invalidateMetricsCache(); // Invalidate cache after updating metrics
                 }
             }
 
