@@ -21,10 +21,11 @@ class MarketDataService {
     private priceMap: Map<string, { price: number}>;
     private lastFetchTime: number;
     private isUpdating: boolean;
+    private fetchPromise: Promise<Map<string, { price: number }>> | null = null;
 
     constructor() {
         this.cache = new Map();
-        this.cacheTimeout = 1800000; // 30 minutes cache
+        this.cacheTimeout = 900000; // 30 minutes cache
         this.sheetUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRzNnZcQG7SoBq22GFq_CBvACdqYDjSJM5EkSB0RGWwEZtN9LAlxY7ZvyjpOWi8DeeDTs5-U5bkXFM7/pub?gid=0&single=true&output=csv';
         this.priceMap = new Map();
         this.lastFetchTime = 0;
@@ -35,41 +36,55 @@ class MarketDataService {
         try {
             const now = Date.now();
             
+            // If we're already fetching, return the existing promise
+            if (this.fetchPromise) {
+                return this.fetchPromise;
+            }
+            
             // Use cached data if within timeout
             if (this.priceMap.size > 0 && now - this.lastFetchTime < this.cacheTimeout) {
                 console.log('🔵 Using cached sheet data');
                 return this.priceMap;
             }
-
-            console.log('🔄 Fetching fresh data from Google Sheet...');
-            const response = await fetch(this.sheetUrl);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            const csvText = await response.text();
-            
-            // Clear existing map
-            this.priceMap.clear();
-            
-            // Parse CSV and populate map - skip header
-            const rows = csvText.split('\n').slice(1);
-            
-            // Process all rows in a single loop for better performance
-            for (const row of rows) {
-                const [ticker, priceStr] = row.split(',');
-                if (ticker && priceStr) {
-                    const price = parseFloat(priceStr);
-                    if (!isNaN(price)) {
-                        this.priceMap.set(ticker.trim(), {
-                            price: price,
-                        });
+    
+            // Start new fetch
+            try {
+                this.fetchPromise = (async () => {
+                    console.log('🔄 Fetching fresh data from Google Sheet...');
+                    const response = await fetch(this.sheetUrl);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
                     }
-                }
+                    const csvText = await response.text();
+                    
+                    // Clear existing map
+                    this.priceMap.clear();
+                    
+                    // Parse CSV and populate map - skip header
+                    const rows = csvText.split('\n').slice(1);
+                    
+                    // Process all rows in a single loop for better performance
+                    for (const row of rows) {
+                        const [ticker, priceStr] = row.split(',');
+                        if (ticker && priceStr) {
+                            const price = parseFloat(priceStr);
+                            if (!isNaN(price)) {
+                                this.priceMap.set(ticker.trim(), {
+                                    price: price,
+                                });
+                            }
+                        }
+                    }
+    
+                    this.lastFetchTime = now;
+                    console.log(`✅ Sheet data fetched: ${this.priceMap.size} tickers loaded`);
+                    return this.priceMap;
+                })();
+                
+                return await this.fetchPromise;
+            } finally {
+                this.fetchPromise = null;
             }
-
-            this.lastFetchTime = now;
-            console.log(`✅ Sheet data fetched: ${this.priceMap.size} tickers loaded`);
-            return this.priceMap;
         } catch (error) {
             console.error('❌ Error fetching sheet data:', error);
             return new Map(); // Return empty map on error

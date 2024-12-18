@@ -4,7 +4,6 @@ import { tradeService } from '../../services/tradeService';
 import { userSettingsService } from '../../services/userSettingsService';
 import { marketDataService } from '../marketData/marketDataService';
 import { capitalService } from '../../services/capitalService';
-import { current } from '@reduxjs/toolkit';
 
 // Logging utility with file prefix
 const log = (level: 'info' | 'warn' | 'error', message: string, data?: any) => {
@@ -40,6 +39,9 @@ interface PerformanceMetrics {
     breakEvenTradesCount: number;
     largestWin: number;          // Biggest winning trade
     largestLoss: number;         // Biggest losing trade
+    currentStreak: number;
+    longestWinStreak: number;
+    longestLossStreak: number;
 }
 
 interface StreakMetrics {
@@ -137,9 +139,7 @@ export class MetricsService {
     async fetchTrades(): Promise<Trade[]> {
 
         console.log('-------- 🔄 Attempting to fetch trades --------');
-        try {
-            log('info', 'Attempting to fetch trades');
-            
+        try {            
             const { data } = await supabase.auth.getUser();
             if (!data.user) {
                 log('error', 'No authenticated user found');
@@ -259,7 +259,7 @@ export class MetricsService {
         };
     }
 
-    // Add this to MetricsService
+    ///////// Compute using Closed Trades Only ////////
     public calculateStreakMetrics(trades: Trade[]): StreakMetrics {
         const closedTrades = trades
             .filter(t => t.status === TRADE_STATUS.CLOSED)
@@ -390,6 +390,9 @@ export class MetricsService {
         };
     }
 
+    //////////////
+
+
     // Calculate exposure metrics
     public async calculateExposureMetrics(trades: Trade[], currentCapital: number): Promise<ExposureMetrics> {
         log('info', 'Calculating exposure metrics');
@@ -511,6 +514,7 @@ export class MetricsService {
     
             // 4. Calculate actual metrics
             const performanceMetrics = this.calculateTradePerformanceMetrics(validatedTrades);
+
             const exposureMetrics = await this.calculateExposureMetrics(
                 validatedTrades, 
                 currentCapital
@@ -578,16 +582,13 @@ export class MetricsService {
         }
     }
 
-    async updateTradesWithDetailedMetrics(trades?: Trade[]): Promise<Trade[]> {
+    async updateTradesWithDetailedMetrics(marketData: Map<string, { price: number }>, trades?: Trade[]): Promise<Trade[]> {
         log('info', 'Updating trades with detailed metrics');
     
         // Fetch trades if not provided
         if (!trades || trades.length === 0) {
             trades = await this.fetchTrades();
         }
-    
-        // Fetch market data
-        const marketData = await marketDataService.fetchSheetData();
     
         // Get starting capital
         const startingCapital = await this.retrieveStartingCapital();
@@ -672,35 +673,18 @@ export class MetricsService {
         }
     }
 
-    public async upsertTradingMetrics(
+    public async upsertExposureMetrics(
         userId: string,
-        performanceMetrics: PerformanceMetrics,
         exposureMetrics: ExposureMetrics
     ): Promise<void> {
         const today = new Date().toISOString().split('T')[0];  // YYYY-MM-DD
     
         const { error } = await supabase
-            .from('trading_metrics')
+            .from('trading_metrics')  // New table for exposure metrics
             .upsert({
                 user_id: userId,
                 date: today,
-                // Performance Metrics
-                win_rate: performanceMetrics.winRate,
-                avg_win: performanceMetrics.avgWin,
-                avg_loss: performanceMetrics.avgLoss,
-                profit_factor: performanceMetrics.profitFactor,
-                avg_rrr: performanceMetrics.avgRRR,
-                total_pnl: performanceMetrics.totalPnL,
-                expectancy: performanceMetrics.expectancy,
-                payoff_ratio: performanceMetrics.payoffRatio,
-                total_trades: performanceMetrics.totalTrades,
-                profitable_trades_count: performanceMetrics.profitableTradesCount,
-                loss_trades_count: performanceMetrics.lossTradesCount,
-                break_even_trades_count: performanceMetrics.breakEvenTradesCount,
-                largest_win: performanceMetrics.largestWin,
-                largest_loss: performanceMetrics.largestLoss,
-                
-                // Exposure Metrics
+                // Exposure Metrics only
                 der: exposureMetrics.der,
                 dep: exposureMetrics.dep,
                 delta_de: exposureMetrics.deltaDE,
@@ -711,14 +695,110 @@ export class MetricsService {
                 oep: exposureMetrics.oep,
                 delta_oe: exposureMetrics.deltaOE,
                 portfolio_allocation: exposureMetrics.portfolioAllocation,
-                
                 updated_at: new Date().toISOString()
             })
             .select();
     
         if (error) throw error;
     }
+    
+    // Keep the original for performance metrics
+    public async upsertPerformanceMetrics(
+        userId: string,
+        performanceMetrics: PerformanceMetrics
+    ): Promise<void> {
+        const today = new Date().toISOString().split('T')[0];
+    
+        console.log(`Upserting performance metrics for user ${userId} on ${today}:`, performanceMetrics);
+    
+        const { error } = await supabase
+            .from('trading_metrics')
+            .upsert(
+                {
+                    user_id: userId,
+                    date: today,
+                    // Performance Metrics only
+                    win_rate: performanceMetrics.winRate,
+                    avg_win: performanceMetrics.avgWin,
+                    avg_loss: performanceMetrics.avgLoss,
+                    profit_factor: performanceMetrics.profitFactor,
+                    avg_rrr: performanceMetrics.avgRRR,
+                    total_pnl: performanceMetrics.totalPnL,
+                    expectancy: performanceMetrics.expectancy,
+                    payoff_ratio: performanceMetrics.payoffRatio,
+                    total_trades: performanceMetrics.totalTrades,
+                    profitable_trades_count: performanceMetrics.profitableTradesCount,
+                    loss_trades_count: performanceMetrics.lossTradesCount,
+                    break_even_trades_count: performanceMetrics.breakEvenTradesCount,
+                    largest_win: performanceMetrics.largestWin,
+                    largest_loss: performanceMetrics.largestLoss,
+                    // Add streak fields
+                    current_streak: performanceMetrics.currentStreak,
+                    longest_win_streak: performanceMetrics.longestWinStreak,
+                    longest_loss_streak: performanceMetrics.longestLossStreak,
+                    updated_at: new Date().toISOString()
+                },
+                {
+                    onConflict: 'user_id,date',
+                    ignoreDuplicates: false
+                }
+            )
+            .select();
+    
+        if (error) {
+            console.error(`Error upserting performance metrics for user ${userId}:`, error);
+            throw error;
+        }
+    
+        console.log(`Successfully upserted performance metrics for user ${userId} on ${today}`);
+    }
 
+    // public async upsertTradingMetrics(
+    //     userId: string,
+    //     performanceMetrics: PerformanceMetrics,
+    //     exposureMetrics: ExposureMetrics
+    // ): Promise<void> {
+    //     const today = new Date().toISOString().split('T')[0];  // YYYY-MM-DD
+    
+    //     const { error } = await supabase
+    //         .from('trading_metrics')
+    //         .upsert({
+    //             user_id: userId,
+    //             date: today,
+    //             // Performance Metrics
+    //             win_rate: performanceMetrics.winRate,
+    //             avg_win: performanceMetrics.avgWin,
+    //             avg_loss: performanceMetrics.avgLoss,
+    //             profit_factor: performanceMetrics.profitFactor,
+    //             avg_rrr: performanceMetrics.avgRRR,
+    //             total_pnl: performanceMetrics.totalPnL,
+    //             expectancy: performanceMetrics.expectancy,
+    //             payoff_ratio: performanceMetrics.payoffRatio,
+    //             total_trades: performanceMetrics.totalTrades,
+    //             profitable_trades_count: performanceMetrics.profitableTradesCount,
+    //             loss_trades_count: performanceMetrics.lossTradesCount,
+    //             break_even_trades_count: performanceMetrics.breakEvenTradesCount,
+    //             largest_win: performanceMetrics.largestWin,
+    //             largest_loss: performanceMetrics.largestLoss,
+                
+    //             // Exposure Metrics
+    //             der: exposureMetrics.der,
+    //             dep: exposureMetrics.dep,
+    //             delta_de: exposureMetrics.deltaDE,
+    //             ner: exposureMetrics.ner,
+    //             nep: exposureMetrics.nep,
+    //             delta_ne: exposureMetrics.deltaNE,
+    //             oer: exposureMetrics.oer,
+    //             oep: exposureMetrics.oep,
+    //             delta_oe: exposureMetrics.deltaOE,
+    //             portfolio_allocation: exposureMetrics.portfolioAllocation,
+                
+    //             updated_at: new Date().toISOString()
+    //         })
+    //         .select();
+    
+    //     if (error) throw error;
+    // }
 }
 
 // Export an instance of the service

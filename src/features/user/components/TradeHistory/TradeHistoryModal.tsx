@@ -408,15 +408,13 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             const status = remainingShares > 0 ? TRADE_STATUS.OPEN : TRADE_STATUS.CLOSED;
 
             // Calculate portfolio metrics if the trade is not closed
-            if (status === TRADE_STATUS.OPEN) {
+            // if (status === TRADE_STATUS.OPEN) {
 
-
-
-            } else {
-                // Set portfolio metrics to 0 when the trade is closed
-                portfolioHeat = 0;
-                portfolioImpact = 0;
-            }
+            // } else {
+            //     // Set portfolio metrics to 0 when the trade is closed
+            //     portfolioHeat = 0;
+            //     portfolioImpact = 0;
+            // }
 
             // Create or update the trade record
             const tradeRecord = {
@@ -496,6 +494,41 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             }
 
             onTradeAdded(); // Refresh the trade list
+
+            if (remainingShares === 0) {
+                console.log('----------- 🐯 Computing metrics after trade closure 🙏! -----------');
+            
+                // Get current user
+                const { data: { user }, error: userError } = await supabase.auth.getUser();
+                if (userError || !user) {
+                    throw new Error('User not authenticated');
+                }
+            
+                // Fetch all closed trades (including the one we just closed)
+                const allTrades = await metricsService.fetchTrades();
+                const closedTrades = allTrades.filter(t => t.status === TRADE_STATUS.CLOSED);
+                
+                if (closedTrades.length > 0) {  // Only compute if we have closed trades
+                    // Calculate performance metrics
+                    const performanceMetrics = await metricsService.calculateTradePerformanceMetrics(closedTrades);
+                    console.log('Performance Metrics:', performanceMetrics);
+            
+                    // Calculate streak metrics
+                    const streakMetrics = metricsService.calculateStreakMetrics(closedTrades);
+                    console.log('Streak Metrics:', streakMetrics);
+            
+                    const combinedMetrics = {
+                        ...performanceMetrics,
+                        currentStreak: streakMetrics.currentStreak,
+                        longestWinStreak: streakMetrics.longestWinStreak,
+                        longestLossStreak: streakMetrics.longestLossStreak
+                    };
+                    console.log('------ 🦈🦈🦈 Combined Metrics to be upserted 🦈🦈🦈 ------- :', combinedMetrics);
+            
+                    await metricsService.upsertPerformanceMetrics(user.id, combinedMetrics);
+                }
+            }
+
             onClose(); // Close the modal
         } catch (error: any) { // Type assertion for error
             const errorMessage = error?.message || 'An unknown error occurred';

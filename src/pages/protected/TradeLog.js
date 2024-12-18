@@ -4,6 +4,7 @@ import { supabase } from '../../config/supabaseClient'
 import TitleCard from '../../components/Cards/TitleCard'
 import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from '../../types/index'; 
 import { metricsService } from '../../features/metrics/metricsService';
+import { marketDataService } from '../../features/marketData/marketDataService';
 import { toast } from 'react-toastify'
 import TradeHistoryModal from '../../features/user/components/TradeHistory/TradeHistoryModal'; // Import the modal
 import './TradeLog.css';
@@ -128,6 +129,7 @@ function TradeLog(){
         console.log('Updated trades:', trades); // Log the trades after they have been updated
     }, [trades]); // This effect will run whenever trades change
 
+
 const updateMarketData = async () => {
     console.log('🔄 Starting market data update. Current trades:', trades.length);
     try {
@@ -158,7 +160,9 @@ const updateMarketData = async () => {
 
         setTrades(allTrades);
 
-        const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(activeTrades);
+        const marketData = await marketDataService.fetchSheetData();
+
+        const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(marketData, activeTrades);
 
         // Update all active trades in parallel
         await Promise.all(updatedTrades.map(async (trade) => {

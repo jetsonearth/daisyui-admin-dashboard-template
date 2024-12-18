@@ -9,6 +9,7 @@ import { closeTrade } from '../../features/trades/tradesSlice'
 import TradeHistoryModal from '../../features/user/components/TradeHistory/TradeHistoryModal';
 import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from '../../types/index'; 
 import { capitalService } from '../../services/capitalService'
+import { marketDataService } from '../../features/marketData/marketDataService'
 
 // Time filter buttons configuration
 const timeFilters = [
@@ -34,25 +35,7 @@ function PortfolioOverview(){
 
     // Initialize metrics with default values
     const [metrics, setMetrics] = useState({
-        startingCapital: 0,
-        currentCapital: 0,
-        performanceMetrics: {
-            winRate: 0,
-            avgWin: 0,
-            avgLoss: 0,
-            profitFactor: 0,
-            riskRewardRatio: 0,
-        },
-        streakMetrics: {
-            currentStreak: 0,
-            longestWinStreak: 0,
-            longestLossStreak: 0,
-        },
-        exposureMetrics: {
-            totalExposure: 0,
-            maxSingleTradeExposure: 0,
-            portfolioHeat: 0,
-        },
+        exposureMetrics: null,
         maxDrawdown: 0,
         maxRunup: 0,
     });
@@ -236,8 +219,9 @@ function PortfolioOverview(){
             }
     
             // console.log('Trades before update:', trades);
+            const marketData = await marketDataService.fetchSheetData();
     
-            const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(trades);
+            const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(marketData, trades);
             
             // console.log('Trades after update:', updatedTrades);
     
@@ -265,32 +249,28 @@ function PortfolioOverview(){
                     console.error(`Error updating trade ${trade.id}:`, error)
                 }
             })
+            const exposureMetrics = await metricsService.calculateExposureMetrics(updatedTrades, currentCapital);
+            console.log('------ In Portfolio Overview, calculated exposure metrics ------ :', updatedTrades, 'Exposure Metrics:', exposureMetrics);
 
-            // await Promise.all(updatePromises)
+             // Update the metrics state with new exposure metrics
+            // Get current user
+            const { data: { user } } = await supabase.auth.getUser();
+                
+            // Upsert only exposure metrics
+            await metricsService.upsertExposureMetrics(user.id, exposureMetrics);
 
-            // // Refetch active trades after update
-            // const { data: { user }, error: userError } = await supabase.auth.getUser()
-            
-            // if (userError || !user) {
-            //     console.error('Authentication error:', userError)
-            //     toast.error('Authentication required')
-            //     return
-            // }
+            const { maxDrawdown, maxRunup } = await metricsService.calculateMaxDrawdownAndRunup(updatedTrades);
+            console.log('Max Drawdown:', maxDrawdown, 'Max Runup:', maxRunup);    
 
-            // const { data, error } = await supabase
-            //     .from('trades')
-            //     .select('*')
-            //     .eq('user_id', user.id)
-            //     .or(`status.eq.Open`)
-            //     .order('entry_datetime', { ascending: false });
+            // Update both exposure metrics and max drawdown/runup in state
+            setMetrics(prevMetrics => ({
+                ...prevMetrics,
+                exposureMetrics,
+                maxDrawdown,
+                maxRunup
+            }));
 
-            // if (error) {
-            //     console.error('Error refetching trades:', error)
-            //     toast.error('Failed to refresh trades')
-            //     return
-            // }
-
-            // setTrades(data || [])
+            // const portfolioMetrics = await metricsService.calculatePortfolioMetrics(marketData, updatedTrades);
 
             // Track capital change after market update
             await capitalService.trackCapitalChange(updatedTrades);
