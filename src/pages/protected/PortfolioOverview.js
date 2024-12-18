@@ -6,8 +6,6 @@ import TitleCard from '../../components/Cards/TitleCard'
 import dayjs from 'dayjs'
 import { metricsService } from '../../features/metrics/metricsService';
 import { closeTrade } from '../../features/trades/tradesSlice'
-import { calculatePortfolioMetrics } from '../../features/metrics/metricsService'
-import { userSettingsService } from '../../services/userSettingsService'
 import TradeHistoryModal from '../../features/user/components/TradeHistory/TradeHistoryModal';
 import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from '../../types/index'; 
 import { capitalService } from '../../services/capitalService'
@@ -152,7 +150,7 @@ function PortfolioOverview(){
                 console.log('------ Inside UpdateCapitalAndMetrics, Updated currentCapital ------ :', currentCapital);
                 // 2. Calculate other metrics
                 const metrics = await metricsService.calculatePortfolioMetrics(
-                    allTrades, 
+                    null, 
                     null
                 );
                 setMetrics(metrics); // Store metrics in state
@@ -310,6 +308,21 @@ function PortfolioOverview(){
             toast.error('Failed to update market data');
         }
     };
+
+    // Add this useEffect for auto-refresh
+    useEffect(() => {
+        let intervalId;
+        if (isAutoRefresh) {
+            const fetchData = async () => {
+                await updateMarketData();
+            };
+            fetchData(); // Initial fetch
+            intervalId = setInterval(fetchData, 900000); // 15 minutes
+        }
+        return () => {
+            if (intervalId) clearInterval(intervalId);
+        };
+    }, [isAutoRefresh]);
 
     return(
         <div className="p-4">

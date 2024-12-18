@@ -4,6 +4,7 @@ import { tradeService } from '../../services/tradeService';
 import { userSettingsService } from '../../services/userSettingsService';
 import { marketDataService } from '../marketData/marketDataService';
 import { capitalService } from '../../services/capitalService';
+import { current } from '@reduxjs/toolkit';
 
 // Logging utility with file prefix
 const log = (level: 'info' | 'warn' | 'error', message: string, data?: any) => {
@@ -29,7 +30,16 @@ interface PerformanceMetrics {
     avgWin: number;
     avgLoss: number;
     profitFactor: number;
-    riskRewardRatio: number;
+    avgRRR: number;
+    totalPnL: number;
+    expectancy: number;           // (winRate * avgWin) - ((1 - winRate) * avgLoss)
+    payoffRatio: number;         // avgWin / avgLoss
+    totalTrades: number;         // Total number of trades
+    profitableTradesCount: number;
+    lossTradesCount: number;
+    breakEvenTradesCount: number;
+    largestWin: number;          // Biggest winning trade
+    largestLoss: number;         // Biggest losing trade
 }
 
 interface StreakMetrics {
@@ -39,9 +49,23 @@ interface StreakMetrics {
 }
 
 interface ExposureMetrics {
-    totalExposure: number;
-    maxSingleTradeExposure: number;
-    portfolioHeat: number;
+    // Daily Exposure (DE)
+    der: number;           // Daily Exposure Risk
+    dep: number;           // Daily Exposure Profit
+    deltaDE: number;       // Delta DER/DEP
+
+    // New Exposure (NE) - for trades opened in past week
+    ner: number;           // New Exposure Risk
+    nep: number;           // New Exposure Profit
+    deltaNE: number;       // Delta NER/NEP
+
+    // Open Exposure (OE)
+    oer: number;           // Open Exposure Risk (Open Heat)
+    oep: number;           // Open Exposure Profit
+    deltaOE: number;       // Delta OER/OEP
+
+    // Portfolio Allocation
+    portfolioAllocation: number;  // Total capital in stocks / Total available capital
 }
 
 interface PortfolioMetrics {
@@ -62,8 +86,30 @@ interface CapitalSnapshot {
     runup: number;
 }
 
+// interface PerformanceMetrics {
+//     // Existing metrics
+//     winRate: number;
+//     avgWin: number;
+//     avgLoss: number;
+//     profitFactor: number;
+//     riskRewardRatio: number;
+
+//     // New metrics
+//     averageHoldingTime: number;  // Average duration of trades
+//     averageDaysToProfit: number; // Average days for winning trades
+//     averageDaysToLoss: number;   // Average days for losing trades
+//     successByTimeOfDay: Record<string, number>; // Win rate by hour
+//     successByDayOfWeek: Record<string, number>; // Win rate by day
+//     consecutiveProfits: number;  // Current streak of profitable trades
+//     consecutiveLosses: number;   // Current streak of losing trades
+// }
+
 
 export class MetricsService {
+    private sum(numbers: number[]): number {
+        return numbers.reduce((acc, curr) => acc + curr, 0);
+    }
+
     // Safely convert value to number with optional default
     public safeNumeric(value: any, defaultValue: number = 0): number {
         const numValue = Number(value);
@@ -86,6 +132,42 @@ export class MetricsService {
             
             return isValid;
         });
+    }
+
+    async fetchTrades(): Promise<Trade[]> {
+
+        console.log('-------- 🔄 Attempting to fetch trades --------');
+        try {
+            log('info', 'Attempting to fetch trades');
+            
+            const { data } = await supabase.auth.getUser();
+            if (!data.user) {
+                log('error', 'No authenticated user found');
+                return []; // Return empty array instead of throwing
+            }
+
+            // Fetch trades directly using Supabase query
+            const { data: trades, error } = await supabase
+                .from('trades')
+                .select('*')
+                .eq('user_id', data.user.id)
+                .order('entry_datetime', { ascending: false });
+
+            if (error) throw error;
+
+            log('info', 'Trades fetched successfully', { 
+                tradesCount: trades.length,
+                tradeStatuses: trades.map(trade => trade.status)
+            });
+
+            return trades || [];
+        } catch (error) {
+            log('error', 'Error fetching trades', { 
+                errorMessage: (error as Error).message,
+                errorStack: (error as Error).stack 
+            });
+            return []; 
+        }
     }
 
     public async calculateTradeMetrics(
@@ -177,7 +259,6 @@ export class MetricsService {
         };
     }
 
-
     // Add this to MetricsService
     public calculateStreakMetrics(trades: Trade[]): StreakMetrics {
         const closedTrades = trades
@@ -227,47 +308,85 @@ export class MetricsService {
     // Calculate performance metrics for trades
     public calculateTradePerformanceMetrics(trades: Trade[]): PerformanceMetrics {
         log('info', 'Calculating trade performance metrics');
-
+    
         const closedTrades = trades.filter(trade => 
             trade.status === TRADE_STATUS.CLOSED
         );
-
+    
         const profitableTrades = closedTrades.filter(trade => 
             this.safeNumeric(trade.realized_pnl) > 0
         );
-
+    
         const lossTrades = closedTrades.filter(trade => 
             this.safeNumeric(trade.realized_pnl) < 0
         );
-
-        const winRate = closedTrades.length > 0 
-            ? (profitableTrades.length / closedTrades.length) * 100 
+    
+        const breakEvenTrades = closedTrades.filter(trade => 
+            this.safeNumeric(trade.realized_pnl) === 0
+        );
+    
+        const totalTrades = closedTrades.length;
+        const winRate = totalTrades > 0 
+            ? (profitableTrades.length / totalTrades) * 100 
             : 0;
-
+    
         const avgWin = profitableTrades.length > 0
             ? profitableTrades.reduce((sum, trade) => 
                 sum + this.safeNumeric(trade.realized_pnl), 0) / profitableTrades.length
             : 0;
-
+    
         const avgLoss = lossTrades.length > 0
             ? Math.abs(lossTrades.reduce((sum, trade) => 
                 sum + this.safeNumeric(trade.realized_pnl), 0) / lossTrades.length)
             : 0;
-
-        const profitFactor = avgLoss !== 0 
-            ? Math.abs(avgWin / avgLoss)
+    
+        const totalProfits = profitableTrades.reduce((sum, trade) => 
+            sum + this.safeNumeric(trade.realized_pnl), 0);
+        
+        const totalLosses = Math.abs(lossTrades.reduce((sum, trade) => 
+            sum + this.safeNumeric(trade.realized_pnl), 0));
+    
+        // Calculate largest win/loss
+        const largestWin = profitableTrades.length > 0
+            ? Math.max(...profitableTrades.map(t => this.safeNumeric(t.realized_pnl)))
             : 0;
-
-        const riskRewardRatio = avgLoss !== 0 
-            ? Math.abs(avgWin / avgLoss)
+    
+        const largestLoss = lossTrades.length > 0
+            ? Math.abs(Math.min(...lossTrades.map(t => this.safeNumeric(t.realized_pnl))))
             : 0;
-
+        
+        const profitFactor = totalLosses !== 0 
+            ? totalProfits / totalLosses
+            : totalProfits > 0 ? Number.POSITIVE_INFINITY : 0;
+    
+        const payoffRatio = avgLoss !== 0
+            ? avgWin / avgLoss
+            : avgWin > 0 ? Number.POSITIVE_INFINITY : 0;
+    
+        const expectancy = (winRate / 100 * avgWin) - ((1 - winRate / 100) * avgLoss);
+    
+        const totalPnL = totalProfits - totalLosses;
+    
+        const avgRRR = closedTrades.length > 0
+            ? closedTrades.reduce((sum, trade) => 
+                sum + this.safeNumeric(trade.risk_reward_ratio), 0) / closedTrades.length
+            : 0;
+    
         return {
             winRate,
             avgWin,
             avgLoss,
             profitFactor,
-            riskRewardRatio
+            avgRRR,
+            totalPnL,
+            expectancy,
+            payoffRatio,
+            totalTrades,
+            profitableTradesCount: profitableTrades.length,
+            lossTradesCount: lossTrades.length,
+            breakEvenTradesCount: breakEvenTrades.length,
+            largestWin,
+            largestLoss
         };
     }
 
@@ -275,66 +394,98 @@ export class MetricsService {
     public async calculateExposureMetrics(trades: Trade[], currentCapital: number): Promise<ExposureMetrics> {
         log('info', 'Calculating exposure metrics');
     
-        // Fetch latest market data
         const marketData = await marketDataService.fetchSheetData();
-
-        const totalExposure = trades.reduce((sum, trade) => {
+        const today = new Date();
+        const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    
+        // Filter trades by timeframes
+        const todayTrades = trades.filter(trade => 
+            trade.entry_datetime && new Date(trade.entry_datetime).toDateString() === today.toDateString()
+        );
+        const recentTrades = trades.filter(trade => 
+            trade.entry_datetime && new Date(trade.entry_datetime) >= weekAgo
+        );
+        const openTrades = trades.filter(trade => 
+            trade.status === TRADE_STATUS.OPEN
+        );
+    
+        // Calculate Daily Exposure metrics
+        const der = todayTrades.reduce((sum, trade) => 
+            sum + this.safeNumeric(trade.open_risk) / currentCapital * 100, 0);
+    
+        const dep = todayTrades.reduce((sum, trade) => {
             const marketQuote = marketData.get(trade.ticker);
-            if (!marketQuote) {
-                log('warn', `No market data found for ticker: ${trade.ticker}`, { trade });
-                return sum;
-            }
-            const marketValue = this.safeNumeric(marketQuote.price * trade.remaining_shares);
-            return sum + marketValue;
+            if (!marketQuote) return sum;
+            const unrealizedPnL = (marketQuote.price - trade.entry_price) * trade.remaining_shares;
+            return sum + (unrealizedPnL / currentCapital * 100);
         }, 0);
     
-        const maxSingleTradeExposure = Math.max(...trades.map(trade => {
-            const marketQuote = marketData.get(trade.ticker);
-            if (!marketQuote) return 0;
-            return this.safeNumeric(marketQuote.price * trade.remaining_shares);
-        }));
+        // Calculate New Exposure metrics (past week)
+        const ner = recentTrades.reduce((sum, trade) => 
+            sum + this.safeNumeric(trade.open_risk) / currentCapital * 100, 0);
     
-        const portfolioHeat = (totalExposure / currentCapital) * 100;
+        const nep = recentTrades.reduce((sum, trade) => {
+            const marketQuote = marketData.get(trade.ticker);
+            if (!marketQuote) return sum;
+            const unrealizedPnL = (marketQuote.price - trade.entry_price) * trade.remaining_shares;
+            return sum + (unrealizedPnL / currentCapital * 100);
+        }, 0);
+    
+        // Calculate Open Exposure metrics
+        const oer = openTrades.reduce((sum, trade) => 
+            sum + this.safeNumeric(trade.open_risk) / currentCapital * 100, 0);
+    
+        const oep = openTrades.reduce((sum, trade) => {
+            const marketQuote = marketData.get(trade.ticker);
+            if (!marketQuote) return sum;
+            const unrealizedPnL = (marketQuote.price - trade.entry_price) * trade.remaining_shares;
+            const realizedPnL = this.safeNumeric(trade.realized_pnl);
+            return sum + ((unrealizedPnL + realizedPnL) / currentCapital * 100);
+        }, 0);
+    
+        // Calculate existing metrics
+        const portfolioAllocation = openTrades.reduce((sum, trade) => {
+            const marketQuote = marketData.get(trade.ticker);
+            if (!marketQuote) return sum;
+            const unrealizedPnL = (marketQuote.price - trade.entry_price) * trade.remaining_shares;
+            const realizedPnL = this.safeNumeric(trade.realized_pnl);
+            return sum + unrealizedPnL + realizedPnL;
+        }, 0) / currentCapital * 100;
+        console.log(" -------- CURR CAP: ---------- ", currentCapital);
+        console.log(" -------- Portfolio Allocation: ----------", portfolioAllocation);
+    
+        // const maxSingleTradeExposure = Math.max(...trades.map(trade => {
+        //     const marketQuote = marketData.get(trade.ticker);
+        //     if (!marketQuote) return 0;
+        //     return this.safeNumeric(marketQuote.price * trade.remaining_shares);
+        // }));
+    
+        // const portfolioHeat = (totalExposure / currentCapital) * 100;
+    
+        // Delta calculations (simple change from previous values - you might want to store/track these)
+        const deltaDE = dep - der;
+        const deltaNE = nep - ner;
+        const deltaOE = oep - oer;
     
         return {
-            totalExposure,
-            maxSingleTradeExposure,
-            portfolioHeat
+            // Daily Exposure
+            der,
+            dep,
+            deltaDE,
+    
+            // New Exposure
+            ner,
+            nep,
+            deltaNE,
+    
+            // Open Exposure
+            oer,
+            oep,
+            deltaOE,
+    
+            // Current metrics
+            portfolioAllocation
         };
-    }
-
-    async fetchTrades(): Promise<Trade[]> {
-        try {
-            log('info', 'Attempting to fetch trades');
-            
-            const { data } = await supabase.auth.getUser();
-            if (!data.user) {
-                log('error', 'No authenticated user found');
-                return []; // Return empty array instead of throwing
-            }
-
-            // Fetch trades directly using Supabase query
-            const { data: trades, error } = await supabase
-                .from('trades')
-                .select('*')
-                .eq('user_id', data.user.id)
-                .order('entry_datetime', { ascending: false });
-
-            if (error) throw error;
-
-            log('info', 'Trades fetched successfully', { 
-                tradesCount: trades.length,
-                tradeStatuses: trades.map(trade => trade.status)
-            });
-
-            return trades || [];
-        } catch (error) {
-            log('error', 'Error fetching trades', { 
-                errorMessage: (error as Error).message,
-                errorStack: (error as Error).stack 
-            });
-            return []; 
-        }
     }
 
     // Calculate comprehensive portfolio metrics
@@ -354,9 +505,9 @@ export class MetricsService {
             // 3. Calculate current portfolio state
             const currentCapital = await capitalService.calculateCurrentCapital();
 
-            console.log('Starting Capital:', actualStartingCapital);
-            console.log('Current Capital:', currentCapital);
-            console.log('Trades:', validatedTrades);
+            // console.log('Starting Capital:', actualStartingCapital);
+            // console.log('Current Capital:', currentCapital);
+            // console.log('Trades:', validatedTrades);
     
             // 4. Calculate actual metrics
             const performanceMetrics = this.calculateTradePerformanceMetrics(validatedTrades);
@@ -519,6 +670,53 @@ export class MetricsService {
             log('warn', 'Failed to retrieve starting capital, using default', error);
             return 25000;
         }
+    }
+
+    public async upsertTradingMetrics(
+        userId: string,
+        performanceMetrics: PerformanceMetrics,
+        exposureMetrics: ExposureMetrics
+    ): Promise<void> {
+        const today = new Date().toISOString().split('T')[0];  // YYYY-MM-DD
+    
+        const { error } = await supabase
+            .from('trading_metrics')
+            .upsert({
+                user_id: userId,
+                date: today,
+                // Performance Metrics
+                win_rate: performanceMetrics.winRate,
+                avg_win: performanceMetrics.avgWin,
+                avg_loss: performanceMetrics.avgLoss,
+                profit_factor: performanceMetrics.profitFactor,
+                avg_rrr: performanceMetrics.avgRRR,
+                total_pnl: performanceMetrics.totalPnL,
+                expectancy: performanceMetrics.expectancy,
+                payoff_ratio: performanceMetrics.payoffRatio,
+                total_trades: performanceMetrics.totalTrades,
+                profitable_trades_count: performanceMetrics.profitableTradesCount,
+                loss_trades_count: performanceMetrics.lossTradesCount,
+                break_even_trades_count: performanceMetrics.breakEvenTradesCount,
+                largest_win: performanceMetrics.largestWin,
+                largest_loss: performanceMetrics.largestLoss,
+                
+                // Exposure Metrics
+                der: exposureMetrics.der,
+                dep: exposureMetrics.dep,
+                delta_de: exposureMetrics.deltaDE,
+                ner: exposureMetrics.ner,
+                nep: exposureMetrics.nep,
+                delta_ne: exposureMetrics.deltaNE,
+                oer: exposureMetrics.oer,
+                oep: exposureMetrics.oep,
+                delta_oe: exposureMetrics.deltaOE,
+                portfolio_allocation: exposureMetrics.portfolioAllocation,
+                
+                updated_at: new Date().toISOString()
+            })
+            .select();
+    
+        if (error) throw error;
     }
 
 }

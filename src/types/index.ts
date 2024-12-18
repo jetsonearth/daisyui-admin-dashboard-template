@@ -20,7 +20,7 @@ export interface Trade {
     remaining_shares: number;
   
     // Exit Details
-    exit_date?: string;
+    exit_datetime?: string;
     exit_price?: number;
   
     // Risk Management
