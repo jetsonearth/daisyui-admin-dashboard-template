@@ -70,6 +70,7 @@ export interface Trade {
     mistakes?: string[];
 
     holding_period?: string;
+    percent_from_entry?: number;
   }
 
 

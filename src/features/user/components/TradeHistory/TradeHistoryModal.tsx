@@ -271,6 +271,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             let mfeR = 0;
 
             let tempHoldingPeriod = 0;
+            // let percentFromEntry = 0;
 
             let lastSellAction = null; // Track the last sell action
 
@@ -344,6 +345,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                         riskAmount = totalShares * entryPrice * openRisk / 100;
                         rrr = realizedPnl / riskAmount;
                         market_value = totalCost + realizedPnl;
+                        // percentFromEntry = (exitPrice - entryPrice) / entryPrice * 100;
 
                         // Inside handleSubmit, where you currently calculate MAE and MFE:
                         // Then in your calculation block:
@@ -462,7 +464,8 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 market_value: market_value,  // Add this
                 last_price: exitPrice || entryPrice,  // Add this
                 portfolio_heat: portfolioHeat,
-                portfolio_impact: portfolioImpact
+                portfolio_impact: portfolioImpact,
+                // percent_from_entry: percentFromEntry
             }; 
 
             console.log('Trade Record to be upserted:', tradeRecord);

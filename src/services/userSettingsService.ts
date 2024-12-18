@@ -50,7 +50,7 @@ export const userSettingsService = {
             
             if (!user) throw new Error('No authenticated user');
 
-            console.log('Fetching settings for user:', user.id);
+            console.log('------ Inside UserSettingsService, Fetching settings for user ------ :', user.id);
 
             console.time('supabase_fetch_settings');
             const { data, error } = await supabase

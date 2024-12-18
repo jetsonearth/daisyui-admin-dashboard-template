@@ -56,6 +56,15 @@ interface PortfolioMetrics {
     maxRunup: number;
 }
 
+interface CapitalSnapshot {
+    date: string;
+    totalValue: number;  // Realized + Unrealized
+    highWaterMark: number;
+    drawdown: number;
+    runup: number;
+}
+
+
 export class MetricsService {
     // Safely convert value to number with optional default
     public safeNumeric(value: any, defaultValue: number = 0): number {
@@ -170,6 +179,52 @@ export class MetricsService {
         };
     }
 
+
+    // Add this to MetricsService
+    public calculateStreakMetrics(trades: Trade[]): StreakMetrics {
+        const closedTrades = trades
+            .filter(t => t.status === TRADE_STATUS.CLOSED)
+            .sort((a, b) => new Date(a.exit_datetime!).getTime() - new Date(b.exit_datetime!).getTime());
+    
+        let currentStreak = 0;
+        let longestWinStreak = 0;
+        let longestLossStreak = 0;
+        let currentStreakType: 'win' | 'loss' | null = null;
+    
+        closedTrades.forEach(trade => {
+            const isWin = trade.realized_pnl > 0;
+            
+            if (currentStreakType === null) {
+                currentStreakType = isWin ? 'win' : 'loss';
+                currentStreak = 1;
+            } else if ((isWin && currentStreakType === 'win') || 
+                       (!isWin && currentStreakType === 'loss')) {
+                currentStreak++;
+            } else {
+                // Streak broken
+                if (currentStreakType === 'win') {
+                    longestWinStreak = Math.max(longestWinStreak, currentStreak);
+                } else {
+                    longestLossStreak = Math.max(longestLossStreak, currentStreak);
+                }
+                currentStreakType = isWin ? 'win' : 'loss';
+                currentStreak = 1;
+            }
+        });
+    
+        // Update longest streaks one final time
+        if (currentStreakType === 'win') {
+            longestWinStreak = Math.max(longestWinStreak, currentStreak);
+        } else if (currentStreakType === 'loss') {
+            longestLossStreak = Math.max(longestLossStreak, currentStreak);
+        }
+    
+        return {
+            currentStreak,
+            longestWinStreak,
+            longestLossStreak
+        };
+    }
 
     // Calculate performance metrics for trades
     public calculateTradePerformanceMetrics(trades: Trade[]): PerformanceMetrics {
@@ -358,93 +413,91 @@ export class MetricsService {
         trades: Trade[] | null = null, 
         startingCapital: number | null = null
     ): Promise<PortfolioMetrics> {
-        log('info', 'Calculating Portfolio Metrics');
+        try {
+            // 1. Get and validate trades
+            const validatedTrades = this.validateTrades(trades || await this.fetchTrades());
+            
+            // 2. Get starting capital (could be moved to app initialization)
+            const actualStartingCapital = startingCapital ?? 
+                (await userSettingsService.getUserSettings()).starting_cash ?? 
+                25000;
     
-        // Fetch trades if not provided
-        if (!trades || trades.length === 0) {
-            trades = await this.fetchTrades();
+            // 3. Calculate current portfolio state
+            const { 
+                currentCapital, 
+                totalRealizedPnL, 
+                totalUnrealizedPnL 
+            } = await this.calculateCurrentCapital(validatedTrades, actualStartingCapital);
+    
+            // 4. Calculate actual metrics
+            const performanceMetrics = this.calculateTradePerformanceMetrics(validatedTrades);
+            const exposureMetrics = await this.calculateExposureMetrics(
+                validatedTrades, 
+                currentCapital
+            );
+    
+            // In calculatePortfolioMetrics:
+            const { maxDrawdown, maxRunup } = await this.calculateMaxDrawdownAndRunup(validatedTrades);
+
+            return {
+                startingCapital: actualStartingCapital,
+                currentCapital,
+                performanceMetrics,
+                exposureMetrics,
+                totalRealizedPnL,
+                totalUnrealizedPnL,
+                streakMetrics: this.calculateStreakMetrics(validatedTrades),
+                maxDrawdown,
+                maxRunup
+            };
+        } catch (error) {
+            log('error', 'Portfolio metrics calculation failed', { error });
+            throw error;
         }
+    }
+
+    public async calculateMaxDrawdownAndRunup(trades: Trade[]): Promise<{maxDrawdown: number, maxRunup: number}> {
+        try {
+            // Get capital changes data
+            const { data: capitalChanges } = await supabase
+                .from('capital_changes')
+                .select('*')
+                .order('date', { ascending: true });
     
-        // Validate and clean trades
-        trades = this.validateTrades(trades);
-    
-        // Retrieve starting capital if not provided
-        if (startingCapital === null) {
-            try {
-                const userSettings = await userSettingsService.getUserSettings();
-                startingCapital = userSettings.starting_cash || 25000;
-                
-                log('info', 'Starting capital retrieved', { 
-                    startingCapital,
-                    source: 'userSettings' 
-                });
-            } catch (error) {
-                log('warn', 'Failed to retrieve starting capital', {
-                    errorMessage: (error as Error).message,
-                    usingDefaultValue: 25000
-                });
-                startingCapital = 25000;
+            if (!capitalChanges || capitalChanges.length === 0) {
+                return { maxDrawdown: 0, maxRunup: 0 };
             }
+    
+            let highWaterMark = -Infinity;
+            let maxDrawdown = 0;
+            let maxRunup = 0;
+            let lastValue: number | null = null; // Explicitly define the type
+    
+            capitalChanges.forEach(change => {
+                const metadata = JSON.parse(change.metadata);
+                const totalValue = change.capital_amount;
+                const dayHigh = metadata.day_high || totalValue;
+                const dayLow = metadata.day_low || totalValue;
+    
+                if (dayHigh > highWaterMark) {
+                    highWaterMark = dayHigh;
+                    if (lastValue !== null) {
+                        const runup = ((dayHigh - lastValue) / lastValue) * 100;
+                        maxRunup = Math.max(maxRunup, runup);
+                    }
+                }
+    
+                const drawdown = ((highWaterMark - dayLow) / highWaterMark) * 100;
+                maxDrawdown = Math.max(maxDrawdown, drawdown);
+    
+                lastValue = totalValue; // Use EOD value for next day's comparison
+            });
+    
+            return { maxDrawdown, maxRunup };
+        } catch (error) {
+            log('error', 'Error calculating max drawdown and runup:', error);
+            return { maxDrawdown: 0, maxRunup: 0 };
         }
-    
-        // // Fetch market data for all trade tickers
-        const marketData = await marketDataService.fetchSheetData();
-
-        // Separate trades into open and closed
-        const openTrades = trades.filter(trade => trade.status === TRADE_STATUS.OPEN);
-        const closedTrades = trades.filter(trade => trade.status === TRADE_STATUS.CLOSED);
-
-        // If you have already computed metrics for open trades, retrieve them
-        // Assuming you have a method to get existing metrics
-        // Calculate metrics for open trades
-        const existingOpenTradeMetrics = await Promise.all(
-            openTrades.map(trade => this.calculateTradeMetrics(
-                trade, 
-                marketData,            // Pass the market data
-                startingCapital,       // Pass the starting cash
-                startingCapital        // Pass the total capital
-            ))
-        );
-    
-        // // Calculate trade-level metrics
-        // const tradeMetrics = await Promise.all(
-        //     trades.map(trade => this.calculateTradeMetrics(
-        //         trade, 
-        //         marketData, 
-        //         startingCapital, 
-        //         startingCapital // This will be updated in calculateCurrentCapital
-        //     ))
-        // );
-    
-        // Calculate current capital (maybe already did this)
-        const { 
-            currentCapital, 
-            totalRealizedPnL, 
-            totalUnrealizedPnL 
-        } = await this.calculateCurrentCapital(trades, startingCapital);
-    
-        // Calculate metrics
-        const performanceMetrics = this.calculateTradePerformanceMetrics(trades);
-        const exposureMetrics = await this.calculateExposureMetrics(trades, currentCapital);
-    
-        // Placeholder for streak and drawdown metrics
-        const streakMetrics: StreakMetrics = {
-            currentStreak: 0,
-            longestWinStreak: 0,
-            longestLossStreak: 0
-        };
-    
-        return {
-            startingCapital,
-            currentCapital,
-            performanceMetrics,
-            streakMetrics,
-            exposureMetrics,
-            totalRealizedPnL,
-            totalUnrealizedPnL,
-            maxDrawdown: 0,
-            maxRunup: 0
-        };
     }
 
     async updateTradesWithDetailedMetrics(trades?: Trade[]): Promise<Trade[]> {

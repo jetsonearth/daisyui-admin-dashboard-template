@@ -3,12 +3,14 @@ import { userSettingsService } from './userSettingsService';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
+import { TRADE_STATUS } from '../features/trades/tradeModel';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
 // Define interfaces for type safety
 interface CapitalChangeMetadata {
+    // Existing fields
     timestamp?: string;
     starting_cash?: number;
     new_capital?: number;
@@ -19,16 +21,28 @@ interface CapitalChangeMetadata {
     }>;
     type?: 'end_of_day_snapshot' | 'interim_snapshot' | 'manual_update';
     manual_update?: boolean;
-    [key: string]: any;  // Allow additional dynamic properties
+
+    // New fields for tracking intraday movements
+    day_high?: number;
+    day_low?: number;
+    last_update?: string;
+    first_update_time?: string;
+    final_update_time?: string;
+    is_final?: boolean;
+
+    // Keep this to allow for future additions
+    [key: string]: any;
 }
 
+// You might also want to update the CapitalChangeData interface if you're using it
 interface CapitalChangeData {
     user_id: string;
     capital_amount: number;
     date: string;
     created_at: string;
-    is_end_of_day?: boolean;
-    metadata?: CapitalChangeMetadata;
+    updated_at: string;  // New field
+    is_end_of_day: boolean;
+    metadata: string;    // This will be stringified CapitalChangeMetadata
 }
 
 interface CapitalSnapshotOptions {
@@ -59,14 +73,14 @@ export const capitalService = {
     
             const nyTime = dayjs().tz('America/New_York');
             const isEndOfDay = metadata.type === 'end_of_day_snapshot';
+            const date = nyTime.format('YYYY-MM-DD');
     
-            // Check if a record already exists
+            // Check if a record already exists for this day
             const { data: existingRecord, error: checkError } = await supabase
                 .from('capital_changes')
                 .select('*')
                 .eq('user_id', user.id)
-                .eq('date', nyTime.format('YYYY-MM-DD'))
-                .eq('is_end_of_day', isEndOfDay)
+                .eq('date', date)
                 .single();
     
             if (checkError && checkError.code !== 'PGRST116') {
@@ -74,16 +88,40 @@ export const capitalService = {
                 throw checkError;
             }
     
+            // Prepare metadata with high/low tracking
+            const newMetadata = {
+                ...metadata,
+                timestamp: nyTime.toISOString(),
+                last_update: nyTime.toISOString()
+            };
+    
+            if (existingRecord) {
+                const existingMetadata = JSON.parse(existingRecord.metadata);
+                
+                // Update high/low while preserving existing metadata
+                newMetadata.day_high = Math.max(amount, existingMetadata.day_high || amount);
+                newMetadata.day_low = Math.min(amount, existingMetadata.day_low || amount);
+                
+                // If this is end of day, mark it
+                if (isEndOfDay) {
+                    newMetadata.is_final = true;
+                    newMetadata.final_update_time = nyTime.toISOString();
+                }
+            } else {
+                // New record for the day
+                newMetadata.day_high = amount;
+                newMetadata.day_low = amount;
+                newMetadata.first_update_time = nyTime.toISOString();
+            }
+    
             const capitalChangeData = {
                 user_id: user.id,
                 capital_amount: amount,
-                date: nyTime.format('YYYY-MM-DD'),
-                created_at: nyTime.toISOString(),
+                date: date,
+                created_at: existingRecord ? existingRecord.created_at : nyTime.toISOString(),
+                updated_at: nyTime.toISOString(),
                 is_end_of_day: isEndOfDay,
-                metadata: JSON.stringify({
-                    ...metadata,
-                    timestamp: nyTime.toISOString()
-                })
+                metadata: JSON.stringify(newMetadata)
             };
     
             if (existingRecord) {
@@ -120,41 +158,90 @@ export const capitalService = {
         }
     },
 
-    // Debug method to inspect capital recording
-    async debugCapitalRecording(amount: number, metadata: CapitalChangeMetadata = {}): Promise<any[]> {
+    // Add to capitalService
+    async recordEndOfDaySnapshot(): Promise<void> {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error('No authenticated user');
-
-            const nyTime = dayjs().tz('America/New_York');
-
-            console.log('🕵️ Capital Recording Debug:', {
-                user_id: user.id,
-                amount,
-                date: nyTime.format('YYYY-MM-DD'),
-                metadata,
-                current_timestamp: nyTime.toISOString()
-            });
-
-            // Attempt to find existing records
-            const { data: existingRecords, error: fetchError } = await supabase
-                .from('capital_changes')
+    
+            // Get all trades
+            const { data: trades } = await supabase
+                .from('trades')
                 .select('*')
-                .eq('user_id', user.id)
-                .eq('date', nyTime.format('YYYY-MM-DD'));
-
-            if (fetchError) {
-                console.error('Error fetching existing records:', fetchError);
+                .eq('user_id', user.id);
+    
+            // Check if trades is null or an empty array
+            if (!trades || trades.length === 0) {
+                console.warn('No trades found for the user.');
+                return; // or handle the case as needed
             }
-
-            console.log('🔍 Existing Records:', existingRecords);
-
-            return existingRecords || [];
+    
+            // Get settings for starting capital
+            const settings = await userSettingsService.getUserSettings();
+            const startingCapital = settings.starting_cash || 0;
+    
+            // Calculate final EOD values
+            const totalRealizedPnL = trades.reduce((sum, trade) => 
+                sum + (trade.realized_pnl || 0), 0);
+            const totalUnrealizedPnL = trades.reduce((sum, trade) => 
+                sum + (trade.unrealized_pnl || 0), 0);
+            const eodCapital = startingCapital + totalRealizedPnL + totalUnrealizedPnL;
+    
+            // Record EOD snapshot with detailed metadata
+            await this.recordCapitalChange(eodCapital, {
+                type: 'end_of_day_snapshot',
+                is_end_of_day: true,
+                trades_count: trades.length,
+                open_trades: trades.filter(t => t.status === TRADE_STATUS.OPEN).length,
+                eod_metrics: {
+                    realized_pnl: totalRealizedPnL,
+                    unrealized_pnl: totalUnrealizedPnL,
+                    starting_capital: startingCapital
+                },
+                snapshot_time: dayjs().tz('America/New_York').format()
+            });
+    
         } catch (error) {
-            console.error('Debug Error:', error);
+            console.error('Error recording end of day snapshot:', error);
             throw error;
         }
     },
+
+    // Debug method to inspect capital recording
+    // async debugCapitalRecording(amount: number, metadata: CapitalChangeMetadata = {}): Promise<any[]> {
+    //     try {
+    //         const { data: { user } } = await supabase.auth.getUser();
+    //         if (!user) throw new Error('No authenticated user');
+
+    //         const nyTime = dayjs().tz('America/New_York');
+
+    //         console.log('🕵️ Capital Recording Debug:', {
+    //             user_id: user.id,
+    //             amount,
+    //             date: nyTime.format('YYYY-MM-DD'),
+    //             metadata,
+    //             current_timestamp: nyTime.toISOString()
+    //         });
+
+    //         // Attempt to find existing records
+    //         const { data: existingRecords, error: fetchError } = await supabase
+    //             .from('capital_changes')
+    //             .select('*')
+    //             .eq('user_id', user.id)
+    //             .eq('date', nyTime.format('YYYY-MM-DD'));
+
+    //         if (fetchError) {
+    //             console.error('Error fetching existing records:', fetchError);
+    //         }
+
+    //         console.log('🔍 Existing Records:', existingRecords);
+
+    //         return existingRecords || [];
+    //     } catch (error) {
+    //         console.error('Debug Error:', error);
+    //         throw error;
+    //     }
+    // },
 
     // Track capital changes based on trades
     async trackCapitalChange(trades: Trade[]): Promise<number> {
@@ -213,51 +300,6 @@ export const capitalService = {
             return data[0].capital_amount;
         } catch (error) {
             console.error('Error getting current capital:', error);
-            throw error;
-        }
-    },
-
-    // Record daily capital snapshot
-    async recordDailyCapital(
-        capital: number, 
-        metadata: CapitalChangeMetadata = {}, 
-        isEndOfDay: boolean = true
-    ): Promise<any> {
-        try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error('No authenticated user');
-
-            const nyTime = dayjs().tz('America/New_York');
-            
-            // Prepare insert data
-            const insertData: CapitalChangeData = {
-                user_id: user.id,
-                capital_amount: capital,
-                date: nyTime.format('YYYY-MM-DD'),
-                created_at: nyTime.toISOString(),
-                is_end_of_day: isEndOfDay,
-                metadata: {
-                    ...metadata,
-                    type: isEndOfDay ? 'end_of_day_snapshot' : 'interim_snapshot',
-                    timestamp: nyTime.toISOString()
-                }
-            };
-
-            // Upsert the record with explicit conflict resolution
-            const { data, error } = await supabase
-                .from('capital_changes')
-                .upsert(insertData, {
-                    onConflict: 'user_id,date,is_end_of_day'
-                });
-
-            if (error) {
-                console.error('Daily capital record error:', error);
-                throw error;
-            }
-
-            return data;
-        } catch (error) {
-            console.error('Error recording daily capital:', error);
             throw error;
         }
     },

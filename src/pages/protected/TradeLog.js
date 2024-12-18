@@ -360,6 +360,7 @@ const updateMarketData = async () => {
                                         <th className="text-center whitespace-nowrap">MFE-R</th>
                                         <th className="text-center whitespace-nowrap">Exit Date</th>
                                         <th className="text-center whitespace-nowrap">Exit Price</th>
+                                        <th className="text-center whitespace-nowrap">% From Entry</th>
                                         {/* <th className="text-center whitespace-nowrap">Commission</th> */}
                                         <th className="text-center whitespace-nowrap">Holding Period</th>
                                         {/* <th className="text-center whitespace-nowrap">Mistakes</th>
@@ -551,7 +552,7 @@ const updateMarketData = async () => {
                                                     ) : (
                                                         <>
                                                             {trade.portfolio_heat > 0 ? '+' : ''}
-                                                            {safeToFixed(trade.portfolio_heat)}
+                                                            {safeToFixed(trade.portfolio_heat)}%
                                                         </>
                                                     )}
                                                 </td>
@@ -565,9 +566,10 @@ const updateMarketData = async () => {
                                                     ) : (
                                                         <>
                                                             {trade.portfolio_impact > 0 ? '+' : ''}
-                                                            {safeToFixed(trade.portfolio_impact)}
+                                                            {safeToFixed(trade.portfolio_impact)}%
                                                         </>
-                                                    )}                                                </td>
+                                                    )}  
+                                                </td>
 
                                                 {/* Percentage MAE/MFE */}
                                                 <td className="text-center font-semibold tabular-nums text-rose-400">
@@ -577,6 +579,7 @@ const updateMarketData = async () => {
                                                         `${safeToFixed(trade.mae, 1)}%`
                                                     )}
                                                 </td>
+
                                                 <td className="text-center font-semibold tabular-nums text-emerald-400">
                                                     {trade.mfe === 0 ? (
                                                         <span className="text-white">-</span>
@@ -609,6 +612,7 @@ const updateMarketData = async () => {
                                                         `${safeToFixed(trade.mae_r, 2)}R`
                                                     )}
                                                 </td>
+
                                                 <td className="text-center font-semibold tabular-nums text-emerald-400">
                                                     {trade.mfe_r === 0 ? (
                                                         <span className="text-white">-</span>
@@ -622,8 +626,23 @@ const updateMarketData = async () => {
                                                     {trade.exit_datetime ? 
                                                         new Date(trade.exit_datetime).toISOString().split('T')[0] : ''}
                                                 </td>
+                                                
                                                 <td className="text-center">
                                                     {formatCurrency(trade.exit_price)}
+                                                </td>
+
+                                                <td className={`
+                                                    text-center font-semibold tabular-nums
+                                                    ${trade.percent_from_entry > 0 ? 'text-emerald-400' : 'text-rose-400'}
+                                                `}>
+                                                    {trade.unrealized_pnl === 0 ? (
+                                                        <span className="text-white">-</span>
+                                                    ) : (
+                                                        <>
+                                                            {trade.percent_from_entry > 0 ? '+' : ''}
+                                                            {safeToFixed(trade.percent_from_entry)}%
+                                                        </>
+                                                    )}
                                                 </td>
                                                 {/* Holding Period */}
                                                 <td className="text-center">
