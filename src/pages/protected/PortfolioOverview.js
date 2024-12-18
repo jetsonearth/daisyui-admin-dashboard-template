@@ -10,6 +10,7 @@ import { calculatePortfolioMetrics } from '../../features/metrics/metricsService
 import { userSettingsService } from '../../services/userSettingsService'
 import TradeHistoryModal from '../../features/user/components/TradeHistory/TradeHistoryModal';
 import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from '../../types/index'; 
+import { capitalService } from '../../services/capitalService'
 
 // Time filter buttons configuration
 const timeFilters = [
@@ -32,9 +33,36 @@ function PortfolioOverview(){
     const [lastUpdate, setLastUpdate] = useState(null)
     const [startingCapital, setStartingCapital] = useState(0)
     const [currentCapital, setCurrentCapital] = useState(0);
+
+    // Initialize metrics with default values
+    const [metrics, setMetrics] = useState({
+        startingCapital: 0,
+        currentCapital: 0,
+        performanceMetrics: {
+            winRate: 0,
+            avgWin: 0,
+            avgLoss: 0,
+            profitFactor: 0,
+            riskRewardRatio: 0,
+        },
+        streakMetrics: {
+            currentStreak: 0,
+            longestWinStreak: 0,
+            longestLossStreak: 0,
+        },
+        exposureMetrics: {
+            totalExposure: 0,
+            maxSingleTradeExposure: 0,
+            portfolioHeat: 0,
+        },
+        maxDrawdown: 0,
+        maxRunup: 0,
+    });
     
     const [selectedTrade, setSelectedTrade] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
+
+    console.log('PortfolioOverview component mounted');
 
     // Modified useEffect
     useEffect(() => {
@@ -113,30 +141,31 @@ function PortfolioOverview(){
         );
     };
 
-    // Fetch starting capital from user settings
     useEffect(() => {
-        const fetchStartingCapital = async () => {
+        // Single function to handle all capital-related updates
+        const updateCapitalAndMetrics = async () => {
             try {
-                const userSettings = await userSettingsService.getUserSettings();
-                setStartingCapital(userSettings.starting_cash || 0);
+                // 1. Get current capital
+                console.log('------ Inside UpdateCapitalAndMetrics ------ :');
+                const currentCapital = await capitalService.getCurrentCapital();
+                setCurrentCapital(currentCapital);
+                console.log('------ Inside UpdateCapitalAndMetrics, Updated currentCapital ------ :', currentCapital);
+                // 2. Calculate other metrics
+                const metrics = await metricsService.calculatePortfolioMetrics(
+                    allTrades, 
+                    null
+                );
+                setMetrics(metrics); // Store metrics in state
+                console.log('------ Inside UpdateCapitalAndMetrics, Updated metrics ------ :', metrics);
             } catch (error) {
-                console.error('Failed to fetch starting capital:', error);
+                console.error('Error updating capital:', error);
+                toast.error('Failed to update capital');
             }
         };
-    
-        fetchStartingCapital();
+     
+        // Call on mount 
+        updateCapitalAndMetrics();
     }, []);
-
-    // Calculate metrics
-    const calculateMetrics = async () => {
-        const metrics = await calculatePortfolioMetrics(allTrades, startingCapital)
-        
-        // Override currentCapital with the state value
-        setCurrentCapital(metrics.currentCapital); // Update the state if needed
-        return metrics
-    }
- 
-    const metrics = calculateMetrics()
 
     // Fetch active trades from Supabase
     const fetchActiveTrades = async () => {
@@ -208,13 +237,12 @@ function PortfolioOverview(){
                 return;
             }
     
-            console.log('Trades before update:', trades);
+            // console.log('Trades before update:', trades);
     
             const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(trades);
             
-            console.log('Trades after update:', updatedTrades);
+            // console.log('Trades after update:', updatedTrades);
     
-            
             // Batch update trades in Supabase
             const updatePromises = updatedTrades.map(async (trade) => {
                 const { error } = await supabase
@@ -240,31 +268,42 @@ function PortfolioOverview(){
                 }
             })
 
-            await Promise.all(updatePromises)
+            // await Promise.all(updatePromises)
 
-            // Refetch active trades after update
-            const { data: { user }, error: userError } = await supabase.auth.getUser()
+            // // Refetch active trades after update
+            // const { data: { user }, error: userError } = await supabase.auth.getUser()
             
-            if (userError || !user) {
-                console.error('Authentication error:', userError)
-                toast.error('Authentication required')
-                return
-            }
+            // if (userError || !user) {
+            //     console.error('Authentication error:', userError)
+            //     toast.error('Authentication required')
+            //     return
+            // }
 
-            const { data, error } = await supabase
-                .from('trades')
-                .select('*')
-                .eq('user_id', user.id)
-                .or(`status.eq.Open`)
-                .order('entry_datetime', { ascending: false });
+            // const { data, error } = await supabase
+            //     .from('trades')
+            //     .select('*')
+            //     .eq('user_id', user.id)
+            //     .or(`status.eq.Open`)
+            //     .order('entry_datetime', { ascending: false });
 
-            if (error) {
-                console.error('Error refetching trades:', error)
-                toast.error('Failed to refresh trades')
-                return
-            }
+            // if (error) {
+            //     console.error('Error refetching trades:', error)
+            //     toast.error('Failed to refresh trades')
+            //     return
+            // }
 
-            setTrades(data || [])
+            // setTrades(data || [])
+
+            // Track capital change after market update
+            await capitalService.trackCapitalChange(updatedTrades);
+            
+            // Get latest capital
+            const newCapital = await capitalService.getCurrentCapital();
+            setCurrentCapital(newCapital);
+
+            // Refetch active trades
+            await fetchActiveTrades();
+            
             setLastUpdate(new Date().toLocaleTimeString());
         } catch (error) {
             console.error('Error updating market data:', error);

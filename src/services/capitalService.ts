@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import { TRADE_STATUS } from '../features/trades/tradeModel';
+import { marketDataService } from '../features/marketData/marketDataService';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -246,20 +247,10 @@ export const capitalService = {
     // Track capital changes based on trades
     async trackCapitalChange(trades: Trade[]): Promise<number> {
         try {
-            // Calculate total PnL
-            const totalUnrealizedPnL = trades.reduce((sum, trade) => 
-                sum + (trade.unrealized_pnl || 0), 0);
-            const totalRealizedPnL = trades.reduce((sum, trade) => 
-                sum + (trade.realized_pnl || 0), 0);
-
-            // Get current settings
-            const settings = await userSettingsService.getUserSettings();
-            const startingCash = settings.starting_cash || 0;
-
-            // Calculate current capital
-            const currentCapital = startingCash + totalUnrealizedPnL + totalRealizedPnL;
-
-            // Record capital change
+            // Use calculateCurrentCapital instead of recalculating
+            const currentCapital = await this.calculateCurrentCapital();
+            
+            // Record the change (this is still valuable for tracking)
             await this.recordCapitalChange(currentCapital, {
                 trades_count: trades.length,
                 trade_details: trades.map(trade => ({
@@ -267,7 +258,7 @@ export const capitalService = {
                     unrealized_pnl: trade.unrealized_pnl || 0
                 }))
             });
-
+    
             return currentCapital;
         } catch (error) {
             console.error('Error tracking capital change:', error);
@@ -276,65 +267,124 @@ export const capitalService = {
     },
 
     // Get current capital from capital_changes
+    // Quick retrieval of last known capital
     async getCurrentCapital(): Promise<number> {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error('No authenticated user');
-
-            // Get the most recent capital entry
+    
             const { data, error } = await supabase
                 .from('capital_changes')
                 .select('capital_amount')
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false })
                 .limit(1);
-
+    
             if (error) throw error;
-
-            // If no capital entry exists, fall back to user settings
+    
+            // If no record exists, do a full calculation
             if (!data || data.length === 0) {
-                const settings = await userSettingsService.getUserSettings();
-                return settings.starting_cash || 0;
+                return this.calculateCurrentCapital();
             }
-
+    
             return data[0].capital_amount;
         } catch (error) {
             console.error('Error getting current capital:', error);
             throw error;
         }
     },
-
-    // Update current capital directly
-    async updateCurrentCapital(
-        amount: number, 
-        metadata: CapitalChangeMetadata = {}
-    ): Promise<any> {
+    
+    // Full recalculation with latest market data
+    async calculateCurrentCapital(): Promise<number> {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error('No authenticated user');
     
-            const nyTime = dayjs().tz('America/New_York');
+            // Get starting capital
+            const settings = await userSettingsService.getUserSettings();
+            const startingCash = settings.starting_cash || 0;
     
-            const updatedSettings = await userSettingsService.updateUserSettings({
-                current_capital: amount
+            // Get all trades
+            const { data: trades, error } = await supabase
+                .from('trades')
+                .select('*')
+                .eq('user_id', user.id);
+    
+            if (error) throw error;
+            if (!trades) return startingCash;
+    
+            // Get latest market data for open trades
+            const marketData = await marketDataService.fetchSheetData();
+    
+            // Calculate total PnL
+            const totalPnL = trades.reduce((sum, trade) => {
+                // Add realized PnL from all trades
+                sum += trade.realized_pnl || 0;
+    
+                // Add unrealized PnL only for open trades
+                if (trade.status === TRADE_STATUS.OPEN) {
+                    const currentPrice = marketData.get(trade.ticker)?.price;
+                    if (currentPrice) {
+                        const unrealizedPnL = (currentPrice - trade.entry_price) * trade.remaining_shares;
+                        sum += unrealizedPnL;
+                    }
+                }
+    
+                return sum;
+            }, 0);
+    
+            const currentCapital = startingCash + totalPnL;
+    
+            // Record this calculation
+            await this.recordCapitalChange(currentCapital, {
+                type: 'interim_snapshot',
+                timestamp: new Date().toISOString(),
+                trades_count: trades.length,
+                calculated_values: {
+                    starting_cash: startingCash,
+                    total_pnl: totalPnL,
+                    open_trades: trades.filter(t => t.status === TRADE_STATUS.OPEN).length
+                }
             });
     
-            // Record the capital change
-            const recordedChange = await this.recordCapitalChange(amount, {
-                type: 'interim_snapshot' as const,
-                timestamp: nyTime.toISOString(),
-                ...metadata  // Spread additional metadata
-            });
-    
-            return {
-                settings: updatedSettings,
-                capitalChange: recordedChange
-            };
+            return currentCapital;
         } catch (error) {
-            console.error('Error updating current capital:', error);
+            console.error('Error calculating current capital:', error);
             throw error;
         }
     },
+    
+    // Update current capital directly
+    // async updateCurrentCapital(
+    //     amount: number, 
+    //     metadata: CapitalChangeMetadata = {}
+    // ): Promise<any> {
+    //     try {
+    //         const { data: { user } } = await supabase.auth.getUser();
+    //         if (!user) throw new Error('No authenticated user');
+    
+    //         const nyTime = dayjs().tz('America/New_York');
+    
+    //         const updatedSettings = await userSettingsService.updateUserSettings({
+    //             current_capital: amount
+    //         });
+    
+    //         // Record the capital change
+    //         const recordedChange = await this.recordCapitalChange(amount, {
+    //             type: 'interim_snapshot' as const,
+    //             timestamp: nyTime.toISOString(),
+    //             ...metadata  // Spread additional metadata
+    //         });
+    
+    //         return {
+    //             settings: updatedSettings,
+    //             capitalChange: recordedChange
+    //         };
+    //     } catch (error) {
+    //         console.error('Error updating current capital:', error);
+    //         throw error;
+    //     }
+    // },
 
     // Calculate cumulative capital changes for equity curve
     async calculateEquityCurve(options: CapitalSnapshotOptions = {}): Promise<any[]> {

@@ -50,8 +50,6 @@ interface PortfolioMetrics {
     performanceMetrics: PerformanceMetrics;
     streakMetrics: StreakMetrics;
     exposureMetrics: ExposureMetrics;
-    totalRealizedPnL: number;
-    totalUnrealizedPnL: number;
     maxDrawdown: number;
     maxRunup: number;
 }
@@ -94,7 +92,7 @@ export class MetricsService {
         trade: Trade, 
         // marketData: Map<string, { price: number; low: number }>, 
         marketData: Map<string, { price: number}>,
-        startingCash: number, 
+        startingCapital: number,
         totalCapital: number
     ): Promise<{
         trimmedPercentage: number;
@@ -273,75 +271,6 @@ export class MetricsService {
         };
     }
 
-    public async calculateCurrentCapital(trades: Trade[], startingCapital: number): Promise<{ 
-        currentCapital: number, 
-        totalRealizedPnL: number, 
-        totalUnrealizedPnL: number 
-    }> {
-        log('info', 'Calculating current capital', { 
-            startingCapital, 
-            tradesCount: trades.length 
-        });
-
-        // Fetch latest market data
-        const marketData = await marketDataService.fetchSheetData();
-
-        let totalRealizedPnL = 0;
-        let totalUnrealizedPnL = 0;
-
-        const processedTrades = trades.map(trade => {
-            // First accumulate realized PnL for all trades
-            totalRealizedPnL += this.safeNumeric(trade.realized_pnl);
-
-            // Only calculate unrealized PnL for open trades
-            if (trade.status === TRADE_STATUS.CLOSED) {
-                return { trade, unrealizedPnL: 0 };
-            }
-
-            const symbolData = marketData.get(trade.ticker);
-            
-            if (symbolData === undefined) {
-                log('warn', `No price found for ${trade.ticker}`);
-                return { trade, unrealizedPnL: 0 };
-            }
-
-            const shares = trade.remaining_shares || 0; // Only use remaining shares for unrealized
-            const entryPrice = trade.entry_price;
-            
-            if (shares && entryPrice) {
-                const marketValue = symbolData.price * shares;
-                const priceDiff = symbolData.price - entryPrice;
-                const unrealizedPnL = priceDiff * shares;
-
-                // Only accumulate unrealized PnL for open trades
-                totalUnrealizedPnL += unrealizedPnL;
-
-                return { 
-                    trade, 
-                    unrealizedPnL,
-                    marketPrice: symbolData.price
-                };
-            }
-
-            return { trade, unrealizedPnL: 0 };
-        });
-
-        const currentCapital = this.safeNumeric(startingCapital) + totalRealizedPnL + totalUnrealizedPnL;
-
-        log('info', 'Current capital detailed breakdown', {
-            startingCapital,
-            totalRealizedPnL,
-            totalUnrealizedPnL,
-            currentCapital
-        });
-
-        return { 
-            currentCapital, 
-            totalRealizedPnL, 
-            totalUnrealizedPnL 
-        };
-    }
-
     // Calculate exposure metrics
     public async calculateExposureMetrics(trades: Trade[], currentCapital: number): Promise<ExposureMetrics> {
         log('info', 'Calculating exposure metrics');
@@ -423,11 +352,11 @@ export class MetricsService {
                 25000;
     
             // 3. Calculate current portfolio state
-            const { 
-                currentCapital, 
-                totalRealizedPnL, 
-                totalUnrealizedPnL 
-            } = await this.calculateCurrentCapital(validatedTrades, actualStartingCapital);
+            const currentCapital = await capitalService.calculateCurrentCapital();
+
+            console.log('Starting Capital:', actualStartingCapital);
+            console.log('Current Capital:', currentCapital);
+            console.log('Trades:', validatedTrades);
     
             // 4. Calculate actual metrics
             const performanceMetrics = this.calculateTradePerformanceMetrics(validatedTrades);
@@ -444,8 +373,6 @@ export class MetricsService {
                 currentCapital,
                 performanceMetrics,
                 exposureMetrics,
-                totalRealizedPnL,
-                totalUnrealizedPnL,
                 streakMetrics: this.calculateStreakMetrics(validatedTrades),
                 maxDrawdown,
                 maxRunup
@@ -515,11 +442,7 @@ export class MetricsService {
         const startingCapital = await this.retrieveStartingCapital();
     
         // Calculate current capital to get total capital for metrics
-        const { 
-            currentCapital, 
-            totalRealizedPnL, 
-            totalUnrealizedPnL 
-        } = await this.calculateCurrentCapital(trades, startingCapital);
+        const currentCapital = await capitalService.calculateCurrentCapital();
     
         // Process trades with detailed metrics
         const updatedTrades = await Promise.all(trades.map(async (trade) => {
@@ -562,17 +485,17 @@ export class MetricsService {
         }));
     
         // Update capital service with total metrics
-        try {
-            await capitalService.updateCurrentCapital(currentCapital, {
-                tradeCount: trades.length,
-                marketDataUpdateTime: new Date().toISOString(),
-                updatedTradesCount: updatedTrades.length,
-                realizedPnL: totalRealizedPnL,
-                unrealizedPnL: totalUnrealizedPnL
-            });
-        } catch (error) {
-            log('error', 'Failed to update capital service', error);
-        }
+        // try {
+        //     await capitalService.updateCurrentCapital(currentCapital, {
+        //         tradeCount: trades.length,
+        //         marketDataUpdateTime: new Date().toISOString(),
+        //         updatedTradesCount: updatedTrades.length,
+        //         realizedPnL: totalRealizedPnL,
+        //         unrealizedPnL: totalUnrealizedPnL
+        //     });
+        // } catch (error) {
+        //     log('error', 'Failed to update capital service', error);
+        // }
     
         // Update user settings with current capital
         try {
