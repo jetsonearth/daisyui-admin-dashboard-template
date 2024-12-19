@@ -15,7 +15,8 @@ function TradeLog(){
 
     const navigate = useNavigate()
     const [trades, setTrades] = useState([])
-    const [loading, setLoading] = useState(true)
+    const [initialLoading, setInitialLoading] = useState(true);
+    const [updatingMarketData, setUpdatingMarketData] = useState(false);
     const [isAutoRefresh, setIsAutoRefresh] = useState(true)
     const [lastUpdate, setLastUpdate] = useState(null)
     const [isManualRefreshing, setIsManualRefreshing] = useState(false);
@@ -88,11 +89,12 @@ function TradeLog(){
     // Fetch trades from Supabase
     const fetchTrades = async () => {
         try {
+            setInitialLoading(true);
             const { data: { user }, error: userError } = await supabase.auth.getUser();
             
             if (userError || !user) {
                 toast.error('Please log in to view trades');
-                setLoading(false);
+                setInitialLoading(false);
                 return;
             }
     
@@ -102,103 +104,66 @@ function TradeLog(){
                 .eq('user_id', user.id)
                 .order('entry_datetime', { ascending: false });
     
-            console.log('Fetched trades:', data); // Debug log
-    
             if (error) throw error;
     
             setTrades(data);
-            console.log('Trades after fetching 🚀:', data); // Log the fetched trades
-
-            setLoading(false);
+            setInitialLoading(false);
     
             // Call updateMarketData after setting trades
-            await updateMarketData(); // Ensure this runs after trades are set
+            await updateMarketData();
         } catch (err) {
             console.error('Error fetching trades:', err);
             toast.error('Failed to load trades');
-            setLoading(false);
+            setInitialLoading(false);
         }
     };
-    
-    // UseEffect to fetch trades on component mount
-    useEffect(() => {
-        fetchTrades(); // Call the fetch function
-    }, []); // Empty dependency array means this runs once on mount
 
-    useEffect(() => {
-        console.log('Updated trades:', trades); // Log the trades after they have been updated
-    }, [trades]); // This effect will run whenever trades change
-
-
-const updateMarketData = async () => {
-    console.log('🔄 Starting market data update. Current trades:', trades.length);
-    try {
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const updateMarketData = async () => {
+        const activeTrades = trades.filter(trade => trade.status === TRADE_STATUS.OPEN);
+        const closedTrades = trades.filter(trade => trade.status !== TRADE_STATUS.OPEN);
         
-        if (userError) {
-            throw new Error(`Auth error: ${userError.message}`);
+        if (!activeTrades || activeTrades.length === 0) {
+            return trades;
         }
 
-        // Fetch all trades for the user
-        const { data: allTrades, error: fetchError } = await supabase
-            .from('trades')
-            .select('*')
-            .eq('user_id', user.id);
+        try {
+            setUpdatingMarketData(true);
+            const quotes = await marketDataService.getBatchQuotes(activeTrades.map(trade => trade.ticker));
+            
+            // Update active trades with current market data
+            const updatedActiveTrades = activeTrades.map(trade => {
+                const quote = quotes[trade.ticker];
+                if (!quote) {
+                    console.warn(`No market data available for ${trade.ticker}`);
+                    return trade;
+                }
+                
+                return {
+                    ...trade,
+                    currentPrice: quote.price,
+                    lastUpdate: quote.lastUpdate
+                };
+            });
 
-        if (fetchError) {
-            throw new Error(`Failed to fetch trades: ${fetchError.message}`);
+            // Update only active trades with detailed metrics
+            const tradesWithMetrics = await metricsService.updateTradesWithDetailedMetrics(quotes, updatedActiveTrades);
+            
+            // Combine updated active trades with unchanged closed trades
+            const allUpdatedTrades = [...tradesWithMetrics, ...closedTrades];
+            
+            setTrades(allUpdatedTrades);
+            setLastUpdate(new Date().toLocaleTimeString());
+            return allUpdatedTrades;
+            
+        } catch (error) {
+            console.error('Error updating market data:', error);
+            toast.error(error.message || 'Failed to update market data');
+            return trades;
+        } finally {
+            setUpdatingMarketData(false);
         }
+    };
 
-        const activeTrades = allTrades.filter(trade => trade.status !== TRADE_STATUS.CLOSED);
-
-        console.log(`🔍 Filtering active trades. Total: ${allTrades.length}, Active: ${activeTrades.length}`);
-
-        if (activeTrades.length === 0) {
-            console.log('🚫 No active trades to update');
-            return allTrades; // Return all trades if no active trades
-        }
-
-        setTrades(allTrades);
-
-        const marketData = await marketDataService.fetchSheetData();
-
-        const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(marketData, activeTrades);
-
-        // Update all active trades in parallel
-        await Promise.all(updatedTrades.map(async (trade) => {
-            const currentTimestamp = new Date().toISOString();
-            return supabase
-                .from('trades')
-                .update({
-                    last_price: trade.last_price,
-                    market_value: trade.market_value,
-                    unrealized_pnl: trade.unrealized_pnl,
-                    unrealized_pnl_percentage: trade.unrealized_pnl_percentage,
-                    risk_reward_ratio: trade.risk_reward_ratio,
-                    mae: trade.mae,
-                    mfe: trade.mfe,
-                    portfolio_impact: trade.portfolio_impact,
-                    portfolio_weight: trade.weight_percentage,
-                    trimmed_percentage: trade.trimmed_percentage,
-                    realized_pnl: trade.realized_pnl,
-                    realized_pnl_percentage: trade.realized_pnl_percentage,
-                    updated_at: currentTimestamp
-                })
-                .eq('id', trade.id)
-                .eq('user_id', user.id);
-        }));
-
-        // Fetch fresh data after updates
-        return allTrades; // Return all trades including updated ones
-
-    } catch (error) {
-        console.error('❌ Full error in updateMarketData:', error);
-        console.error('Error message:', error.message);
-        console.error('Error stack:', error.stack);
-        return trades; // Return the current trades in case of error
-    }
-};
-    
     // Auto-refresh logic
     useEffect(() => {
         let intervalId;
@@ -273,9 +238,9 @@ const updateMarketData = async () => {
                         </button>
                         <button 
                             onClick={handleRefreshNow}
-                            className={`btn btn-primary ${isManualRefreshing ? 'loading' : ''}`}
+                            className={`btn btn-primary ${updatingMarketData ? 'loading' : ''}`}
                         >
-                            {isManualRefreshing ? 'Refreshing...' : 'Sync Now'}
+                            {updatingMarketData ? 'Refreshing...' : 'Sync Now'}
                         </button>
 
                         {/* Last Updated Text */}
@@ -292,21 +257,12 @@ const updateMarketData = async () => {
                         >
                             Reset
                         </button> */}
-
-                        <span className="text-gray-400">
-                            Auto-syncing real-time market data every 30 minutes
-                        </span>
-                        {lastUpdate && (
-                            <span className="text-gray-400">
-                                Last update: {lastUpdate}
-                            </span>
-                        )}
                     </div>
 
-                    {loading ? (
-                        <div className="text-center py-10">
-                            <span className="loading loading-spinner loading-lg"></span>
-                            <p>Loading trades...</p>
+                    {initialLoading ? (
+                        <div className="w-full h-48 flex items-center justify-center">
+                            <span className="loading loading-ring loading-lg"></span>
+                            <span className="ml-4">Loading trades...</span>
                         </div>
                     ) : trades.length === 0 ? (
                         <div className="text-center py-10 text-gray-500">

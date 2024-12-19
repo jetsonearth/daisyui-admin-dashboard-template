@@ -54,7 +54,7 @@ function TradePlanner() {
         portfolioRisk: '0.5', // Default 0.5%
         commission: '',     // Default empty
         strategy: '',
-        setup: '',
+        setups: [], // Changed to an array
         direction: DIRECTIONS.LONG,
         assetType: ASSET_TYPES.STOCK,
         notes: ''
@@ -63,44 +63,81 @@ function TradePlanner() {
     // Add a state to track price fetch time
     const [priceInfo, setPriceInfo] = useState({
         timestamp: null,
-        fetchError: null
+        fetchError: null,
+        isLoading: false
     })
 
-    // Modify the useEffect
-    useEffect(() => {
-        const fetchMarketPrice = async () => {
-            if (inputs.ticker) {
-                try {
-                    const marketData = await marketDataService.fetchSheetData();
-                    const currentPrice = marketData.get(inputs.ticker)?.price;
-                    console.log('Market Data:', marketData);
-                    console.log('Current Price from Sheet:', currentPrice);
-                    if (currentPrice) {
-                        setInputs(prevInputs => ({
-                            ...prevInputs,
-                            entryPrice: currentPrice.toString(),
-                            // entryPrice: currentPrice.price.toString(),
-                            // lowOfDay: currentPrice.low ? currentPrice.low.toString() : ''
-                        }))
-                        
-                        // Update price info
-                        setPriceInfo({
-                            timestamp: new Date().toLocaleTimeString(),
-                            fetchError: null
-                        })
-                    }
-                } catch (error) {
-                    console.error('Error fetching market price:', error)
-                    setPriceInfo({
-                        timestamp: null,
-                        fetchError: error.message
-                    })
-                }
-            }
-        }
+    const [loading, setLoading] = useState(false);
 
-        fetchMarketPrice()
-    }, [inputs.ticker])
+    const fetchMarketPrice = async (ticker) => {
+        if (!ticker) return;
+        
+        try {
+            setPriceInfo(prev => ({ ...prev, isLoading: true, fetchError: null }));
+            const quotes = await marketDataService.getBatchQuotes([ticker]);
+            const quote = quotes[ticker];
+            
+            if (quote && quote.price) {
+                setInputs(prev => ({
+                    ...prev,
+                    entryPrice: quote.price.toString()
+                }));
+                setPriceInfo({
+                    timestamp: new Date().toLocaleTimeString(),
+                    fetchError: null,
+                    isLoading: false
+                });
+            } else {
+                setPriceInfo({
+                    timestamp: null,
+                    fetchError: 'No market data available',
+                    isLoading: false
+                });
+            }
+        } catch (error) {
+            console.error('Error fetching market price:', error);
+            setPriceInfo({
+                timestamp: null,
+                fetchError: error.message || 'Failed to fetch market price',
+                isLoading: false
+            });
+            toast.error(error.message || 'Failed to fetch market price');
+        }
+    };
+
+    const updateCurrentPrice = async () => {
+        if (!inputs.ticker) return;
+        
+        try {
+            const quotes = await marketDataService.getBatchQuotes([inputs.ticker]);
+            const quote = quotes[inputs.ticker];
+            
+            if (!quote) {
+                console.warn(`No market data available for ${inputs.ticker}`);
+                return null;
+            }
+
+            return quote.price;
+        } catch (error) {
+            console.error('Error fetching current price:', error);
+            return null;
+        }
+    };
+
+    const handleTickerChange = (e) => {
+        const newTicker = e.target.value.toUpperCase();
+        setInputs(prev => ({
+            ...prev,
+            ticker: newTicker
+        }));
+    };
+
+    const handleTickerKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            fetchMarketPrice(inputs.ticker);
+        }
+    };
 
     // Calculation results
     const [results, setResults] = useState({
@@ -180,9 +217,9 @@ function TradePlanner() {
     
         const price = parseFloat(entryPrice)
         // Fetch current market price before trade submission
-        const currentPrice = await marketDataService.getQuote(inputs.ticker)
+        const currentPrice = await updateCurrentPrice()
         console.log('Price:', price)
-        console.log('Current Market Price:', currentPrice?.price)
+        console.log('Current Market Price:', currentPrice)
         const lod = parseFloat(lowOfDay)  // Will throw an error if not provided
         console.log('Low of Day:', lod)
         const portfolioHeat = portfolioRisk ? parseFloat(portfolioRisk) / 100 : 0.005 // Default to 0.5%
@@ -394,7 +431,7 @@ function TradePlanner() {
                 
                 // Optional fields with defaults
                 strategy: inputs.strategy || 'UNDEFINED',
-                setups: inputs.setup ? [inputs.setup] : null, // Use null instead of empty array
+                setups: inputs.setups.length > 0 ? inputs.setups : null, // Use null instead of empty array
 
                 stop_loss_price: results.fullStopPrice,
                 stop_loss_33_percent: results.stop33,
@@ -490,6 +527,11 @@ function TradePlanner() {
         }));
     };
 
+    const [isDirectionDropdownOpen, setIsDirectionDropdownOpen] = useState(false);
+    const [isAssetTypeDropdownOpen, setIsAssetTypeDropdownOpen] = useState(false);
+    const [isStrategyDropdownOpen, setIsStrategyDropdownOpen] = useState(false);
+    const [isSetupsDropdownOpen, setIsSetupsDropdownOpen] = useState(false);
+
     return (
         <div className="p-4">
             {/* Submission Loading Overlay */}
@@ -510,29 +552,49 @@ function TradePlanner() {
                 <div className="grid grid-cols-2 gap-6">
                     {/* Left Column - Inputs */}
                     <div className="space-y-4">
-                        <h3 className="text-lg font-semibold mb-4">Trade Parameters</h3>
                         
                     {/* Basic Info */}
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="form-control">
-                            <label className="label">
-                                <span className="label-text">Ticker</span>
-                            </label>
-                            <input
-                                type="text"
-                                name="ticker"
-                                value={inputs.ticker}
-                                onChange={handleInputChange}
-                                className="input input-bordered"
-                                placeholder="Enter ticker"
-                            />
+                        <div className="mb-4">
+                            <label className="block text-sm text-white mb-4">Ticker</label>
+                            <div className="flex items-center space-x-2">
+                                <div className="relative flex-1">
+                                    <input
+                                        type="text"
+                                        name="ticker"
+                                        value={inputs.ticker}
+                                        onChange={handleTickerChange}
+                                        onKeyDown={handleTickerKeyDown}
+                                        className="input input-bordered w-full px-4 py-2"
+                                        placeholder="Enter ticker symbol (e.g., AAPL)"
+                                    />
+                                    {priceInfo.isLoading && (
+                                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
+                                        </div>
+                                    )}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => fetchMarketPrice(inputs.ticker)}
+                                    className="btn btn-primary px-6"
+                                    disabled={priceInfo.isLoading}
+                                >
+                                    {priceInfo.isLoading ? 'Fetching...' : 'Fetch'}
+                                </button>
+                            </div>
                             {inputs.ticker && (
-                                <div className="text-sm text-gray-350 mt-1">
-                                    {priceInfo.timestamp 
-                                        ? `Market price as of ${priceInfo.timestamp}` 
-                                        : priceInfo.fetchError 
-                                            ? `Price fetch error: ${priceInfo.fetchError}` 
-                                            : 'Fetching market price...'}
+                                <div className="mt-1 text-sm">
+                                    {priceInfo.timestamp && (
+                                        <span className="text-green-600">
+                                            ✓ Price updated at {priceInfo.timestamp}
+                                        </span>
+                                    )}
+                                    {priceInfo.fetchError && (
+                                        <span className="text-red-500">
+                                            ⚠ {priceInfo.fetchError}
+                                        </span>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -637,17 +699,25 @@ function TradePlanner() {
                                 <label className="label">
                                     <span className="label-text">Direction</span>
                                 </label>
-                                <select 
-                                    name="direction"
-                                    value={inputs.direction}
-                                    onChange={handleInputChange}
-                                    className="select select-bordered"
-                                >
-                                    <option value="">Select Direction</option>
-                                    {Object.values(DIRECTIONS).map(direction => (
-                                        <option key={direction} value={direction}>{direction}</option>
-                                    ))}
-                                </select>
+                                <div className="dropdown w-full">
+                                    <div 
+                                        tabIndex={0} 
+                                        role="button" 
+                                        className="btn select select-bordered w-full" 
+                                        onClick={() => setIsDirectionDropdownOpen(prev => !prev)}
+                                    >
+                                        {inputs.direction || "Select Direction"}
+                                    </div>
+                                    {isDirectionDropdownOpen && (
+                                        <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[1] w-full p-2 shadow">
+                                            {Object.values(DIRECTIONS).map(direction => (
+                                                <li key={direction} onClick={() => setInputs(prev => ({ ...prev, direction }))}>
+                                                    <a>{direction}</a>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
@@ -656,34 +726,50 @@ function TradePlanner() {
                                 <label className="label">
                                     <span className="label-text">Asset Type</span>
                                 </label>
-                                <select 
-                                    name="assetType"
-                                    value={inputs.assetType}
-                                    onChange={handleInputChange}
-                                    className="select select-bordered"
-                                >
-                                    <option value="">Select Asset Type</option>
-                                    {Object.values(ASSET_TYPES).map(assetType => (
-                                        <option key={assetType} value={assetType}>{assetType}</option>
-                                    ))}
-                                </select>
+                                <div className="dropdown w-full">
+                                    <div 
+                                        tabIndex={0} 
+                                        role="button" 
+                                        className="btn select select-bordered w-full" 
+                                        onClick={() => setIsAssetTypeDropdownOpen(prev => !prev)}
+                                    >
+                                        {inputs.assetType || "Select Asset Type"}
+                                    </div>
+                                    {isAssetTypeDropdownOpen && (
+                                        <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[1] w-full p-2 shadow">
+                                            {Object.values(ASSET_TYPES).map(assetType => (
+                                                <li key={assetType} onClick={() => setInputs(prev => ({ ...prev, assetType }))}>
+                                                    <a>{assetType}</a>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="form-control">
                                 <label className="label">
                                     <span className="label-text">Strategy</span>
                                 </label>
-                                <select 
-                                    name="strategy"
-                                    value={inputs.strategy}
-                                    onChange={handleInputChange}
-                                    className="select select-bordered"
-                                >
-                                    <option value="">Select Strategy</option>
-                                    {Object.values(STRATEGIES).map(strategy => (
-                                        <option key={strategy} value={strategy}>{strategy}</option>
-                                    ))}
-                                </select>
+                                <div className="dropdown w-full">
+                                    <div 
+                                        tabIndex={0} 
+                                        role="button" 
+                                        className="btn select select-bordered w-full" 
+                                        onClick={() => setIsStrategyDropdownOpen(prev => !prev)}
+                                    >
+                                        {inputs.strategy || "Select Strategy"}
+                                    </div>
+                                    {isStrategyDropdownOpen && (
+                                        <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[1] w-full p-2 shadow">
+                                            {Object.values(STRATEGIES).map(strategy => (
+                                                <li key={strategy} onClick={() => setInputs(prev => ({ ...prev, strategy }))}>
+                                                    <a>{strategy}</a>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
@@ -691,14 +777,44 @@ function TradePlanner() {
                             <label className="label">
                                 <span className="label-text">Setup</span>
                             </label>
-                            <input
-                                type="text"
-                                name="setup"
-                                value={inputs.setup}
-                                onChange={handleInputChange}
-                                className="input input-bordered"
-                                placeholder="e.g., Bull Flag"
-                            />
+                            <div className="dropdown w-full">
+                                <div 
+                                    tabIndex={0} 
+                                    role="button" 
+                                    className="btn select select-bordered w-full" 
+                                    onClick={() => setIsSetupsDropdownOpen(prev => !prev)}
+                                >
+                                    {inputs.setups.length > 0 ? inputs.setups.join(', ') : "Select Setups"}
+                                </div>
+                                {isSetupsDropdownOpen && (
+                                    <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[1] w-full p-3 shadow grid grid-cols-5 gap-3">
+                                        {SETUPS.map(setup => (
+                                            <li key={setup}>
+                                                <div className="form-control">
+                                                    <label className="label cursor-pointer flex items-center">
+                                                        <input
+                                                            type="checkbox"
+                                                            value={setup}
+                                                            checked={inputs.setups.includes(setup)}
+                                                            onChange={(e) => {
+                                                                const value = e.target.value;
+                                                                setInputs(prev => ({
+                                                                    ...prev,
+                                                                    setups: prev.setups.includes(value)
+                                                                        ? prev.setups.filter(s => s !== value)
+                                                                        : [...prev.setups, value]
+                                                                }));
+                                                            }}
+                                                            className="checkbox checkbox-primary mr-2"
+                                                        />
+                                                        <span className="label-text">{setup}</span>
+                                                    </label>
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
                         </div>
 
                         <div className="form-control">

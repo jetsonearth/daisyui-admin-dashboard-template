@@ -298,56 +298,52 @@ export const capitalService = {
     async calculateCurrentCapital(): Promise<number> {
         try {
             const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error('No authenticated user');
-    
-            // Get starting capital
-            const settings = await userSettingsService.getUserSettings();
-            const startingCash = settings.starting_cash || 0;
-    
+            
+            if (!user) {
+                throw new Error('User not authenticated');
+            }
+
             // Get all trades
-            const { data: trades, error } = await supabase
+            const { data: trades, error: tradesError } = await supabase
                 .from('trades')
                 .select('*')
                 .eq('user_id', user.id);
-    
-            if (error) throw error;
-            if (!trades) return startingCash;
-    
-            // Get latest market data for open trades
-            const marketData = await marketDataService.fetchSheetData();
-    
-            // Calculate total PnL
-            const totalPnL = trades.reduce((sum, trade) => {
-                // Add realized PnL from all trades
-                sum += trade.realized_pnl || 0;
-    
-                // Add unrealized PnL only for open trades
-                if (trade.status === TRADE_STATUS.OPEN) {
-                    const currentPrice = marketData.get(trade.ticker)?.price;
-                    if (currentPrice) {
-                        const unrealizedPnL = (currentPrice - trade.entry_price) * trade.remaining_shares;
-                        sum += unrealizedPnL;
+
+            if (tradesError) {
+                throw tradesError;
+            }
+
+            // Get starting capital
+            const startingCapital = await this.retrieveStartingCapital();
+
+            // Get current market data for active trades
+            const activeTrades = trades.filter(trade => trade.status !== 'CLOSED');
+            
+            if (activeTrades.length === 0) {
+                return startingCapital;
+            }
+
+            try {
+                const quotes = await marketDataService.getBatchQuotes(activeTrades.map(trade => trade.ticker));
+                
+                // Calculate total P&L
+                const totalPnL = activeTrades.reduce((sum, trade) => {
+                    const quote = quotes[trade.ticker];
+                    if (!quote) {
+                        console.warn(`No market data available for ${trade.ticker}`);
+                        return sum;
                     }
-                }
-    
-                return sum;
-            }, 0);
-    
-            const currentCapital = startingCash + totalPnL;
-    
-            // Record this calculation
-            await this.recordCapitalChange(currentCapital, {
-                type: 'interim_snapshot',
-                timestamp: new Date().toISOString(),
-                trades_count: trades.length,
-                calculated_values: {
-                    starting_cash: startingCash,
-                    total_pnl: totalPnL,
-                    open_trades: trades.filter(t => t.status === TRADE_STATUS.OPEN).length
-                }
-            });
-    
-            return currentCapital;
+
+                    const unrealizedPnL = (quote.price - trade.entry_price) * trade.remaining_shares;
+                    return sum + (trade.realized_pnl || 0) + unrealizedPnL;
+                }, 0);
+
+                return startingCapital + totalPnL;
+            } catch (error) {
+                console.error('Error fetching market data:', error);
+                // Fall back to using last known prices
+                return startingCapital + trades.reduce((sum, trade) => sum + (trade.realized_pnl || 0), 0);
+            }
         } catch (error) {
             console.error('Error calculating current capital:', error);
             throw error;
@@ -431,5 +427,9 @@ export const capitalService = {
             console.error('Error calculating equity curve:', error);
             throw error;
         }
+    },
+    async retrieveStartingCapital(): Promise<number> {
+        const settings = await userSettingsService.getUserSettings();
+        return settings.starting_cash || 0;
     }
 };

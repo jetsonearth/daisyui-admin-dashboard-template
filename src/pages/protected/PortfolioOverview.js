@@ -11,7 +11,6 @@ import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from
 import { capitalService } from '../../services/capitalService'
 import { marketDataService } from '../../features/marketData/marketDataService'
 import { userSettingsService } from '../../services/userSettingsService'
-import { fetchLatestPortfolioMetrics } from '../../features/metrics/metricsService';
 
 // At the top of PortfolioOverview.js, after imports
 // console.log('metricsService:', metricsService);
@@ -38,6 +37,8 @@ function PortfolioOverview(){
     const [lastUpdate, setLastUpdate] = useState(null)
     const [startingCapital, setStartingCapital] = useState(0)
     const [currentCapital, setCurrentCapital] = useState(0);
+    const [loading, setLoading] = useState(false);
+    const [metricsLoading, setMetricsLoading] = useState(false);
 
     useEffect(() => {
         const fetchUserSettings = async () => {
@@ -120,6 +121,10 @@ function PortfolioOverview(){
     // Function to handle closing the modal
     const closeModal = () => {
         setIsModalOpen(false);
+        // Instead of resetting selectedTrade to null, update it with latest market data
+        if (selectedTrade) {
+            updateMarketData();
+        }
         setSelectedTrade(null);
     };
 
@@ -152,31 +157,178 @@ function PortfolioOverview(){
         );
     };
 
+    // Initial load and auto-refresh
     useEffect(() => {
-        // Single function to handle all capital-related updates
-        const updateCapitalAndMetrics = async () => {
+        const fetchInitialData = async () => {
             try {
-                // 1. Get current capital
-                console.log('------ Inside UpdateCapitalAndMetrics ------ :');
-                const currentCapital = await capitalService.getCurrentCapital();
+                setLoading(true);
+                setMetricsLoading(true);
+                
+                // Fetch user authentication once
+                const { data: { user }, error: userError } = await supabase.auth.getUser();
+                if (userError || !user) {
+                    console.error('Authentication error:', userError);
+                    return;
+                }
+
+                // Parallel fetch of all initial data
+                const [
+                    currentCapital,
+                    { data: trades },
+                    latestMetrics
+                ] = await Promise.all([
+                    capitalService.getCurrentCapital(),
+                    supabase
+                        .from('trades')
+                        .select('*')
+                        .eq('user_id', user.id)
+                        .eq('status', 'Open')
+                        .order('entry_datetime', { ascending: false }),
+                    metricsService.fetchLatestPortfolioMetrics(user.id, false)
+                ]);
+
+                // Update all states
                 setCurrentCapital(currentCapital);
-                console.log('------ Inside UpdateCapitalAndMetrics, Updated currentCapital ------ :', currentCapital);
-                // 2. Calculate other metrics
-                const metrics = await metricsService.calculatePortfolioMetrics(
-                    null, 
-                    null
-                );
-                setMetrics(metrics); // Store metrics in state
-                console.log('------ Inside UpdateCapitalAndMetrics, Updated metrics ------ :', metrics);
+                setActiveTrades(trades || []);
+                
+                if (latestMetrics) {
+                    setMetrics(prevMetrics => ({
+                        ...prevMetrics,
+                        profitFactor: latestMetrics.profit_factor ?? prevMetrics.profitFactor,
+                        avgRRR: latestMetrics.avg_rrr ?? prevMetrics.avgRRR,
+                        winRate: latestMetrics.win_rate ?? prevMetrics.winRate,
+                        expectancy: latestMetrics.expectancy ?? prevMetrics.expectancy,
+                        totalTrades: latestMetrics.total_trades ?? prevMetrics.totalTrades,
+                        profitableTradesCount: latestMetrics.profitable_trades_count ?? prevMetrics.profitableTradesCount,
+                        lossTradesCount: latestMetrics.loss_trades_count ?? prevMetrics.lossTradesCount,
+                        currentStreak: latestMetrics.current_streak ?? prevMetrics.currentStreak,
+                        longestWinStreak: latestMetrics.longest_win_streak ?? prevMetrics.longestWinStreak,
+                        longestLossStreak: latestMetrics.longest_loss_streak ?? prevMetrics.longestLossStreak,
+                        maxDrawdown: latestMetrics.max_drawdown ?? prevMetrics.maxDrawdown,
+                        maxRunup: latestMetrics.max_runup ?? prevMetrics.maxRunup,
+                        exposureMetrics: latestMetrics.exposure_metrics ?? prevMetrics.exposureMetrics
+                    }));
+                }
+
+                // If we have active trades, fetch their market data
+                if (trades && trades.length > 0) {
+                    const quotes = await marketDataService.getBatchQuotes(trades.map(trade => trade.ticker));
+                    
+                    const updatedTrades = trades.map(trade => {
+                        const quote = quotes[trade.ticker];
+                        if (!quote) return trade;
+                        
+                        const unrealizedPnL = (quote.price - trade.entry_price) * trade.remaining_shares;
+                        const unrealizedPnLPercent = (unrealizedPnL / (trade.entry_price * trade.remaining_shares)) * 100;
+                        
+                        return {
+                            ...trade,
+                            currentPrice: quote.price,
+                            lastUpdate: quote.lastUpdate,
+                            unrealized_pnl: unrealizedPnL,
+                            unrealized_pnl_percent: unrealizedPnLPercent
+                        };
+                    });
+
+                    setActiveTrades(updatedTrades);
+                    setLastUpdate(new Date().toLocaleTimeString());
+                }
+
             } catch (error) {
-                console.error('Error updating capital:', error);
-                toast.error('Failed to update capital');
+                console.error('Error fetching initial data:', error);
+                toast.error('Error loading portfolio data');
+            } finally {
+                setLoading(false);
+                setMetricsLoading(false);
             }
         };
-     
-        // Call on mount 
-        updateCapitalAndMetrics();
+
+        fetchInitialData();
     }, []);
+
+    // Add this useEffect for auto-refresh
+    useEffect(() => {
+        let intervalId;
+        if (isAutoRefresh) {
+            const fetchData = async () => {
+                await updateMarketData();
+            };
+            fetchData(); // Initial fetch
+            intervalId = setInterval(fetchData, 900000); // 15 minutes
+        }
+        return () => {
+            if (intervalId) clearInterval(intervalId);
+        };
+    }, [isAutoRefresh]);
+
+    // Function to update market data
+    const updateMarketData = async () => {
+        if (!activeTrades || activeTrades.length === 0) return;
+
+        try {
+            setLoading(true);
+            console.log('🔄 --------------------- Fetching fresh data for:', activeTrades);
+            
+            const quotes = await marketDataService.getBatchQuotes(activeTrades.map(trade => trade.ticker));
+            
+            // Update trades with current market data
+            const updatedTrades = activeTrades.map(trade => {
+                const quote = quotes[trade.ticker];
+                if (!quote) {
+                    console.warn(`No market data available for ${trade.ticker}`);
+                    return trade;
+                }
+                
+                // Calculate unrealized PnL
+                const unrealizedPnL = (quote.price - trade.entry_price) * trade.remaining_shares;
+                const unrealizedPnLPercent = (unrealizedPnL / (trade.entry_price * trade.remaining_shares)) * 100;
+                
+                return {
+                    ...trade,
+                    currentPrice: quote.price,
+                    lastUpdate: quote.lastUpdate,
+                    unrealized_pnl: unrealizedPnL,
+                    unrealized_pnl_percent: unrealizedPnLPercent
+                };
+            });
+
+            // Update trades state
+            setActiveTrades(updatedTrades);
+            setLastUpdate(new Date().toLocaleTimeString());
+            
+            // Update metrics with loading state
+            setMetricsLoading(true);
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const latestMetrics = await metricsService.fetchLatestPortfolioMetrics(user.id, true);
+                if (latestMetrics) {
+                    setMetrics(prevMetrics => ({
+                        ...prevMetrics,
+                        profitFactor: latestMetrics.profit_factor ?? prevMetrics.profitFactor,
+                        avgRRR: latestMetrics.avg_rrr ?? prevMetrics.avgRRR,
+                        winRate: latestMetrics.win_rate ?? prevMetrics.winRate,
+                        expectancy: latestMetrics.expectancy ?? prevMetrics.expectancy,
+                        totalTrades: latestMetrics.total_trades ?? prevMetrics.totalTrades,
+                        profitableTradesCount: latestMetrics.profitable_trades_count ?? prevMetrics.profitableTradesCount,
+                        lossTradesCount: latestMetrics.loss_trades_count ?? prevMetrics.lossTradesCount,
+                        currentStreak: latestMetrics.current_streak ?? prevMetrics.currentStreak,
+                        longestWinStreak: latestMetrics.longest_win_streak ?? prevMetrics.longestWinStreak,
+                        longestLossStreak: latestMetrics.longest_loss_streak ?? prevMetrics.longestLossStreak,
+                        maxDrawdown: latestMetrics.max_drawdown ?? prevMetrics.maxDrawdown,
+                        maxRunup: latestMetrics.max_runup ?? prevMetrics.maxRunup,
+                        exposureMetrics: latestMetrics.exposure_metrics ?? prevMetrics.exposureMetrics
+                    }));
+                }
+            }
+            
+        } catch (error) {
+            console.error('Error updating market data:', error);
+            toast.error(error.message || 'Failed to update market data');
+        } finally {
+            setLoading(false);
+            setMetricsLoading(false);
+        }
+    };
 
     // Fetch active trades from Supabase
     const fetchActiveTrades = async () => {
@@ -195,7 +347,7 @@ function PortfolioOverview(){
                 .from('trades')
                 .select('*')
                 .eq('user_id', user.id)
-                .or(`status.eq.Open`)
+                .eq('status', 'Open')  // Match the enum value exactly
                 .order('entry_datetime', { ascending: false });
 
             if (error) {
@@ -204,14 +356,14 @@ function PortfolioOverview(){
                 return
             }
 
-            console.log('Raw Trades Fetched:', {
+            console.log('Active Trades Fetched:', {
                 count: data.length,
                 trades: data.map(trade => ({
                     id: trade.id,
                     ticker: trade.ticker,
                     status: trade.status,
                     shares_remaining: trade.shares_remaining,
-                    entry_date: dayjs(trade.entry_datetime).format('YYYY-MM-DD'), // Extract just the date
+                    entry_date: dayjs(trade.entry_datetime).format('YYYY-MM-DD'),
                     full_entry_datetime: trade.entry_datetime
                 }))
             });
@@ -231,156 +383,14 @@ function PortfolioOverview(){
         fetchActiveTrades();
     }, []);
 
-    // Function to handle trade closure
-    const handleCloseTrade = (trade) => {
-        dispatch(closeTrade({
-            id: trade.id,
-            exitPrice: trade.last_price,
-            exitDate: new Date().toISOString()
-        }))
-    }
-
-    // Function to update market data
-    const updateMarketData = async () => {
-        try {
-            if (trades.length === 0) {
-                console.log('No active trades to update');
-                return;
-            }
-    
-            // console.log('Trades before update:', trades);
-            const marketData = await marketDataService.fetchSheetData();
-    
-            const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(marketData, trades);
-            
-            // console.log('Trades after update:', updatedTrades);
-    
-            // Batch update trades in Supabase
-            const updatePromises = updatedTrades.map(async (trade) => {
-                const { error } = await supabase
-                    .from('trades')
-                    .update({
-                        last_price: trade.last_price,
-                        market_value: trade.market_value,
-                        unrealized_pnl: trade.unrealized_pnl,
-                        unrealized_pnl_percentage: trade.unrealized_pnl_percentage,
-                        trimmed_percentage: trade.trimmed_percentage,
-                        portfolio_weight: trade.portfolio_weight,
-                        portfolio_impact: trade.portfolio_impact,
-                        portfolio_heat: trade.portfolio_heat,
-                        realized_pnl: trade.realized_pnl,
-                        realized_pnl_percentage: trade.realized_pnl_percentage,
-                        risk_reward_ratio: trade.risk_reward_ratio,
-                        update_at: trade.update_at
-                    })
-                    .eq('id', trade.id)
-
-                if (error) {
-                    console.error(`Error updating trade ${trade.id}:`, error)
-                }
-            })
-            const exposureMetrics = await metricsService.calculateExposureMetrics(updatedTrades, currentCapital);
-            console.log('------ In Portfolio Overview, calculated exposure metrics ------ :', updatedTrades, 'Exposure Metrics:', exposureMetrics);
-
-             // Update the metrics state with new exposure metrics
-            // Get current user
-            const { data: { user } } = await supabase.auth.getUser();
-                
-            // Upsert only exposure metrics
-            await metricsService.upsertExposureMetrics(user.id, exposureMetrics);
-
-            const { maxDrawdown, maxRunup } = await metricsService.calculateMaxDrawdownAndRunup(updatedTrades);
-            console.log('Max Drawdown:', maxDrawdown, 'Max Runup:', maxRunup);    
-
-            // Update both exposure metrics and max drawdown/runup in state
-            setMetrics(prevMetrics => ({
-                ...prevMetrics,
-                exposureMetrics,
-                maxDrawdown,
-                maxRunup
-            }));
-
-            // const portfolioMetrics = await metricsService.calculatePortfolioMetrics(marketData, updatedTrades);
-
-            // Track capital change after market update
-            await capitalService.trackCapitalChange(updatedTrades);
-            
-            // Get latest capital
-            const newCapital = await capitalService.getCurrentCapital();
-            setCurrentCapital(newCapital);
-
-            // Refetch active trades
-            await fetchActiveTrades();
-            
-            setLastUpdate(new Date().toLocaleTimeString());
-        } catch (error) {
-            console.error('Error updating market data:', error);
-            toast.error('Failed to update market data');
-        }
-    };
-
-    // Add this useEffect for auto-refresh
-    useEffect(() => {
-        let intervalId;
-        if (isAutoRefresh) {
-            const fetchData = async () => {
-                await updateMarketData();
-            };
-            fetchData(); // Initial fetch
-            intervalId = setInterval(fetchData, 900000); // 15 minutes
-        }
-        return () => {
-            if (intervalId) clearInterval(intervalId);
-        };
-    }, [isAutoRefresh]);
-
-    // In PortfolioOverview.js
-    const fetchMetrics = async (forceRefresh = false) => {
-        try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
-                console.error('No authenticated user found');
-                return; 
-            }
-
-            console.log("------------------------ FETCH PF METRICS ------------------------");
-
-            const latestMetrics = await metricsService.fetchLatestPortfolioMetrics(user.id, forceRefresh);
-
-            console.log("Metrics: ---------------", latestMetrics); 
-            if (latestMetrics) {
-                setMetrics(prevMetrics => ({
-                    ...prevMetrics,
-                    profitFactor: latestMetrics.profit_factor || 0,
-                    avgRRR: latestMetrics.avg_rrr || 0,
-                    winRate: latestMetrics.win_rate || 0,
-                    expectancy: latestMetrics.expectancy || 0,
-                    totalTrades: latestMetrics.total_trades || 0,
-                    profitableTradesCount: latestMetrics.profitable_trades_count || 0,
-                    lossTradesCount: latestMetrics.loss_trades_count || 0,
-                    currentStreak: latestMetrics.current_streak || 0,
-                    longestWinStreak: latestMetrics.longest_win_streak || 0,
-                    longestLossStreak: latestMetrics.longest_loss_streak || 0 
-                }));
-                console.log('Updated metrics state:', metrics); // Add this line
-            }
-        } catch (error) {
-            console.error('Error fetching metrics:', error);
-        }
-    };
-
-    // Initial load and auto-refresh
-    useEffect(() => {
-        const fetchData = async () => {
-            await fetchMetrics(false); // Use cache if available
-        };
-
-        fetchData();
-        if (isAutoRefresh) {
-            const intervalId = setInterval(() => fetchMetrics(true), 30000); // Force refresh every 30 seconds if auto-refresh is on
-            return () => clearInterval(intervalId);
-        }
-    }, [isAutoRefresh]);
+    // // Function to handle trade closure
+    // const handleCloseTrade = (trade) => {
+    //     dispatch(closeTrade({
+    //         id: trade.id,
+    //         exitPrice: trade.last_price,
+    //         exitDate: new Date().toISOString()
+    //     }))
+    // }
 
     return(
         <div className="p-4">
@@ -479,7 +489,7 @@ function PortfolioOverview(){
                         {/* Win Rate Box */}
                         <div className="bg-base-100 p-3 rounded-lg shadow flex flex-col h-[170px]">
                             <div className="text-xs text-gray-500 truncate mb-1">Win Rate</div>
-                            <div className="text-4xl font-semibold text-green-500 truncate flex items-center justify-center w-full h-full">
+                            <div className={`text-4xl font-semibold text-green-500 truncate flex items-center justify-center w-full h-full ${metricsLoading ? 'opacity-50' : ''}`}>
                                 {typeof metrics.winRate === 'number' 
                                     ? metrics.winRate.toFixed(1) 
                                     : '0.0'}%
@@ -512,7 +522,7 @@ function PortfolioOverview(){
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
                                     <div className="text-xs text-gray-500">Win</div>
-                                    <div className="text-lg font-bold text-green-500">
+                                    <div className={`text-lg font-bold text-green-500 ${metricsLoading ? 'opacity-50' : ''}`}>
                                         {typeof metrics.winCount === 'number' 
                                             ? metrics.winCount 
                                             : '0'}
@@ -520,7 +530,7 @@ function PortfolioOverview(){
                                 </div>
                                 <div>
                                     <div className="text-xs text-gray-500">Lose</div>
-                                    <div className="text-lg font-bold text-red-500">
+                                    <div className={`text-lg font-bold text-red-500 ${metricsLoading ? 'opacity-50' : ''}`}>
                                         {typeof metrics.loseCount === 'number' 
                                             ? metrics.loseCount 
                                             : '0'}
@@ -537,7 +547,7 @@ function PortfolioOverview(){
                         {/* Avg Win */}
                         <div className="bg-base-100 p-4 rounded-lg shadow">
                             <div className="text-gray-500 text-sm mb-2">Avg Win</div>
-                            <div className="text-4xl font-semibold truncate flex items-center justify-center w-full h-full">
+                            <div className={`text-4xl font-semibold truncate flex items-center justify-center w-full h-full ${metricsLoading ? 'opacity-50' : ''}`}>
                                 {/* <div className="flex justify-between">
                                     <div className="text-xs text-gray-500">Gross</div>
                                     <div className="text-sm font-bold">${metrics.dailyExposure?.gross || 0}</div>
@@ -552,15 +562,15 @@ function PortfolioOverview(){
                             <div className="space-y-2">
                                 <div className="flex justify-between">
                                     <div className="text-xs text-gray-500">Risk</div>
-                                    <div className="text-sm font-bold">{metrics.dailyExposure?.risk || 0}%</div>
+                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.dailyExposure?.risk || 0}%</div>
                                 </div>
                                 <div className="flex justify-between">
                                     <div className="text-xs text-gray-500">Profit</div>
-                                    <div className="text-sm font-bold">{metrics.dailyExposure?.profit || 0}%</div>
+                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.dailyExposure?.profit || 0}%</div>
                                 </div>
                                 <div className="flex justify-between">
                                     <div className="text-xs text-gray-500">Delta</div>
-                                    <div className="text-sm font-bold">{metrics.dailyExposure?.delta || 0}%</div>
+                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.dailyExposure?.delta || 0}%</div>
                                 </div>
                             </div>
                         </div>
@@ -571,15 +581,15 @@ function PortfolioOverview(){
                             <div className="space-y-2">
                                 <div className="flex justify-between">
                                     <div className="text-xs text-gray-500">Weekly</div>
-                                    <div className="text-sm font-bold">{metrics.weeklyReturn}%</div>
+                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.weeklyReturn}%</div>
                                 </div>
                                 <div className="flex justify-between">
                                     <div className="text-xs text-gray-500">Monthly</div>
-                                    <div className="text-sm font-bold">{metrics.monthlyReturn}%</div>
+                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.monthlyReturn}%</div>
                                 </div>
                                 <div className="flex justify-between">
                                     <div className="text-xs text-gray-500">Quarterly</div>
-                                    <div className="text-sm font-bold">{metrics.quarterlyReturn}%</div>
+                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.quarterlyReturn}%</div>
                                 </div>
                             </div>
                         </div>
@@ -592,7 +602,7 @@ function PortfolioOverview(){
                         {/* Average Loss */}
                         <div className="bg-base-100 p-4 rounded-lg shadow">
                             <div className="text-gray-500 text-sm mb-2">Avg Loss</div>
-                            <div className="text-4xl font-semibold truncate flex items-center justify-center w-full h-full">
+                            <div className={`text-4xl font-semibold truncate flex items-center justify-center w-full h-full ${metricsLoading ? 'opacity-50' : ''}`}>
                                 {/* <div className="flex justify-between">
                                     <div className="text-xs text-gray-500">Gross</div>
                                     <div className="text-sm font-bold">${metrics.dailyExposure?.gross || 0}</div>
@@ -606,15 +616,15 @@ function PortfolioOverview(){
                             <div className="space-y-2">
                                 <div className="flex justify-between">
                                     <div className="text-xs text-gray-500">Risk</div>
-                                    <div className="text-sm font-bold">{metrics.newExposure?.risk || 0}%</div>
+                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.newExposure?.risk || 0}%</div>
                                 </div>
                                 <div className="flex justify-between">
                                     <div className="text-xs text-gray-500">Profit</div>
-                                    <div className="text-sm font-bold">{metrics.newExposure?.profit || 0}%</div>
+                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.newExposure?.profit || 0}%</div>
                                 </div>
                                 <div className="flex justify-between">
                                     <div className="text-xs text-gray-500">Delta</div>
-                                    <div className="text-sm font-bold">{metrics.newExposure?.delta || 0}%</div>
+                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.newExposure?.delta || 0}%</div>
                                 </div>
                             </div>
                         </div>
@@ -625,15 +635,15 @@ function PortfolioOverview(){
                             <div className="space-y-2">
                                 <div className="flex justify-between">
                                     <div className="text-xs text-gray-500">Risk</div>
-                                    <div className="text-sm font-bold">{metrics.openExposure?.risk || 0}%</div>
+                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.openExposure?.risk || 0}%</div>
                                 </div>
                                 <div className="flex justify-between">
                                     <div className="text-xs text-gray-500">Profit</div>
-                                    <div className="text-sm font-bold">{metrics.openExposure?.profit || 0}%</div>
+                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.openExposure?.profit || 0}%</div>
                                 </div>
                                 <div className="flex justify-between">
                                     <div className="text-xs text-gray-500">Delta</div>
-                                    <div className="text-sm font-bold">{metrics.openExposure?.delta || 0}%</div>
+                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.openExposure?.delta || 0}%</div>
                                 </div>
                             </div>
                         </div>

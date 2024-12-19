@@ -5,20 +5,18 @@ import { userSettingsService } from '../../services/userSettingsService';
 import { marketDataService } from '../marketData/marketDataService';
 import { capitalService } from '../../services/capitalService';
 
-// Logging utility with file prefix
+// Logging utility
 const log = (level: 'info' | 'warn' | 'error', message: string, data?: any) => {
     const prefix = '[MetricsService]';
-    const logMessage = `${prefix} ${message}`;
-    
-    switch(level) {
+    switch (level) {
         case 'info':
-            console.log(logMessage, data ? data : '');
+            console.log(`${prefix} ${message}`, data || '');
             break;
         case 'warn':
-            console.warn(logMessage, data ? data : '');
+            console.warn(`${prefix} ${message}`, data || '');
             break;
         case 'error':
-            console.error(logMessage, data ? data : '');
+            console.error(`${prefix} ${message}`, data || '');
             break;
     }
 };
@@ -85,24 +83,11 @@ interface CapitalSnapshot {
     runup: number;
 }
 
-// interface PerformanceMetrics {
-//     // Existing metrics
-//     winRate: number;
-//     avgWin: number;
-//     avgLoss: number;
-//     profitFactor: number;
-//     riskRewardRatio: number;
-
-//     // New metrics
-//     averageHoldingTime: number;  // Average duration of trades
-//     averageDaysToProfit: number; // Average days for winning trades
-//     averageDaysToLoss: number;   // Average days for losing trades
-//     successByTimeOfDay: Record<string, number>; // Win rate by hour
-//     successByDayOfWeek: Record<string, number>; // Win rate by day
-//     consecutiveProfits: number;  // Current streak of profitable trades
-//     consecutiveLosses: number;   // Current streak of losing trades
-// }
-
+interface Quote {
+    price: number;
+    timestamp: number;
+    lastUpdate: string;
+}
 
 export class MetricsService {
     private metricsCache: {
@@ -172,10 +157,9 @@ export class MetricsService {
 
     public async calculateTradeMetrics(
         trade: Trade, 
-        // marketData: Map<string, { price: number; low: number }>, 
-        marketData: Map<string, { price: number}>,
+        quotes: Record<string, Quote>, 
         startingCapital: number,
-        totalCapital: number
+        currentCapital: number
     ): Promise<{
         trimmedPercentage: number;
         unrealizedPnL: number;
@@ -190,72 +174,38 @@ export class MetricsService {
         realizedPnLPercentage: number;
     }> {
 
-        const symbolData = marketData.get(trade.ticker);
-        if (!symbolData) {
-            log('warn', `No market data found for ticker: ${trade.ticker}`);
-            return {
-                trimmedPercentage: 0,
-                unrealizedPnL: 0,
-                unrealizedPnLPercentage: 0,
-                marketValue: 0,
-                portfolioWeight: 0,
-                portfolioImpact: 0,
-                portfolioHeat: 0,
-                riskRewardRatio: 0,
-                lastPrice: trade.entry_price,
-                realizedPnL: 0,
-                realizedPnLPercentage: 0
-            };
-        }
-    
-        const marketPrice = symbolData.price;
-        const shares = trade.remaining_shares || trade.total_shares;
-        const entryPrice = trade.entry_price;
-        const realizedPnL = this.safeNumeric(trade.realized_pnl);
-    
-        // Trimmed Percentage
-        const trimmedPercentage = ((trade.total_shares - shares) / trade.total_shares) * 100;
-    
-        // Market Value
-        const marketValue = marketPrice * shares;
-    
-        // Unrealized PnL
-        const priceDiff = marketPrice - entryPrice;
-        const unrealizedPnL = priceDiff * trade.remaining_shares;
-        const unrealizedPnLPercentage = (priceDiff / entryPrice) * 100;
-    
-        // Open Risk - use the predefined initial risk amount
-        const initialRiskAmount = Math.abs(entryPrice - trade.stop_loss_price) * trade.total_shares;
-    
-        // Risk-Reward Ratio (RRR)
-        const riskRewardRatio = initialRiskAmount > 0 
-            ? (unrealizedPnL + realizedPnL) / initialRiskAmount 
-            : 0;
-    
-        // Portfolio Weight
-        const portfolioWeight = (marketValue / totalCapital) * 100;
-    
-        // Portfolio Impact
-        const portfolioImpact = ((unrealizedPnL + realizedPnL) / totalCapital) * 100;
-    
-        // Portfolio Heat
-        const portfolioHeat = (Math.abs(trade.open_risk) / totalCapital) * 100;
+        const quote = quotes[trade.ticker];
+        const currentPrice = quote?.price || 0;
 
-        // Realized PnL Percentage
-        const realizedPnLPercentage = (realizedPnL / (trade.total_shares * entryPrice)) * 100;
-    
+        // Calculate metrics
+        const marketValue = trade.remaining_shares * currentPrice;
+        const unrealizedPnL = (currentPrice - trade.entry_price) * trade.remaining_shares;
+        const unrealizedPnLPercentage = (unrealizedPnL / (trade.entry_price * trade.remaining_shares)) * 100;
+        const realizedPnL = trade.realized_pnl || 0;
+        const realizedPnLPercentage = (realizedPnL / (trade.entry_price * trade.total_shares)) * 100;
+        const trimmedPercentage = ((trade.total_shares - trade.remaining_shares) / trade.total_shares) * 100;
+        
+        // Portfolio metrics
+        const portfolioWeight = (marketValue / currentCapital) * 100;
+        const portfolioImpact = ((unrealizedPnL + realizedPnL) / startingCapital) * 100;
+        const portfolioHeat = (trade.open_risk / currentCapital) * 100;
+        
+        // Risk metrics
+        const riskAmount = trade.total_shares * trade.entry_price * (trade.open_risk / 100);
+        const riskRewardRatio = (unrealizedPnL + realizedPnL) / riskAmount;
+
         return {
-            trimmedPercentage,
+            lastPrice: currentPrice,
+            marketValue,
             unrealizedPnL,
             unrealizedPnLPercentage,
-            marketValue,
+            realizedPnL,
+            realizedPnLPercentage,
+            trimmedPercentage,
             portfolioWeight,
             portfolioImpact,
             portfolioHeat,
-            riskRewardRatio,
-            lastPrice: marketPrice,
-            realizedPnL,
-            realizedPnLPercentage
+            riskRewardRatio
         };
     }
 
@@ -426,7 +376,12 @@ export class MetricsService {
     public async calculateExposureMetrics(trades: Trade[], currentCapital: number): Promise<ExposureMetrics> {
         log('info', 'Calculating exposure metrics');
     
-        const marketData = await marketDataService.fetchSheetData();
+        // First filter for open trades before fetching quotes
+        const openTrades = trades.filter(trade => trade.status === TRADE_STATUS.OPEN);
+        const quotes = openTrades.length > 0 
+            ? await marketDataService.getBatchQuotes(openTrades.map(trade => trade.ticker))
+            : {};
+
         const today = new Date();
         const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
     
@@ -437,7 +392,7 @@ export class MetricsService {
         const recentTrades = trades.filter(trade => 
             trade.entry_datetime && new Date(trade.entry_datetime) >= weekAgo
         );
-        const openTrades = trades.filter(trade => 
+        const openTradesAll = trades.filter(trade => 
             trade.status === TRADE_STATUS.OPEN
         );
     
@@ -446,9 +401,9 @@ export class MetricsService {
             sum + this.safeNumeric(trade.open_risk) / currentCapital * 100, 0);
     
         const dep = todayTrades.reduce((sum, trade) => {
-            const marketQuote = marketData.get(trade.ticker);
-            if (!marketQuote) return sum;
-            const unrealizedPnL = (marketQuote.price - trade.entry_price) * trade.remaining_shares;
+            const currentPrice = quotes[trade.ticker];
+            if (!currentPrice) return sum;
+            const unrealizedPnL = (currentPrice.price - trade.entry_price) * trade.remaining_shares;
             return sum + (unrealizedPnL / currentCapital * 100);
         }, 0);
     
@@ -457,29 +412,29 @@ export class MetricsService {
             sum + this.safeNumeric(trade.open_risk) / currentCapital * 100, 0);
     
         const nep = recentTrades.reduce((sum, trade) => {
-            const marketQuote = marketData.get(trade.ticker);
-            if (!marketQuote) return sum;
-            const unrealizedPnL = (marketQuote.price - trade.entry_price) * trade.remaining_shares;
+            const currentPrice = quotes[trade.ticker];
+            if (!currentPrice) return sum;
+            const unrealizedPnL = (currentPrice.price - trade.entry_price) * trade.remaining_shares;
             return sum + (unrealizedPnL / currentCapital * 100);
         }, 0);
     
         // Calculate Open Exposure metrics
-        const oer = openTrades.reduce((sum, trade) => 
+        const oer = openTradesAll.reduce((sum, trade) => 
             sum + this.safeNumeric(trade.open_risk) / currentCapital * 100, 0);
     
-        const oep = openTrades.reduce((sum, trade) => {
-            const marketQuote = marketData.get(trade.ticker);
-            if (!marketQuote) return sum;
-            const unrealizedPnL = (marketQuote.price - trade.entry_price) * trade.remaining_shares;
+        const oep = openTradesAll.reduce((sum, trade) => {
+            const currentPrice = quotes[trade.ticker];
+            if (!currentPrice) return sum;
+            const unrealizedPnL = (currentPrice.price - trade.entry_price) * trade.remaining_shares;
             const realizedPnL = this.safeNumeric(trade.realized_pnl);
             return sum + ((unrealizedPnL + realizedPnL) / currentCapital * 100);
         }, 0);
     
         // Calculate existing metrics
-        const portfolioAllocation = openTrades.reduce((sum, trade) => {
-            const marketQuote = marketData.get(trade.ticker);
-            if (!marketQuote) return sum;
-            const unrealizedPnL = (marketQuote.price - trade.entry_price) * trade.remaining_shares;
+        const portfolioAllocation = openTradesAll.reduce((sum, trade) => {
+            const currentPrice = quotes[trade.ticker];
+            if (!currentPrice) return sum;
+            const unrealizedPnL = (currentPrice.price - trade.entry_price) * trade.remaining_shares;
             const realizedPnL = this.safeNumeric(trade.realized_pnl);
             return sum + unrealizedPnL + realizedPnL;
         }, 0) / currentCapital * 100;
@@ -611,13 +566,8 @@ export class MetricsService {
         }
     }
 
-    async updateTradesWithDetailedMetrics(marketData: Map<string, { price: number }>, trades?: Trade[]): Promise<Trade[]> {
+    async updateTradesWithDetailedMetrics(quotes: Record<string, Quote>, trades: Trade[]): Promise<Trade[]> {
         log('info', 'Updating trades with detailed metrics');
-    
-        // Fetch trades if not provided
-        if (!trades || trades.length === 0) {
-            trades = await this.fetchTrades();
-        }
     
         // Get starting capital
         const startingCapital = await this.retrieveStartingCapital();
@@ -630,7 +580,7 @@ export class MetricsService {
             // Calculate trade-specific metrics
             const tradeMetrics = await this.calculateTradeMetrics(
                 trade, 
-                marketData, 
+                quotes,
                 startingCapital, 
                 currentCapital
             );
