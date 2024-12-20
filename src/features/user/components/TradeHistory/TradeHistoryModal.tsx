@@ -1,5 +1,5 @@
 // src/components/TradeHistory/TradeHistoryModal.tsx
-import React, { useEffect,useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import { supabase } from '../../../../config/supabaseClient';
@@ -22,86 +22,67 @@ interface TradeHistoryModalProps {
     existingTrade?: Trade;
 }
 
+interface TradeDetails {
+    ticker: string;
+    direction: string;
+    assetType: string;
+    stopLossPrice: string;
+    trailingStopLoss: string;
+    actions: Action[];
+    strategy: string;
+    setups: string[];
+}
+
+const defaultTradeDetails: TradeDetails = {
+    ticker: '',
+    direction: DIRECTIONS.LONG,
+    assetType: ASSET_TYPES.STOCK,
+    stopLossPrice: '',
+    trailingStopLoss: '',
+    actions: [{
+        type: 'BUY',
+        date: new Date(),
+        shares: '',
+        price: ''
+    }],
+    strategy: '',
+    setups: []
+};
+
+const initializeTradeDetails = (existingTrade: Trade): TradeDetails => {
+    // Construct actions from the separate arrays in Trade
+    const actions = existingTrade.action_types?.map((type, index) => ({
+        type: type as 'BUY' | 'SELL',
+        date: new Date(existingTrade.action_datetimes?.[index] || Date.now()),
+        shares: existingTrade.action_shares?.[index]?.toString() || '',
+        price: existingTrade.action_prices?.[index]?.toString() || ''
+    })) || [{
+        type: 'BUY',
+        date: new Date(),
+        shares: '',
+        price: ''
+    }];
+
+    return {
+        ticker: existingTrade.ticker,
+        direction: existingTrade.direction,
+        assetType: existingTrade.asset_type,
+        stopLossPrice: existingTrade.stop_loss_price?.toString() || '',
+        trailingStopLoss: existingTrade.trailing_stoploss?.toString() || '',
+        actions,
+        strategy: existingTrade.strategy || '',
+        setups: existingTrade.setups || [],
+    };
+};
 
 const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, onTradeAdded, existingTrade }) => {
-    const [tradeDetails, setTradeDetails] = useState<{
-        ticker: string;
-        direction: string;
-        assetType: string;
-        stopLossPrice: string;
-        actions: Action[];
-        strategy: string; // Include strategy
-        setups: string[]; // Include setups
-
-    }>(() => {
-        // Initialize with existingTrade data if available
+    const [tradeDetails, setTradeDetails] = useState<TradeDetails>(() => {
         if (existingTrade) {
-            const actions: Action[] = existingTrade.action_types?.map((type, index) => ({
-                type: type as 'BUY' | 'SELL',
-                date: new Date(existingTrade.action_datetimes?.[index] || Date.now()),
-                price: existingTrade.action_prices?.[index]?.toString() || '',
-                shares: existingTrade.action_shares?.[index]?.toString() || '',
-            })) || [{
-                type: 'BUY',
-                date: new Date(),
-                shares: '',
-                price: '',
-            }];
-
-            return {
-                ticker: existingTrade.ticker,
-                direction: existingTrade.direction,
-                assetType: existingTrade.asset_type,
-                stopLossPrice: existingTrade.stop_loss_price?.toString() || '',
-                actions,
-                strategy: existingTrade.strategy || '', // Initialize strategy
-                setups: existingTrade.setups || [], // Initialize setups
-            };        
+            return initializeTradeDetails(existingTrade);
         }
 
-        return {
-            ticker: '',
-            direction: DIRECTIONS.LONG,
-            assetType: ASSET_TYPES.STOCK,
-            stopLossPrice: '',
-            actions: [{
-                type: 'BUY',
-                date: new Date(),
-                shares: '',
-                price: '',
-            }],
-            strategy: '', // Initialize strategy
-            setups: [], // Initialize setups
-        };
+        return defaultTradeDetails;
     });
-
-    // Add this useEffect
-    useEffect(() => {
-        if (existingTrade) {
-            const actions: Action[] = existingTrade.action_types?.map((type, index) => ({
-                type: type as 'BUY' | 'SELL',
-                date: new Date(existingTrade.action_datetimes?.[index] || Date.now()),
-                price: existingTrade.action_prices?.[index]?.toString() || '',
-                shares: existingTrade.action_shares?.[index]?.toString() || '',
-            })) || [{
-                type: 'BUY',
-                date: new Date(),
-                shares: '',
-                price: '',
-            }];
-
-            setTradeDetails({
-                ticker: existingTrade.ticker,
-                direction: existingTrade.direction,
-                assetType: existingTrade.asset_type,
-                stopLossPrice: existingTrade.stop_loss_price?.toString() || '',
-                actions,
-                strategy: existingTrade.strategy || '', // Initialize strategy
-                setups: existingTrade.setups || [], // Initialize setups
-            });
-        }
-    }, [existingTrade]);  // This will run whenever existingTrade changes
-
 
     const [selectedStrategy, setSelectedStrategy] = useState<STRATEGIES | undefined>(
         existingTrade?.strategy as STRATEGIES || undefined
@@ -115,19 +96,16 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
     const [mistakes, setMistakes] = useState(existingTrade?.mistakes || '');
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-    // Handle strategy change
     const handleStrategyChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
         setSelectedStrategy(event.target.value as STRATEGIES);
     };
 
-    // Handle setups change
     const handleSetupsChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
         const value = event.target.value;
         setSelectedSetups(prev => 
             prev.includes(value) ? prev.filter(s => s !== value) : [...prev, value]
         );
     };
-
 
     const handleDeleteTrade = async () => {
         if (!existingTrade) return;
@@ -173,7 +151,6 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
         }));
     };
 
-
     const handleActionChange = (index: number, field: keyof Action, value: any) => {
         setTradeDetails(prev => ({
             ...prev,
@@ -190,16 +167,8 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
         }));
     };
 
-    // Update the fetchHighLowPrices function to accept parameters
     const fetchHighLowPrices = async (ticker: string, entryDate: Date, exitDate: Date) => {
         try {
-            // Log the data we're about to send
-            console.log('Sending data:', {
-                ticker,
-                entryDate: entryDate.toISOString(),
-                exitDate: exitDate.toISOString()
-            });
-    
             const response = await fetch('https://script.google.com/macros/s/AKfycbwCnlStDT4DbWWXefhqX5aJ60IX9vsPRSE6Ai7YsO6f5Z8q5CwM62VzVgBzynqu_CpD/exec', {
                 method: 'POST',
                 headers: {
@@ -212,18 +181,18 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 }),
                 redirect: 'follow'
             });
-    
+
             if (!response.ok) {
                 throw new Error(`HTTP error! Status: ${response.status}`);
             }
-    
+
             const data = await response.json();
-            console.log('Received data:', data); // Log the received data
             return data;
         } catch (error) {
             console.error('Error fetching high and low prices:', error);
         }
     };
+    
 
     const handleSubmit = async () => { 
         setLoading(true); 
@@ -233,7 +202,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 toast.error('Please log in to add trades');
                 return;
             }
-    
+
             let totalShares = 0;
             let remainingShares = 0;
             let totalCost = 0;
@@ -250,13 +219,14 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             let target2R = 0;
             let target3R = 0;
 
-            let openRisk = 0;
+            // let openRisk = 0;
             let initialRiskAmount = 0;
             let currentRiskAmount = 0;
             let rrr = 0;
-            let portfolioHeat = 0;
+            // let positionHeat = 0;
+            // let positionRisk = 0;
             let portfolioImpact = 0;
-        
+
             let stopDistance = 0;
             let stop33 = 0;
             let stop66 = 0;
@@ -272,92 +242,193 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             let mfeR = 0;
 
             let tempHoldingPeriod = 0;
-            // let percentFromEntry = 0;
+            let lastSellAction = null;
 
-            let lastSellAction = null; // Track the last sell action
+            let tradeId: string | undefined;
 
-            let tradeId: string | undefined; // Declare tradeId as a string or undefined
-
-            // Format actions into arrays
             const action_types = tradeDetails.actions.map(a => a.type);
             const action_datetimes = tradeDetails.actions.map(a => a.date.toISOString());
             const action_prices = tradeDetails.actions.map(a => parseFloat(a.price));
             const action_shares = tradeDetails.actions.map(a => parseFloat(a.shares));
 
-            // Calculate shares and validate actions
             for (const action of tradeDetails.actions) {
                 if (action.type === 'BUY') {
                     const shares = parseFloat(action.shares);
-                    totalShares += shares; // Update total shares
-                    remainingShares += shares; // Update remaining shares
-                    totalCost += shares * parseFloat(action.price); // Adjust total cost
-                    entryPrice = totalCost / totalShares; // Update entry price because it would change the average cost
+                    totalShares += shares;
+                    remainingShares += shares;
+                    totalCost += shares * parseFloat(action.price);
+                    entryPrice = totalCost / totalShares;
 
-                    // Calculate stop levels (33% and 66% of full stop distance)
-                    stopDistance = entryPrice - parseFloat(tradeDetails.stopLossPrice)
-                    stop33 = entryPrice - (stopDistance * 0.33)
-                    stop66 = entryPrice - (stopDistance * 0.66)
+                    const firstBuyAction = [...tradeDetails.actions]
+                        .sort((a, b) => a.date.getTime() - b.date.getTime())
+                        .find(a => a.type === 'BUY');
 
-                    // 3-Tiered Stop-Loss Risk Calculation
-                    fullStopLoss = (entryPrice - parseFloat(tradeDetails.stopLossPrice)) / entryPrice * 100
-                    stopLoss33Percent = (entryPrice - stop33) / entryPrice * 100
-                    stopLoss66Percent = (entryPrice - stop66) / entryPrice * 100
+                    if (!firstBuyAction) {
+                        toast.error('No buy action found for this trade');
+                        return;
+                    }
 
-                    // Position-level risk, employing the 3-Tiered Stop-Loss system 
-                    openRisk = (
-                        (fullStopLoss * 0.5) +  // Full stop gets 50% weight
-                        (stopLoss33Percent * 0.33) +   // 33% stop gets 33% weight
-                        (stopLoss66Percent * 0.17)     // 66% stop gets 17% weight
-                    )
+                    const firstEntryPrice = parseFloat(firstBuyAction.price);
+                    const initialStopLoss = parseFloat(tradeDetails.stopLossPrice);
+                    const initialStopDistance = Math.abs(firstEntryPrice - initialStopLoss);
+                    initialRiskAmount = parseFloat(firstBuyAction.shares) * firstEntryPrice * (initialStopDistance / firstEntryPrice);
 
-                    target2R = entryPrice + 2 * stopDistance;
-                    target3R = entryPrice + 3 * stopDistance;
+                    const currentStopLoss = tradeDetails.trailingStopLoss 
+                        ? parseFloat(tradeDetails.trailingStopLoss)
+                        : parseFloat(tradeDetails.stopLossPrice);
+                    
+                    currentRiskAmount = totalShares * entryPrice * Math.abs(entryPrice - currentStopLoss) / entryPrice;
 
-                    // need to make sure this is in the first buy order, since it would be set for the first buy
-                    initialRiskAmount = totalShares * entryPrice * openRisk / 100;
+                    const status = remainingShares > 0 ? TRADE_STATUS.OPEN : TRADE_STATUS.CLOSED;
 
+                    // First trade record preparation (commenting out)
+                    /*
+                    const tradeRecord = {
+                        user_id: user.id,
+                        ticker: tradeDetails.ticker,
+                        direction: tradeDetails.direction,
+                        asset_type: tradeDetails.assetType,
+                        stop_loss_price: tradeDetails.stopLossPrice,
+                        trailing_stoploss: tradeDetails.trailingStopLoss || null,
+                        initial_risk_amount: initialRiskAmount,
+                        current_risk_amount: currentRiskAmount,
+                        status: status,
+                        created_at: new Date().toISOString(),
+                        entry_datetime: tradeDetails.actions[0].date.toISOString(),
+                        entry_price: entryPrice,
+                        total_shares: totalShares,
+                        remaining_shares: remainingShares,
+                        realized_pnl: realizedPnl,
+                        realized_pnl_percentage: realizedPnlPercentage,
+                        unrealized_pnl: unrealizedPnl,
+                        unrealized_pnl_percentage: unrealizedPnlPercentage,
+                        total_cost: totalCost,
+                        strategy: selectedStrategy || null,
+                        setups: selectedSetups.length > 0 ? selectedSetups : null,
+                        exit_price: exitPrice || null,
+                        exit_datetime: exitDate || null,
+                        trimmed_percentage: trimmedPercentage,
+                        risk_reward_ratio: rrr,
+                        // open_risk: openRisk,
+                        // stop_loss_33_percent: stop33,
+                        // stop_loss_66_percent: stop66,
+                        r_target_2: target2R,
+                        r_target_3: target3R,
+                        action_types,
+                        action_datetimes,
+                        action_prices,
+                        action_shares,
+                        notes,
+                        mistakes,
+                        mae: maePercent || 0,
+                        mfe: mfePercent || 0,
+                        mae_dollars: maeDollars || 0,
+                        mfe_dollars: mfeDollars || 0,
+                        mae_r: maeR || 0,
+                        mfe_r: mfeR || 0,
+                        holding_period: tempHoldingPeriod || 0,
+                        market_value: market_value,
+                        last_price: exitPrice || entryPrice,
+                        // position_heat: positionHeat,
+                        // position_risk: positionRisk,
+                        // portfolio_impact: portfolioImpact,
+                    };
+
+                    console.log('Trade Record to be upserted:', tradeRecord);
+
+                    let result;
+                    if (existingTrade) {
+                        const { data, error } = await supabase
+                            .from('trades')
+                            .update(tradeRecord)
+                            .eq('id', existingTrade.id)
+                            .eq('user_id', user.id)
+                            .select();
+
+                        if (error) throw error;
+                        result = data;
+                        toast.success('Trade updated successfully!');
+                    } else {
+                        const { data, error } = await supabase
+                            .from('trades')
+                            .insert([tradeRecord])
+                            .select();
+
+                        if (error) throw error;
+                        result = data;
+                        toast.success('Trade added successfully!');
+                    }
+
+                    onTradeAdded(); // Refresh the trade list
+
+                    if (remainingShares === 0) {
+                        console.log('----------- Computing metrics after trade closure! -----------');
+
+                        const { data: { user }, error: userError } = await supabase.auth.getUser();
+                        if (userError || !user) {
+                            throw new Error('User not authenticated');
+                        }
+
+                        const allTrades = await metricsService.fetchTrades();
+                        const closedTrades = allTrades.filter(t => t.status === TRADE_STATUS.CLOSED);
+
+                        if (closedTrades.length > 0) {
+                            const performanceMetrics = await metricsService.calculateTradePerformanceMetrics(closedTrades);
+                            console.log('Performance Metrics:', performanceMetrics);
+
+                            const streakMetrics = metricsService.calculateStreakMetrics(closedTrades);
+                            console.log('Streak Metrics:', streakMetrics);
+
+                            const combinedMetrics = {
+                                ...performanceMetrics,
+                                currentStreak: streakMetrics.currentStreak,
+                                longestWinStreak: streakMetrics.longestWinStreak,
+                                longestLossStreak: streakMetrics.longestLossStreak
+                            };
+                            console.log('Combined Metrics to be upserted:', combinedMetrics);
+
+                            await metricsService.upsertPerformanceMetrics(user.id, combinedMetrics);
+                            metricsService.invalidateMetricsCache(); // Invalidate cache after updating metrics
+                        }
+                    }
+
+                    onClose(); // Close the modal
+                    */
                 } else if (action.type === 'SELL') {
                     const sharesToSell = parseFloat(action.shares);
                     if (sharesToSell > remainingShares) {
                         toast.error('Cannot sell more shares than owned.');
                         return;
                     }
-                    console.log('----------- In Modal, Selling! -----------');
+
                     remainingShares -= sharesToSell;
                     realizedPnl += sharesToSell * (parseFloat(action.price) - entryPrice);
-                    console.log('Realized PnL:', realizedPnl);
                     realizedPnlPercentage = (realizedPnl / totalCost) * 100;
-                    console.log('Realized PnL Percentage:', realizedPnlPercentage);
 
                     lastSellAction = action;
 
                     if (remainingShares === 0) {
-                        console.log('----------- 🐯 In Modal, Trade Closed 🙏! -----------');
                         exitPrice = parseFloat(lastSellAction.price);
                         exitDate = lastSellAction.date.toISOString();
-                    
-                        // Calculate entry date
+
                         const entryDate = new Date(tradeDetails.actions[0].date);
                         const exitDateObj = new Date(exitDate);
-                    
-                        // Fetch high and low prices only if the trade is closed
+
                         const prices = await fetchHighLowPrices(tradeDetails.ticker, entryDate, exitDateObj);
                         tempHoldingPeriod = Math.ceil((exitDateObj.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
-                        trimmedPercentage = 0;
+                        trimmedPercentage = ((totalShares - remainingShares) / totalShares) * 100;
                         unrealizedPnl = 0;
                         unrealizedPnlPercentage = 0;
 
-                        rrr = realizedPnl / riskAmount;
+                        rrr = realizedPnl / currentRiskAmount;
                         market_value = totalCost + realizedPnl;
 
-                        portfolioHeat = 0;
+                        // positionHeat = 0;
 
-                        // Inside handleSubmit, where you currently calculate MAE and MFE:
                         if (prices) {
                             const { minPrice, maxPrice } = prices;
-                            
+
                             if (tradeDetails.direction === DIRECTIONS.LONG) {
-                                // If price never went below entry (no drawdown)
                                 if (minPrice >= entryPrice) {
                                     maeDollars = 0;
                                     maePercent = 0;
@@ -367,8 +438,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                                     maePercent = ((entryPrice - minPrice) / entryPrice) * 100;
                                     maeR = (entryPrice - minPrice) / (entryPrice - parseFloat(tradeDetails.stopLossPrice));
                                 }
-                        
-                                // If price never went above entry (no profit potential)
+
                                 if (maxPrice <= entryPrice) {
                                     mfeDollars = 0;
                                     mfePercent = 0;
@@ -379,8 +449,6 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                                     mfeR = (maxPrice - entryPrice) / (entryPrice - parseFloat(tradeDetails.stopLossPrice));
                                 }
                             } else {
-                                // SHORT trades
-                                // If price never went above entry (no drawdown)
                                 if (maxPrice <= entryPrice) {
                                     maeDollars = 0;
                                     maePercent = 0;
@@ -390,8 +458,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                                     maePercent = ((maxPrice - entryPrice) / entryPrice) * 100;
                                     maeR = (maxPrice - entryPrice) / (parseFloat(tradeDetails.stopLossPrice) - entryPrice);
                                 }
-                        
-                                // If price never went below entry (no profit potential)
+
                                 if (minPrice >= entryPrice) {
                                     mfeDollars = 0;
                                     mfePercent = 0;
@@ -408,26 +475,20 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             }
 
             trimmedPercentage = ((totalShares - remainingShares) / totalShares) * 100;
-            // portfolioHeat = 
+            // positionHeat = 0;
+            // positionRisk = initialRiskAmount / 
 
             const status = remainingShares > 0 ? TRADE_STATUS.OPEN : TRADE_STATUS.CLOSED;
 
-            // Calculate portfolio metrics if the trade is not closed
-            // if (status === TRADE_STATUS.OPEN) {
-
-            // } else {
-            //     // Set portfolio metrics to 0 when the trade is closed
-            //     portfolioHeat = 0;
-            //     portfolioImpact = 0;
-            // }
-
-            // Create or update the trade record
             const tradeRecord = {
                 user_id: user.id,
                 ticker: tradeDetails.ticker,
                 direction: tradeDetails.direction,
                 asset_type: tradeDetails.assetType,
                 stop_loss_price: tradeDetails.stopLossPrice,
+                trailing_stoploss: tradeDetails.trailingStopLoss || null,
+                initial_risk_amount: initialRiskAmount,
+                current_risk_amount: currentRiskAmount,
                 status: status,
                 created_at: new Date().toISOString(),
                 entry_datetime: tradeDetails.actions[0].date.toISOString(),
@@ -436,19 +497,18 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 remaining_shares: remainingShares,
                 realized_pnl: realizedPnl,
                 realized_pnl_percentage: realizedPnlPercentage,
-                unrealized_pnl: unrealizedPnl,  // Add this
-                unrealized_pnl_percentage: unrealizedPnlPercentage,  // Add this
+                unrealized_pnl: unrealizedPnl,
+                unrealized_pnl_percentage: unrealizedPnlPercentage,
                 total_cost: totalCost,
                 strategy: selectedStrategy || null,
                 setups: selectedSetups.length > 0 ? selectedSetups : null,
                 exit_price: exitPrice || null,
                 exit_datetime: exitDate || null,
                 trimmed_percentage: trimmedPercentage,
-                risk_amount: riskAmount,
                 risk_reward_ratio: rrr,
-                open_risk: openRisk,
-                stop_loss_33_percent: stop33,
-                stop_loss_66_percent: stop66,
+                // open_risk: openRisk,
+                // stop_loss_33_percent: stop33,
+                // stop_loss_66_percent: stop66,
                 r_target_2: target2R,
                 r_target_3: target3R,
                 action_types,
@@ -464,18 +524,17 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 mae_r: maeR || 0,
                 mfe_r: mfeR || 0,
                 holding_period: tempHoldingPeriod || 0,
-                market_value: market_value,  // Add this
-                last_price: exitPrice || entryPrice,  // Add this
-                portfolio_heat: portfolioHeat,
-                portfolio_impact: portfolioImpact,
-                // percent_from_entry: percentFromEntry
-            }; 
+                market_value: market_value,
+                last_price: exitPrice || entryPrice,
+                // portfolio_impact: portfolioImpact,
+            };
 
             console.log('Trade Record to be upserted:', tradeRecord);
 
             let result;
             if (existingTrade) {
-                // Update existing trade
+                console.log('Existing Trade ID:', existingTrade.id);
+                console.log('Full Existing Trade:', JSON.stringify(existingTrade, null, 2));
                 const { data, error } = await supabase
                     .from('trades')
                     .update(tradeRecord)
@@ -483,17 +542,32 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                     .eq('user_id', user.id)
                     .select();
 
-                if (error) throw error;
+                if (error) {
+                    console.error('Update Error:', error);
+                    console.error('Error Details:', error.details);
+                    console.error('Error Hint:', error.hint);
+                    console.error('Error Message:', error.message);
+                    console.log('Attempted Update Record:', JSON.stringify(tradeRecord, null, 2));
+                    throw error;
+                }
                 result = data;
                 toast.success('Trade updated successfully!');
             } else {
-                // Create new trade
+                console.log('Creating new trade record...');
+                console.log('Trade Record to Insert:', JSON.stringify(tradeRecord, null, 2));
                 const { data, error } = await supabase
                     .from('trades')
                     .insert([tradeRecord])
                     .select();
 
-                if (error) throw error;
+                if (error) {
+                    console.error('Insert Error:', error);
+                    console.error('Error Details:', error.details);
+                    console.error('Error Hint:', error.hint);
+                    console.error('Error Message:', error.message);
+                    console.log('Attempted Insert Record:', JSON.stringify(tradeRecord, null, 2));
+                    throw error;
+                }
                 result = data;
                 toast.success('Trade added successfully!');
             }
@@ -501,42 +575,38 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             onTradeAdded(); // Refresh the trade list
 
             if (remainingShares === 0) {
-                console.log('----------- 🐯 Computing metrics after trade closure 🙏! -----------');
-            
-                // Get current user
+                console.log('----------- Computing metrics after trade closure! -----------');
+
                 const { data: { user }, error: userError } = await supabase.auth.getUser();
                 if (userError || !user) {
                     throw new Error('User not authenticated');
                 }
-            
-                // Fetch all closed trades (including the one we just closed)
+
                 const allTrades = await metricsService.fetchTrades();
                 const closedTrades = allTrades.filter(t => t.status === TRADE_STATUS.CLOSED);
-                
-                if (closedTrades.length > 0) {  // Only compute if we have closed trades
-                    // Calculate performance metrics
+
+                if (closedTrades.length > 0) {
                     const performanceMetrics = await metricsService.calculateTradePerformanceMetrics(closedTrades);
                     console.log('Performance Metrics:', performanceMetrics);
-            
-                    // Calculate streak metrics
+
                     const streakMetrics = metricsService.calculateStreakMetrics(closedTrades);
                     console.log('Streak Metrics:', streakMetrics);
-            
+
                     const combinedMetrics = {
                         ...performanceMetrics,
                         currentStreak: streakMetrics.currentStreak,
                         longestWinStreak: streakMetrics.longestWinStreak,
                         longestLossStreak: streakMetrics.longestLossStreak
                     };
-                    console.log('------ 🦈🦈🦈 Combined Metrics to be upserted 🦈🦈🦈 ------- :', combinedMetrics);
-            
+                    console.log('Combined Metrics to be upserted:', combinedMetrics);
+
                     await metricsService.upsertPerformanceMetrics(user.id, combinedMetrics);
                     metricsService.invalidateMetricsCache(); // Invalidate cache after updating metrics
                 }
             }
 
             onClose(); // Close the modal
-        } catch (error: any) { // Type assertion for error
+        } catch (error: any) {
             const errorMessage = error?.message || 'An unknown error occurred';
             toast.error(existingTrade ? 'Failed to update trade' : 'Failed to add trade');
         } finally {
@@ -544,13 +614,38 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
         }
     };
 
+    useEffect(() => {
+        if (existingTrade) {
+            const actions = existingTrade.action_types?.map((type, index) => ({
+                type: type as 'BUY' | 'SELL',
+                date: new Date(existingTrade.action_datetimes?.[index] || Date.now()),
+                shares: existingTrade.action_shares?.[index]?.toString() || '',
+                price: existingTrade.action_prices?.[index]?.toString() || ''
+            })) || [{
+                type: 'BUY',
+                date: new Date(),
+                shares: '',
+                price: ''
+            }];
+
+            setTradeDetails({
+                ticker: existingTrade.ticker,
+                direction: existingTrade.direction,
+                assetType: existingTrade.asset_type,
+                stopLossPrice: existingTrade.stop_loss_price?.toString() || '',
+                trailingStopLoss: existingTrade.trailing_stoploss?.toString() || '',
+                actions,
+                strategy: existingTrade.strategy || '',
+                setups: existingTrade.setups || [],
+            });
+        }
+    }, [existingTrade]);
 
     return (
         isOpen ? (
             <div className="modal modal-open">
                 {loading && <div className="spinner">Loading...</div>}
                 <div className="modal-box max-w-4xl">
-                    {/* Tabs */}
                     <div className="tabs tabs-boxed mb-4">
                         <a 
                             className={`tab ${activeTab === 'general' ? 'tab-active' : ''}`}
@@ -570,8 +665,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                         <>
                             <h3 className="font-bold text-lg mb-4">Trade View</h3>
                             
-                            {/* Top Section - 4 columns */}
-                            <div className="grid grid-cols-4 gap-4 mb-6">
+                            <div className="grid grid-cols-5 gap-4 mb-6">
                                 <div>
                                     <label className="label">Market</label>
                                     <select
@@ -595,7 +689,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                                     />
                                 </div>
                                 <div>
-                                    <label className="label">Stop-Loss</label>
+                                    <label className="label">Initial Stoploss</label>
                                     <input
                                         type="number"
                                         className="input input-bordered w-full"
@@ -603,10 +697,22 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                                         onChange={e => setTradeDetails(prev => ({ ...prev, stopLossPrice: e.target.value }))}
                                     />
                                 </div>
+
+                                <div>
+                                    <label className="label">Trailing Stoploss</label>
+                                    <input
+                                        type="number"
+                                        className="input input-bordered w-full"
+                                        value={tradeDetails.trailingStopLoss}
+                                        onChange={e => setTradeDetails(prev => ({ ...prev, trailingStopLoss: e.target.value }))}
+                                        placeholder="Set trailing SL"
+                                    />
+                                </div>
+
                                 <div>
                                     <label className="label">Direction</label>
                                     <button 
-                                        className={`btn w-full ${tradeDetails.direction === DIRECTIONS.LONG ? 'btn-success' : 'btn-error'}`}
+                                        className={`btn w-full ${tradeDetails.direction === DIRECTIONS.LONG ? 'btn-info' : 'btn-error'}`}
                                         onClick={() => setTradeDetails(prev => ({
                                             ...prev,
                                             direction: prev.direction === DIRECTIONS.LONG ? DIRECTIONS.SHORT : DIRECTIONS.LONG
@@ -617,7 +723,6 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                                 </div>
                             </div>
 
-                            {/* Strategy and Setups Section */}
                             <div className="flex gap-4 mb-6">
                                 <div className="w-1/3">
                                     <label className="label">Strategy:</label>
@@ -670,7 +775,6 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                                 </div>
                             </div>
 
-                            {/* Actions Table */}
                             <div className="overflow-x-auto mb-6">
                                 <table className="table w-full">
                                     <thead>
@@ -688,7 +792,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                                                 <td>
                                                     <button
                                                         onClick={() => toggleActionType(index)}
-                                                        className={`btn btn-sm w-24 ${action.type === 'BUY' ? 'btn-success' : 'btn-error'}`}
+                                                        className={`btn btn-sm w-24 ${action.type === 'BUY' ? 'btn-info' : 'btn-error'}`}
                                                     >
                                                         {action.type}
                                                     </button>
@@ -736,11 +840,10 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                                 </table>
                             </div>
 
-                            {/* Add Action Button */}
-                            <div className="flex justify-center mt-6 mb-6 gap-8"> {/* Increased gap */}
+                            <div className="flex justify-center mt-6 mb-6 gap-8">
                                 <button
                                     onClick={addAction}
-                                    className="btn btn-danger btn-primary"
+                                    className="btn btn-danger btn-info"
                                 >
                                     Add Actions
                                 </button>
@@ -750,7 +853,6 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                             </div>
                         </>
                     ) : (
-                        // Notes & Mistakes Tab
                         <div className="space-y-4">
                             <div>
                                 <label className="label">Trade Notes</label>
@@ -773,7 +875,6 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                         </div>
                     )}
 
-                    {/* Modal Actions */}
                     <div className="modal-action">
                         <button className="btn" onClick={onClose} disabled={loading}>Close</button>
                         <button className="btn btn-primary" onClick={handleSubmit} disabled={loading}>

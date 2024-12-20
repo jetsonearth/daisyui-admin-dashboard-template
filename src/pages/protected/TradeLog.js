@@ -313,8 +313,8 @@ function TradeLog(){
                                         <th className="text-center whitespace-nowrap">Market Value</th>
                                         <th className="text-center whitespace-nowrap">Weight %</th>
                                         <th className="text-center whitespace-nowrap">Trimmed %</th>
-                                        <th className="text-center whitespace-nowrap">Open Risk</th>
-                                        <th className="text-center whitespace-nowrap">Portfolio Heat</th>
+                                        <th className="text-center whitespace-nowrap">SL Distance</th>
+                                        <th className="text-center whitespace-nowrap">Position Heat</th>
                                         <th className="text-center whitespace-nowrap">Portfolio Impact</th>
                                         <th className="text-center whitespace-nowrap">MAE</th>
                                         <th className="text-center whitespace-nowrap">MFE</th>

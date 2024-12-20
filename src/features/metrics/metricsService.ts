@@ -176,7 +176,7 @@ export class MetricsService {
         marketValue: number;
         portfolioWeight: number;
         portfolioImpact: number;
-        portfolioHeat: number;
+        positionRisk: number;
         riskRewardRatio: number;
         lastPrice: number;
         realizedPnL: number;
@@ -196,7 +196,7 @@ export class MetricsService {
                 portfolioWeight: 0,  // No portfolio weight for closed trades
                 // portfolioImpact: ((trade.realized_pnl || 0) / startingCapital) * 100,
                 portfolioImpact: 0,
-                portfolioHeat: 0,  // No heat for closed trades
+                positionRisk: 0,  // No heat for closed trades
                 riskRewardRatio: trade.realized_pnl ? trade.realized_pnl / (trade.total_shares * trade.entry_price * (trade.open_risk / 100)) : 0
             };
         }
@@ -215,8 +215,8 @@ export class MetricsService {
                 trimmedPercentage: ((trade.total_shares - trade.remaining_shares) / trade.total_shares) * 100,
                 portfolioWeight: (trade.remaining_shares * trade.entry_price / currentCapital) * 100,
                 portfolioImpact: ((trade.realized_pnl || 0) / startingCapital) * 100,
-                portfolioHeat: (trade.open_risk / currentCapital) * 100,
-                riskRewardRatio: 0
+                positionRisk: ((trade.initial_risk_amount ?? (trade.open_risk * trade.total_shares * trade.entry_price / 100)) / currentCapital) * 100,
+                riskRewardRatio: (trade.unrealized_pnl + trade.realized_pnl) / (trade.initial_risk_amount ?? (trade.open_risk * trade.total_shares * trade.entry_price / 100))
             };
         }
 
@@ -232,11 +232,10 @@ export class MetricsService {
         // Portfolio metrics
         const portfolioWeight = (marketValue / currentCapital) * 100;
         const portfolioImpact = ((unrealizedPnL + realizedPnL) / startingCapital) * 100;
-        const portfolioHeat = (trade.open_risk / currentCapital) * 100;
+        const positionRisk = ((trade.initial_risk_amount ?? (trade.open_risk * trade.total_shares * trade.entry_price / 100)) / currentCapital) * 100;
         
         // Risk metrics
-        const riskAmount = trade.total_shares * trade.entry_price * (trade.open_risk / 100);
-        const riskRewardRatio = (unrealizedPnL + realizedPnL) / riskAmount;
+        const riskRewardRatio = (unrealizedPnL + realizedPnL) / (trade.initial_risk_amount ?? (trade.open_risk * trade.total_shares * trade.entry_price / 100));
 
         return {
             lastPrice: currentPrice,
@@ -248,7 +247,7 @@ export class MetricsService {
             trimmedPercentage,
             portfolioWeight,
             portfolioImpact,
-            portfolioHeat,
+            positionRisk,
             riskRewardRatio
         };
     }
@@ -440,7 +439,7 @@ export class MetricsService {
                 dayjs(trade.entry_datetime).isAfter(dayjs().subtract(7, 'days')));
             
             const ner = recentTrades.reduce((sum, trade) => 
-                sum + ((trade.risk_amount ?? 0) / currentCapital * 100), 0);
+                sum + ((trade.initial_risk_amount ?? 0) / currentCapital * 100), 0);
             
             const nep = recentTrades.reduce((sum, trade) => {
                 const unrealizedPnL = trade.unrealized_pnl ?? 0;
@@ -449,7 +448,7 @@ export class MetricsService {
     
             // 3. Open Exposure
             const oer = activeTrades.reduce((sum, trade) => 
-                sum + (trade.portfolio_heat ?? 0), 0);
+                sum + (trade.position_risk ?? 0), 0);
             
             const oep = activeTrades.reduce((sum, trade) => {
                 const totalPnL = (trade.unrealized_pnl ?? 0) + (trade.realized_pnl ?? 0);
@@ -595,7 +594,7 @@ export class MetricsService {
                 trimmed_percentage: tradeMetrics.trimmedPercentage,
                 portfolio_weight: tradeMetrics.portfolioWeight,
                 portfolio_impact: tradeMetrics.portfolioImpact,
-                portfolio_heat: tradeMetrics.portfolioHeat,
+                position_risk: tradeMetrics.positionRisk,
                 risk_reward_ratio: tradeMetrics.riskRewardRatio,
                 updated_at: new Date().toISOString()
             };

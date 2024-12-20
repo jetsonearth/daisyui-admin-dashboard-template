@@ -10,13 +10,14 @@ import { toast } from 'react-toastify';
 import { userSettingsService } from '../../services/userSettingsService';
 import TradingViewWidget from '../../components/TradingViewWidget';
 import 'react-toastify/dist/ReactToastify.css';
+import { current } from '@reduxjs/toolkit';
 
 interface TradeInputs {
     ticker: string;
     entryPrice: string;
     atr: string;
     lowOfDay: string;
-    portfolioRisk: string;
+    positionRisk: string;
     commission: string;
     strategy: string;
     setups: string[];
@@ -53,6 +54,7 @@ interface SingleRiskPositionMetrics {
 interface SystemMetrics {
     tiered: TieredRiskPositionMetrics;
     single: SingleRiskPositionMetrics;
+    hsmFomoRatio: number;
 }
 
 interface PriceLadderProps {
@@ -77,9 +79,15 @@ const TradePlanner: React.FC = () => {
         
         const stopPrice = Math.max(atrStop, percentStop, lodStop);
         
-        if (stopPrice === atrStop) return 'ATR Based';
-        if (stopPrice === percentStop) return '7% Risk';
-        return 'LoD Based';
+        if (stopPrice === atrStop) return 'ATR stop';
+        if (stopPrice === percentStop) return '7% stop';
+        return 'LoD stop';
+    };
+
+    const calculateHSMFomoRatio = (entryPrice: number, lowOfDay: number, atr: number): number => {
+        if (!entryPrice || !lowOfDay || !atr || atr === 0) return 0;
+        const difference = entryPrice - lowOfDay;
+        return Math.round((difference / atr) * 100);
     };
 
     // Input states
@@ -88,7 +96,7 @@ const TradePlanner: React.FC = () => {
         entryPrice: '',
         atr: '',
         lowOfDay: '',
-        portfolioRisk: '0.5',
+        positionRisk: '0.5',
         commission: '0',
         strategy: '',
         setups: [],
@@ -104,7 +112,7 @@ const TradePlanner: React.FC = () => {
         entryPrice: '',
         atr: '',
         lowOfDay: '',
-        portfolioRisk: '',
+        positionRisk: '',
         commission: '',
         strategy: '',
         setups: [],
@@ -137,7 +145,8 @@ const TradePlanner: React.FC = () => {
             target3R: 0,
             portfolioWeight: 0,
             dollarExposure: 0,
-        }
+        },
+        hsmFomoRatio: 0
     });
 
     const [debounceTimer, setDebounceTimer] = useState<NodeJS.Timeout | null>(null);
@@ -188,7 +197,7 @@ const TradePlanner: React.FC = () => {
         console.log(`Input Change - Field: ${field}, Value:`, value);
 
         // For numeric fields, validate and format the input
-        const numericFields = ['entryPrice', 'atr', 'lowOfDay', 'portfolioRisk', 'currentCapital'];
+        const numericFields = ['entryPrice', 'atr', 'lowOfDay', 'positionRisk', 'currentCapital'];
         if (typeof value === 'string' && numericFields.includes(field)) {
             // Allow empty string, single decimal point, or valid number
             if (value === '' || value === '.' || /^\d*\.?\d*$/.test(value)) {
@@ -227,18 +236,18 @@ const TradePlanner: React.FC = () => {
         const entryPrice = parseFloat(currentInputs.entryPrice);
         const atr = parseFloat(currentInputs.atr);
         const lowOfDay = parseFloat(currentInputs.lowOfDay);
-        const portfolioRisk = parseFloat(currentInputs.portfolioRisk) / 100;
+        const positionRisk = parseFloat(currentInputs.positionRisk) / 100;
         const currentCapital = parseFloat(currentInputs.currentCapital) || accountSize;
 
         console.log('Parsed Values:', {
             entryPrice,
             atr,
             lowOfDay,
-            portfolioRisk,
+            positionRisk,
             currentCapital
         });
 
-        if (isNaN(entryPrice) || isNaN(atr) || isNaN(lowOfDay) || isNaN(portfolioRisk) || isNaN(currentCapital)) {
+        if (isNaN(entryPrice) || isNaN(atr) || isNaN(lowOfDay) || isNaN(positionRisk) || isNaN(currentCapital)) {
             console.warn('Invalid input values detected');
             return;
         }
@@ -266,7 +275,7 @@ const TradePlanner: React.FC = () => {
         const singleOpenRisk = fullStopLoss;
 
         // Calculate initial risk amount
-        const initialRiskAmount = currentCapital * portfolioRisk;
+        const initialRiskAmount = currentCapital * positionRisk;
 
         // Tiered system calculations
         const tieredRiskPerShare = entryPrice * (tieredOpenRisk / 100);
@@ -283,6 +292,8 @@ const TradePlanner: React.FC = () => {
         const singlePortfolioWeight = singleDollarExposure / currentCapital;
         const singleTarget2R = entryPrice * (1 + 2 * (singleOpenRisk / 100));
         const singleTarget3R = entryPrice * (1 + 3 * (singleOpenRisk / 100));
+
+        const hsmFomoRatio = calculateHSMFomoRatio(entryPrice, lowOfDay, atr);
 
         setPositionMetrics({
             tiered: {
@@ -306,7 +317,8 @@ const TradePlanner: React.FC = () => {
                 target3R: singleTarget3R,
                 portfolioWeight: singlePortfolioWeight,
                 dollarExposure: singleDollarExposure
-            }
+            },
+            hsmFomoRatio
         });
     };
 
@@ -380,8 +392,7 @@ const TradePlanner: React.FC = () => {
             console.log("📝 In Trade Planner, Preparing Trade Object");
      
             // Base trade data common to both systems
-            const baseTradeData = {
-                trade_id: `${inputs.ticker}-${new Date().toISOString().split('T')[0]}-${inputs.direction}`,
+            const tradeData = {
                 user_id: user.id,
                 ticker: inputs.ticker,
                 direction: inputs.direction,
@@ -396,38 +407,43 @@ const TradePlanner: React.FC = () => {
                 last_price: parseFloat(inputs.entryPrice), 
                 portfolio_impact: 0,
                 trimmed_percentage: 0,
-                portfolio_heat: inputs.portfolioRisk,
+                position_risk: inputs.positionRisk,
                 market_value: metrics.positionSize * parseFloat(inputs.entryPrice),
                 status: "Open",
-                stopSystem: system,
-                fullStopPrice: metrics.fullStopPrice,
-                positionSize: metrics.positionSize,
-                target2R: metrics.target2R,
-                target3R: metrics.target3R,
-                openRisk: metrics.openRisk,
-                userId: user.id,
-                rrr: 0,
-
+                entry_datetime: new Date().toISOString(),
+                unrealized_pnl: 0,
+                unrealized_pnl_percentage: 0,
+                stop_loss_price: metrics.fullStopPrice,
+                r_target_2: metrics.target2R,
+                r_target_3: metrics.target3R,
+                open_risk: metrics.openRisk,
+                risk_reward_ratio: 0,
+                initial_risk_amount: metrics.initialRiskAmount,
                 created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
+                updated_at: new Date().toISOString(),
+                hsm_fomo_ratio: positionMetrics.hsmFomoRatio,
+                action_types: ['BUY'],
+                action_datetimes: [new Date().toISOString()],
+                action_shares: [metrics.positionSize],
+                action_prices: [parseFloat(inputs.entryPrice)]
             };
 
             // Add system-specific data
-            const tradeData = system === 'tiered' 
+            const systemTradeData = system === 'tiered' 
                 ? {
-                    ...baseTradeData,
-                    stop33: (metrics as TieredRiskPositionMetrics).stop33,
-                    stop66: (metrics as TieredRiskPositionMetrics).stop66,
+                    ...tradeData,
+                    stop_loss_33_percent: (metrics as TieredRiskPositionMetrics).stop33,
+                    stop_loss_66_percent: (metrics as TieredRiskPositionMetrics).stop66,
                 }
                 : {
-                    ...baseTradeData,
-                    stop33: null,  // Set to null for single system
-                    stop66: null   // Set to null for single system
+                    ...tradeData,
+                    stop_loss_33_percent: null,  // Set to null for single system
+                    stop_loss_66_percent: null   // Set to null for single system
                 };
 
             const { error } = await supabase
                 .from('trades')
-                .insert([tradeData])
+                .insert([systemTradeData])
                 .select();
 
             if (error) {
@@ -472,7 +488,7 @@ const TradePlanner: React.FC = () => {
                             {/* Form Content */}
                             <div className="mt-2">
                                 {/* Quick Entry Fields */}
-                                <div className="grid grid-cols-3 gap-3 mb-2"> {/* Reduced gaps and margin */}
+                                <div className="grid grid-cols-4 gap-3 mb-2">
                                     <div className="form-control">
                                         <label className="label">
                                             <span className="label-text font-medium flex items-center gap-2">
@@ -545,7 +561,7 @@ const TradePlanner: React.FC = () => {
                                         <label className="label">
                                             <span className="label-text font-medium flex items-center gap-2">
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17h8m0 0l-4-4m4 4l-4 4m-4-4l-4-4" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17h8m0 0v-8m0 8l-8-8-4 4-6 6" />
                                                 </svg>
                                                 LoD
                                             </span>
@@ -561,6 +577,9 @@ const TradePlanner: React.FC = () => {
                                             placeholder="Low of Day"
                                         />
                                     </div>
+                                </div>
+                                <div className="grid grid-cols-4 gap-3 mb-2">
+
 
                                     <div className="form-control">
                                         <label className="label">
@@ -568,7 +587,7 @@ const TradePlanner: React.FC = () => {
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                 </svg>
-                                                Portfolio Heat%
+                                                Position Risk %
                                             </span>
                                         </label>
                                         <input 
@@ -577,11 +596,25 @@ const TradePlanner: React.FC = () => {
                                                     transition-all duration-200 ease-in-out
                                                     hover:shadow-md hover:border-primary/50
                                                     focus:shadow-lg focus:shadow-primary/20" 
-                                            value={inputs.portfolioRisk}
-                                            onChange={e => handleInputChange('portfolioRisk', e.target.value)}
+                                            value={inputs.positionRisk}
+                                            onChange={e => handleInputChange('positionRisk', e.target.value)}
                                             placeholder="0.5"
                                             step="0.1"
                                         />
+                                    </div>
+
+                                    <div className="form-control">
+                                        <label className="label">
+                                            <span className="label-text font-medium flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                                </svg>
+                                                $ at Risk
+                                            </span>
+                                        </label>
+                                        <div className="input input-bordered input-md bg-base-200 flex items-center justify-end font-mono text-right">
+                                            ${(inputs.positionRisk / 100 * inputs.currentCapital).toFixed(2)}
+                                        </div>
                                     </div>
 
                                     <div className="form-control">
@@ -607,10 +640,24 @@ const TradePlanner: React.FC = () => {
                                             </ul>
                                         </div>
                                     </div>
+
+                                    <div className="form-control">
+                                        <label className="label">
+                                            <span className="label-text font-medium flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                                </svg>
+                                                HSM FOMO Ratio
+                                            </span>
+                                        </label>
+                                        <div className="input input-bordered input-md bg-base-200 flex items-center justify-end font-mono text-right">
+                                            {positionMetrics.hsmFomoRatio.toFixed(2)}%
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {/* Strategy, Setups, and Current Capital Row */}
-                                <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-3 gap-4">
                                     {/* Current Capital */}
                                     <div>
                                         <label className="label">
@@ -645,7 +692,7 @@ const TradePlanner: React.FC = () => {
                                         <label className="label">
                                             <span className="label-text font-medium flex items-center gap-2">
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 002-2h2a2 2 0 002 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                                                 </svg>
                                                 Strategy
                                             </span>
@@ -740,7 +787,7 @@ const TradePlanner: React.FC = () => {
                                 <TradingViewWidget symbol={`NASDAQ:${inputs.ticker}`} />
                             ) : (
                                 <div className="flex items-center justify-center h-full text-base-content/50">
-                                    <p className="text-lg">Enter a ticker to view chart</p>
+                                    <p className="text-lg font-semibold text-center">Enter a ticker on the left to view chart</p>
                                 </div>
                             )}
                         </div>
@@ -763,7 +810,7 @@ const TradePlanner: React.FC = () => {
                                     <h2 className="card-title text-lg">3-Tiered Stop Loss System</h2>
                                 </div>
                                 <button 
-                                    className="btn btn-primary btn-sm"
+                                    className="btn text-white btn-primary btn-sm glass"
                                     onClick={() => handleSubmitTrade('tiered')}
                                 >
                                     Place Trade with 3-Tiered System
@@ -833,12 +880,12 @@ const TradePlanner: React.FC = () => {
 
                                 {/* Open Risk */}
                                 <div className="bg-base-300 rounded-lg p-3">
-                                    <div className="text-primary text-sm mb-3">Position Open Risk</div>
+                                    <div className="text-primary text-sm mb-3">Stoploss Distance</div>
                                     <div className="flex flex-col items-center justify-center h-[calc(100%-2rem)]">
                                         <div className="text-4xl font-bold text-error mb-1">
                                             {positionMetrics.tiered.openRisk.toFixed(2)}%
                                         </div>
-                                        <div className="text-base-content/60 text-sm">of actual position at risk</div>
+                                        <div className="text-base-content/60 text-sm">from entry to SL</div>
                                     </div>
                                 </div>
 
@@ -848,13 +895,13 @@ const TradePlanner: React.FC = () => {
                                     <div className="flex flex-col gap-3">
                                         <div className="flex items-center justify-between">
                                             <div className="text-base-content/60">2R Target</div>
-                                            <div className="text-lg font-bold text-success">
+                                            <div className="text-lg font-bold text-info">
                                                 ${positionMetrics.tiered.target2R.toFixed(2)}
                                             </div>
                                         </div>
                                         <div className="flex items-center justify-between">
                                             <div className="text-base-content/60">3R Target</div>
-                                            <div className="text-lg font-bold text-success">
+                                            <div className="text-lg font-bold text-info">
                                                 ${positionMetrics.tiered.target3R.toFixed(2)}
                                             </div>
                                         </div>
@@ -875,7 +922,7 @@ const TradePlanner: React.FC = () => {
                                     <h2 className="card-title text-lg">Single Stop Loss System</h2>
                                 </div>
                                 <button 
-                                    className="btn btn-primary btn-sm"
+                                    className="btn btn-info text-white glass btn-sm"
                                     onClick={() => handleSubmitTrade('single')}
                                 >
                                     Place Trade with Single Stop
@@ -936,12 +983,12 @@ const TradePlanner: React.FC = () => {
                                 </div>
                                 {/* Open Risk */}
                                 <div className="bg-base-300 rounded-lg p-3">
-                                    <div className="text-primary text-sm mb-3">Position Open Risk</div>
+                                    <div className="text-primary text-sm mb-3"> Stoploss Distance</div>
                                     <div className="flex flex-col items-center justify-center h-[calc(100%-2rem)]">
                                         <div className="text-4xl font-bold text-error mb-1">
                                             {positionMetrics.single.openRisk.toFixed(2)}%
                                         </div>
-                                        <div className="text-base-content/60 text-sm">of actual position at risk</div>
+                                        <div className="text-base-content/60 text-sm">from entry to SL</div>
                                     </div>
                                 </div>
 
@@ -951,13 +998,13 @@ const TradePlanner: React.FC = () => {
                                     <div className="flex flex-col gap-3">
                                         <div className="flex items-center justify-between">
                                             <div className="text-base-content/60">2R Target</div>
-                                            <div className="text-lg font-bold text-success">
+                                            <div className="text-lg font-bold text-info">
                                                 ${positionMetrics.single.target2R.toFixed(2)}
                                             </div>
                                         </div>
                                         <div className="flex items-center justify-between">
                                             <div className="text-base-content/60">3R Target</div>
-                                            <div className="text-lg font-bold text-success">
+                                            <div className="text-lg font-bold text-info">
                                                 ${positionMetrics.single.target3R.toFixed(2)}
                                             </div>
                                         </div>

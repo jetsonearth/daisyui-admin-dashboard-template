@@ -42,7 +42,8 @@ export interface Trade {
   
     // Portfolio Metrics
     portfolio_weight?: number;
-    portfolio_heat?: number;
+    position_heat?: number;
+    position_risk?: number;
     portfolio_impact?: number;
     trimmed_percentage?: number;
     risk_reward_ratio?: number;
