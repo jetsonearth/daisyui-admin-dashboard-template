@@ -128,6 +128,10 @@ function TradeLog(){
 
         try {
             setUpdatingMarketData(true);
+            
+            // Clear cache for closed trades to prevent them from showing up in logs
+            await marketDataService.clearCacheForClosedTrades(trades);
+            
             const quotes = await marketDataService.getBatchQuotes(activeTrades.map(trade => trade.ticker));
             
             // Update active trades with current market data

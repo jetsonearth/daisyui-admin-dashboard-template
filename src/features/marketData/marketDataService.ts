@@ -1,6 +1,7 @@
 // marketDataService.ts
 import { Trade } from '../../types';
 import { supabase } from '../../config/supabaseClient'
+import { TRADE_STATUS } from '../../types';
 
 interface Quote {
     price: number;
@@ -47,7 +48,7 @@ class MarketDataService {
             const result: Record<string, Quote> = {};
             const symbolsToFetch: string[] = [];
 
-            // Check cache first
+            // Only check cache for requested symbols
             for (const symbol of symbols) {
                 const cached = this.cache.get(symbol);
                 if (cached && (now - cached.timestamp) < this.cacheTimeout) {
@@ -132,18 +133,24 @@ class MarketDataService {
         }
 
         try {
-            // Use Array.from instead of spread operator for Set
-            const symbols = Array.from(new Set(trades.map(trade => trade.ticker)));
+            // Only get market data for active trades
+            const activeTrades = trades.filter(trade => trade.status === TRADE_STATUS.OPEN);
+            const symbols = Array.from(new Set(activeTrades.map(trade => trade.ticker)));
             
             if (symbols.length === 0) {
-                console.warn('No valid tickers found in trades');
+                console.warn('No active trades found');
                 return trades;
             }
 
-            console.log(`🔄 Updating market data for ${symbols.length} unique tickers`);
+            console.log(`🔄 Updating market data for ${symbols.length} active trades`);
             const quotes = await this.getBatchQuotes(symbols);
             
             return trades.map(trade => {
+                // Skip closed trades
+                if (trade.status !== TRADE_STATUS.OPEN) {
+                    return trade;
+                }
+                
                 const quote = quotes[trade.ticker];
                 if (!quote) {
                     console.warn(`No quote data found for ticker: ${trade.ticker}`);
@@ -160,6 +167,16 @@ class MarketDataService {
             console.error('❌ Error updating trades with market data:', error);
             return trades;
         }
+    }
+
+    async clearCacheForClosedTrades(trades: Trade[]) {
+        const closedTrades = trades.filter(trade => trade.status !== TRADE_STATUS.OPEN);
+        closedTrades.forEach(trade => {
+            if (this.cache.has(trade.ticker)) {
+                console.log(`🧹 Clearing cache for closed trade ${trade.ticker}`);
+                this.cache.delete(trade.ticker);
+            }
+        });
     }
 
     clearCache() {

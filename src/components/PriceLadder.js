@@ -6,7 +6,8 @@ function PriceLadder({
     stop33 = 0, 
     stop66 = 0, 
     target2R = 0,
-    target3R = 0 
+    target3R = 0,
+    showLegend = true
 }) {
     // Calculate the range to show
     const priceRange = Math.max(target3R - fullStop, 0.01) // Prevent zero or negative range
@@ -35,7 +36,7 @@ function PriceLadder({
                 {priceLevels.map((price, index) => (
                     <div 
                         key={index}
-                        className="text-xs text-gray-500"
+                        className="text-sm text-gray-500"
                         style={{ 
                             position: 'absolute',
                             bottom: `${(index / numSteps) * 100}%`,
@@ -57,40 +58,44 @@ function PriceLadder({
                     className="absolute left-0 right-0 h-6 -ml-2 flex items-center"
                     style={{ bottom: '0%' }}
                 >
-                    <div className="bg-red-500 text-white text-xs px-2 py-1 rounded">
+                    <div className="bg-red-500 text-white text-sm px-2 py-1 rounded">
                         Full Stop ${formatPrice(fullStop)}
                     </div>
                     <div className="flex-1 border-t border-red-500 border-dashed"></div>
                 </div>
 
                 {/* 66% Stop */}
-                <div 
-                    className="absolute left-0 right-0 h-6 -ml-2 flex items-center"
-                    style={{ bottom: `${getRelativePosition(stop66)}%` }}
-                >
-                    <div className="bg-orange-500 text-white text-xs px-2 py-1 rounded">
-                        66% ${formatPrice(stop66)}
+                {stop66 > 0 && (
+                    <div 
+                        className="absolute left-0 right-0 h-6 -ml-2 flex items-center"
+                        style={{ bottom: `${getRelativePosition(stop66)}%` }}
+                    >
+                        <div className="bg-orange-500 text-white text-sm px-2 py-1 rounded">
+                            66% ${formatPrice(stop66)}
+                        </div>
+                        <div className="flex-1 border-t border-orange-500 border-dashed"></div>
                     </div>
-                    <div className="flex-1 border-t border-orange-500 border-dashed"></div>
-                </div>
+                )}
 
                 {/* 33% Stop */}
-                <div 
-                    className="absolute left-0 right-0 h-6 -ml-2 flex items-center"
-                    style={{ bottom: `${getRelativePosition(stop33)}%` }}
-                >
-                    <div className="bg-yellow-500 text-white text-xs px-2 py-1 rounded">
-                        33% ${formatPrice(stop33)}
+                {stop33 > 0 && (
+                    <div 
+                        className="absolute left-0 right-0 h-6 -ml-2 flex items-center"
+                        style={{ bottom: `${getRelativePosition(stop33)}%` }}
+                    >
+                        <div className="bg-yellow-500 text-white text-sm px-2 py-1 rounded">
+                            33% ${formatPrice(stop33)}
+                        </div>
+                        <div className="flex-1 border-t border-yellow-500 border-dashed"></div>
                     </div>
-                    <div className="flex-1 border-t border-yellow-500 border-dashed"></div>
-                </div>
+                )}
 
                 {/* Entry */}
                 <div 
                     className="absolute left-0 right-0 h-6 -ml-2 flex items-center"
                     style={{ bottom: `${getRelativePosition(currentPrice)}%` }}
                 >
-                    <div className="bg-blue-500 text-white text-xs px-2 py-1 rounded">
+                    <div className="bg-blue-500 text-white text-sm px-2 py-1 rounded">
                         Entry ${formatPrice(currentPrice)}
                     </div>
                     <div className="flex-1 border-t border-blue-500"></div>
@@ -101,7 +106,7 @@ function PriceLadder({
                     className="absolute left-0 right-0 h-6 -ml-2 flex items-center"
                     style={{ bottom: `${getRelativePosition(target2R)}%` }}
                 >
-                    <div className="bg-green-500 text-white text-xs px-2 py-1 rounded">
+                    <div className="bg-green-500 text-white text-sm px-2 py-1 rounded">
                         2R ${formatPrice(target2R)}
                     </div>
                     <div className="flex-1 border-t border-green-500 border-dashed"></div>
@@ -112,7 +117,7 @@ function PriceLadder({
                     className="absolute left-0 right-0 h-6 -ml-2 flex items-center"
                     style={{ bottom: `${getRelativePosition(target3R)}%` }}
                 >
-                    <div className="bg-green-600 text-white text-xs px-2 py-1 rounded">
+                    <div className="bg-green-600 text-white text-sm px-2 py-1 rounded">
                         3R ${formatPrice(target3R)}
                     </div>
                     <div className="flex-1 border-t border-green-600 border-dashed"></div>
@@ -120,23 +125,25 @@ function PriceLadder({
             </div>
 
             {/* Position Distribution */}
-            <div className="absolute right-4 top-4 bg-base-300 p-3 rounded">
-                <div className="text-xs mb-2">Position Distribution</div>
-                <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-red-500 rounded"></div>
-                        <div className="text-xs">33% to Full Stop</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-orange-500 rounded"></div>
-                        <div className="text-xs">33% to 66% Stop</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-yellow-500 rounded"></div>
-                        <div className="text-xs">33% to 33% Stop</div>
+            {showLegend && (
+                <div className="absolute right-4 top-4 bg-base-300 p-3 rounded">
+                    <div className="text-xs mb-2">Position Distribution</div>
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 bg-red-500 rounded"></div>
+                            <div className="text-xs">33% to Full Stop</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 bg-orange-500 rounded"></div>
+                            <div className="text-xs">33% to 66% Stop</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 bg-yellow-500 rounded"></div>
+                            <div className="text-xs">33% to 33% Stop</div>
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
         </div>
     )
 }

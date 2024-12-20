@@ -251,7 +251,8 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             let target3R = 0;
 
             let openRisk = 0;
-            let riskAmount = 0;
+            let initialRiskAmount = 0;
+            let currentRiskAmount = 0;
             let rrr = 0;
             let portfolioHeat = 0;
             let portfolioImpact = 0;
@@ -290,7 +291,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                     totalShares += shares; // Update total shares
                     remainingShares += shares; // Update remaining shares
                     totalCost += shares * parseFloat(action.price); // Adjust total cost
-                    entryPrice = totalCost / remainingShares; // Update entry price because it would change the average cost
+                    entryPrice = totalCost / totalShares; // Update entry price because it would change the average cost
 
                     // Calculate stop levels (33% and 66% of full stop distance)
                     stopDistance = entryPrice - parseFloat(tradeDetails.stopLossPrice)
@@ -302,6 +303,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                     stopLoss33Percent = (entryPrice - stop33) / entryPrice * 100
                     stopLoss66Percent = (entryPrice - stop66) / entryPrice * 100
 
+                    // Position-level risk, employing the 3-Tiered Stop-Loss system 
                     openRisk = (
                         (fullStopLoss * 0.5) +  // Full stop gets 50% weight
                         (stopLoss33Percent * 0.33) +   // 33% stop gets 33% weight
@@ -310,6 +312,9 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
 
                     target2R = entryPrice + 2 * stopDistance;
                     target3R = entryPrice + 3 * stopDistance;
+
+                    // need to make sure this is in the first buy order, since it would be set for the first buy
+                    initialRiskAmount = totalShares * entryPrice * openRisk / 100;
 
                 } else if (action.type === 'SELL') {
                     const sharesToSell = parseFloat(action.shares);
@@ -342,13 +347,12 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                         unrealizedPnl = 0;
                         unrealizedPnlPercentage = 0;
 
-                        riskAmount = totalShares * entryPrice * openRisk / 100;
                         rrr = realizedPnl / riskAmount;
                         market_value = totalCost + realizedPnl;
-                        // percentFromEntry = (exitPrice - entryPrice) / entryPrice * 100;
+
+                        portfolioHeat = 0;
 
                         // Inside handleSubmit, where you currently calculate MAE and MFE:
-                        // Then in your calculation block:
                         if (prices) {
                             const { minPrice, maxPrice } = prices;
                             
@@ -404,6 +408,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             }
 
             trimmedPercentage = ((totalShares - remainingShares) / totalShares) * 100;
+            // portfolioHeat = 
 
             const status = remainingShares > 0 ? TRADE_STATUS.OPEN : TRADE_STATUS.CLOSED;
 

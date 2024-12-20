@@ -5,6 +5,15 @@ import { userSettingsService } from '../../services/userSettingsService';
 import { marketDataService } from '../marketData/marketDataService';
 import { capitalService } from '../../services/capitalService';
 
+import dayjs from 'dayjs';
+import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
+import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
+import isToday from 'dayjs/plugin/isToday';  // Use this instead of isSame for checking same day
+
+dayjs.extend(isSameOrBefore);
+dayjs.extend(isSameOrAfter);
+dayjs.extend(isToday);
+
 // Logging utility
 const log = (level: 'info' | 'warn' | 'error', message: string, data?: any) => {
     const prefix = '[MetricsService]';
@@ -62,7 +71,7 @@ interface ExposureMetrics {
     deltaOE: number;       // Delta OER/OEP
 
     // Portfolio Allocation
-    portfolioAllocation: number;  // Total capital in stocks / Total available capital
+    // portfolioAllocation: number;  // Total capital in stocks / Total available capital
 }
 
 interface PortfolioMetrics {
@@ -173,10 +182,45 @@ export class MetricsService {
         realizedPnL: number;
         realizedPnLPercentage: number;
     }> {
+        // For closed trades, use exit price and skip market data
+        if (trade.status === TRADE_STATUS.CLOSED) {
+            const exitPrice = trade.exit_price || 0;
+            return {
+                lastPrice: exitPrice,
+                marketValue: 0,  // Closed trades have no market value
+                unrealizedPnL: 0,  // No unrealized P&L for closed trades
+                unrealizedPnLPercentage: 0,
+                realizedPnL: trade.realized_pnl || 0,
+                realizedPnLPercentage: trade.realized_pnl ? (trade.realized_pnl / (trade.entry_price * trade.total_shares)) * 100 : 0,
+                trimmedPercentage: 100,  // Fully trimmed
+                portfolioWeight: 0,  // No portfolio weight for closed trades
+                // portfolioImpact: ((trade.realized_pnl || 0) / startingCapital) * 100,
+                portfolioImpact: 0,
+                portfolioHeat: 0,  // No heat for closed trades
+                riskRewardRatio: trade.realized_pnl ? trade.realized_pnl / (trade.total_shares * trade.entry_price * (trade.open_risk / 100)) : 0
+            };
+        }
 
+        // For active trades, calculate metrics using market data
         const quote = quotes[trade.ticker];
-        const currentPrice = quote?.price || 0;
+        if (!quote) {
+            log('warn', `No market data available for active trade ${trade.ticker}`);
+            return {
+                lastPrice: trade.entry_price,  // Fall back to entry price
+                marketValue: trade.remaining_shares * trade.entry_price,
+                unrealizedPnL: 0,
+                unrealizedPnLPercentage: 0,
+                realizedPnL: trade.realized_pnl || 0,
+                realizedPnLPercentage: (trade.realized_pnl || 0) / (trade.entry_price * trade.total_shares) * 100,
+                trimmedPercentage: ((trade.total_shares - trade.remaining_shares) / trade.total_shares) * 100,
+                portfolioWeight: (trade.remaining_shares * trade.entry_price / currentCapital) * 100,
+                portfolioImpact: ((trade.realized_pnl || 0) / startingCapital) * 100,
+                portfolioHeat: (trade.open_risk / currentCapital) * 100,
+                riskRewardRatio: 0
+            };
+        }
 
+        const currentPrice = quote.price;
         // Calculate metrics
         const marketValue = trade.remaining_shares * currentPrice;
         const unrealizedPnL = (currentPrice - trade.entry_price) * trade.remaining_shares;
@@ -372,107 +416,66 @@ export class MetricsService {
         return data;
     }
 
-    // Calculate exposure metrics
-    public async calculateExposureMetrics(trades: Trade[], currentCapital: number): Promise<ExposureMetrics> {
-        log('info', 'Calculating exposure metrics');
+    public async calculateExposureMetrics(
+        trades: Trade[], 
+        currentCapital: number
+    ): Promise<ExposureMetrics> {
+        try {
+            const activeTrades = trades.filter(trade => trade.status === TRADE_STATUS.OPEN);
+            
+            // 1. Daily Exposure
+            const todaysTrades = activeTrades.filter(trade => 
+                dayjs(trade.entry_datetime).isSame(dayjs(), 'day'));
+            
+            const der = todaysTrades.reduce((sum, trade) => 
+                sum + (trade.open_risk ?? 0), 0);
+            
+            const dep = todaysTrades.reduce((sum, trade) => {
+                const unrealizedPnL = trade.unrealized_pnl ?? 0;
+                return sum + (unrealizedPnL / currentCapital * 100);
+            }, 0);
     
-        // First filter for open trades before fetching quotes
-        const openTrades = trades.filter(trade => trade.status === TRADE_STATUS.OPEN);
-        const quotes = openTrades.length > 0 
-            ? await marketDataService.getBatchQuotes(openTrades.map(trade => trade.ticker))
-            : {};
-
-        const today = new Date();
-        const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+            // 2. New Exposure (Past Week)
+            const recentTrades = activeTrades.filter(trade => 
+                dayjs(trade.entry_datetime).isAfter(dayjs().subtract(7, 'days')));
+            
+            const ner = recentTrades.reduce((sum, trade) => 
+                sum + ((trade.risk_amount ?? 0) / currentCapital * 100), 0);
+            
+            const nep = recentTrades.reduce((sum, trade) => {
+                const unrealizedPnL = trade.unrealized_pnl ?? 0;
+                return sum + (unrealizedPnL / currentCapital * 100);
+            }, 0);
     
-        // Filter trades by timeframes
-        const todayTrades = trades.filter(trade => 
-            trade.entry_datetime && new Date(trade.entry_datetime).toDateString() === today.toDateString()
-        );
-        const recentTrades = trades.filter(trade => 
-            trade.entry_datetime && new Date(trade.entry_datetime) >= weekAgo
-        );
-        const openTradesAll = trades.filter(trade => 
-            trade.status === TRADE_STATUS.OPEN
-        );
+            // 3. Open Exposure
+            const oer = activeTrades.reduce((sum, trade) => 
+                sum + (trade.portfolio_heat ?? 0), 0);
+            
+            const oep = activeTrades.reduce((sum, trade) => {
+                const totalPnL = (trade.unrealized_pnl ?? 0) + (trade.realized_pnl ?? 0);
+                return sum + (totalPnL / currentCapital * 100);
+            }, 0);
     
-        // Calculate Daily Exposure metrics
-        const der = todayTrades.reduce((sum, trade) => 
-            sum + this.safeNumeric(trade.open_risk) / currentCapital * 100, 0);
+            // Delta calculations
+            const deltaDE = dep - der;
+            const deltaNE = nep - ner;
+            const deltaOE = oep - oer;
     
-        const dep = todayTrades.reduce((sum, trade) => {
-            const currentPrice = quotes[trade.ticker];
-            if (!currentPrice) return sum;
-            const unrealizedPnL = (currentPrice.price - trade.entry_price) * trade.remaining_shares;
-            return sum + (unrealizedPnL / currentCapital * 100);
-        }, 0);
-    
-        // Calculate New Exposure metrics (past week)
-        const ner = recentTrades.reduce((sum, trade) => 
-            sum + this.safeNumeric(trade.open_risk) / currentCapital * 100, 0);
-    
-        const nep = recentTrades.reduce((sum, trade) => {
-            const currentPrice = quotes[trade.ticker];
-            if (!currentPrice) return sum;
-            const unrealizedPnL = (currentPrice.price - trade.entry_price) * trade.remaining_shares;
-            return sum + (unrealizedPnL / currentCapital * 100);
-        }, 0);
-    
-        // Calculate Open Exposure metrics
-        const oer = openTradesAll.reduce((sum, trade) => 
-            sum + this.safeNumeric(trade.open_risk) / currentCapital * 100, 0);
-    
-        const oep = openTradesAll.reduce((sum, trade) => {
-            const currentPrice = quotes[trade.ticker];
-            if (!currentPrice) return sum;
-            const unrealizedPnL = (currentPrice.price - trade.entry_price) * trade.remaining_shares;
-            const realizedPnL = this.safeNumeric(trade.realized_pnl);
-            return sum + ((unrealizedPnL + realizedPnL) / currentCapital * 100);
-        }, 0);
-    
-        // Calculate existing metrics
-        const portfolioAllocation = openTradesAll.reduce((sum, trade) => {
-            const currentPrice = quotes[trade.ticker];
-            if (!currentPrice) return sum;
-            const unrealizedPnL = (currentPrice.price - trade.entry_price) * trade.remaining_shares;
-            const realizedPnL = this.safeNumeric(trade.realized_pnl);
-            return sum + unrealizedPnL + realizedPnL;
-        }, 0) / currentCapital * 100;
-        console.log(" -------- CURR CAP: ---------- ", currentCapital);
-        console.log(" -------- Portfolio Allocation: ----------", portfolioAllocation);
-    
-        // const maxSingleTradeExposure = Math.max(...trades.map(trade => {
-        //     const marketQuote = marketData.get(trade.ticker);
-        //     if (!marketQuote) return 0;
-        //     return this.safeNumeric(marketQuote.price * trade.remaining_shares);
-        // }));
-    
-        // const portfolioHeat = (totalExposure / currentCapital) * 100;
-    
-        // Delta calculations (simple change from previous values - you might want to store/track these)
-        const deltaDE = dep - der;
-        const deltaNE = nep - ner;
-        const deltaOE = oep - oer;
-    
-        return {
-            // Daily Exposure
-            der,
-            dep,
-            deltaDE,
-    
-            // New Exposure
-            ner,
-            nep,
-            deltaNE,
-    
-            // Open Exposure
-            oer,
-            oep,
-            deltaOE,
-    
-            // Current metrics
-            portfolioAllocation
-        };
+            return {
+                der,
+                dep,
+                deltaDE,
+                ner,
+                nep,
+                deltaNE,
+                oer,
+                oep,
+                deltaOE
+            };
+        } catch (error) {
+            console.error('Error calculating exposure metrics:', error);
+            throw error;
+        }
     }
 
     // Calculate comprehensive portfolio metrics
@@ -492,10 +495,6 @@ export class MetricsService {
             // 3. Calculate current portfolio state
             const currentCapital = await capitalService.calculateCurrentCapital();
 
-            // console.log('Starting Capital:', actualStartingCapital);
-            // console.log('Current Capital:', currentCapital);
-            // console.log('Trades:', validatedTrades);
-    
             // 4. Calculate actual metrics
             const performanceMetrics = this.calculateTradePerformanceMetrics(validatedTrades);
 
@@ -673,7 +672,7 @@ export class MetricsService {
                 oer: exposureMetrics.oer,
                 oep: exposureMetrics.oep,
                 delta_oe: exposureMetrics.deltaOE,
-                portfolio_allocation: exposureMetrics.portfolioAllocation,
+                // portfolio_allocation: exposureMetrics.portfolioAllocation,
                 updated_at: new Date().toISOString()
             })
             .select();
@@ -737,53 +736,6 @@ export class MetricsService {
         this.metricsCache = null;
         console.log('🔴 Metrics cache invalidated');
     }
-
-    // public async upsertTradingMetrics(
-    //     userId: string,
-    //     performanceMetrics: PerformanceMetrics,
-    //     exposureMetrics: ExposureMetrics
-    // ): Promise<void> {
-    //     const today = new Date().toISOString().split('T')[0];  // YYYY-MM-DD
-    
-    //     const { error } = await supabase
-    //         .from('trading_metrics')
-    //         .upsert({
-    //             user_id: userId,
-    //             date: today,
-    //             // Performance Metrics
-    //             win_rate: performanceMetrics.winRate,
-    //             avg_win: performanceMetrics.avgWin,
-    //             avg_loss: performanceMetrics.avgLoss,
-    //             profit_factor: performanceMetrics.profitFactor,
-    //             avg_rrr: performanceMetrics.avgRRR,
-    //             total_pnl: performanceMetrics.totalPnL,
-    //             expectancy: performanceMetrics.expectancy,
-    //             payoff_ratio: performanceMetrics.payoffRatio,
-    //             total_trades: performanceMetrics.totalTrades,
-    //             profitable_trades_count: performanceMetrics.profitableTradesCount,
-    //             loss_trades_count: performanceMetrics.lossTradesCount,
-    //             break_even_trades_count: performanceMetrics.breakEvenTradesCount,
-    //             largest_win: performanceMetrics.largestWin,
-    //             largest_loss: performanceMetrics.largestLoss,
-                
-    //             // Exposure Metrics
-    //             der: exposureMetrics.der,
-    //             dep: exposureMetrics.dep,
-    //             delta_de: exposureMetrics.deltaDE,
-    //             ner: exposureMetrics.ner,
-    //             nep: exposureMetrics.nep,
-    //             delta_ne: exposureMetrics.deltaNE,
-    //             oer: exposureMetrics.oer,
-    //             oep: exposureMetrics.oep,
-    //             delta_oe: exposureMetrics.deltaOE,
-    //             portfolio_allocation: exposureMetrics.portfolioAllocation,
-                
-    //             updated_at: new Date().toISOString()
-    //         })
-    //         .select();
-    
-    //     if (error) throw error;
-    // }
 }
 
 // Export an instance of the service
