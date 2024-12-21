@@ -11,6 +11,8 @@ import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from
 import { capitalService } from '../../services/capitalService'
 import { marketDataService } from '../../features/marketData/marketDataService'
 import { userSettingsService } from '../../services/userSettingsService'
+import { DeltaGauge } from '../../components/charts/DeltaGauge';
+import { DeltaSparkline } from '../../components/charts/DeltaSparkline';
 
 // At the top of PortfolioOverview.js, after imports
 // console.log('metricsService:', metricsService);
@@ -39,6 +41,7 @@ function PortfolioOverview() {
     const [currentCapital, setCurrentCapital] = useState(0);
     const [loading, setLoading] = useState(false);
     const [metricsLoading, setMetricsLoading] = useState(false);
+    const [historicalMetrics, setHistoricalMetrics] = useState([]);
 
     useEffect(() => {
         const fetchUserSettings = async () => {
@@ -470,6 +473,22 @@ function PortfolioOverview() {
         fetchActiveTrades();
     }, []);
 
+    useEffect(() => {
+        const fetchHistoricalData = async () => {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    const data = await metricsService.fetchHistoricalExposureMetrics(user.id);
+                    setHistoricalMetrics(data);
+                }
+            } catch (error) {
+                console.error('Error fetching historical metrics:', error);
+            }
+        };
+
+        fetchHistoricalData();
+    }, []);
+
     // // Function to handle trade closure
     // const handleCloseTrade = (trade) => {
     //     dispatch(closeTrade({
@@ -654,25 +673,17 @@ function PortfolioOverview() {
                             </div>
                         </div>
 
-
-                        {/* Daily Exposure */}
+                        {/* Average Loss */}
                         <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="text-gray-500 text-sm mb-2">Daily Exposure</div>
-                            <div className="space-y-2">
-                                <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Risk</div>
-                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.dailyExposure?.risk || 0}%</div>
-                                </div>
-                                <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Profit</div>
-                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.dailyExposure?.profit || 0}%</div>
-                                </div>
-                                <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Delta</div>
-                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.dailyExposure?.delta || 0}%</div>
-                                </div>
+                            <div className="text-gray-500 text-sm mb-2">Avg Loss</div>
+                            <div className={`text-4xl font-semibold truncate flex items-center justify-center w-full h-full ${metricsLoading ? 'opacity-50' : ''}`}>
+                                {/* <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">Gross</div>
+                                    <div className="text-sm font-bold">${metrics.dailyExposure?.gross || 0}</div>
+                                </div> */}
                             </div>
                         </div>
+
 
                         {/* Period Returns */}
                         <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
@@ -696,51 +707,80 @@ function PortfolioOverview() {
 
                     {/* Average Loss, New and Open Exposure */}
                     <div className="grid grid-cols-3 gap-4">
-                        {/* Average Loss */}
+                        {/* Daily Exposure */}
                         <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="text-gray-500 text-sm mb-2">Avg Loss</div>
-                            <div className={`text-4xl font-semibold truncate flex items-center justify-center w-full h-full ${metricsLoading ? 'opacity-50' : ''}`}>
-                                {/* <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Gross</div>
-                                    <div className="text-sm font-bold">${metrics.dailyExposure?.gross || 0}</div>
-                                </div> */}
+                            <div className="text-primary text-sm font-semibold mb-2">Daily Exposure</div>
+                            <div className="flex flex-col items-center mb-2">
+                                <DeltaGauge 
+                                    profit={Number(metrics.dailyExposure?.profit) || 0}
+                                    risk={Number(metrics.dailyExposure?.risk) || 0}
+                                    size={100}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <div className="flex justify-between items-center">
+                                    <div className="text-xs">Daily Risk</div>
+                                    <div className={`text-sm font-bold text-rose-500 ${metricsLoading ? 'opacity-50' : ''}`}>
+                                        {metrics.dailyExposure?.risk || '0.00'}%
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <div className="text-xs">Daily Profit</div>
+                                    <div className={`text-sm font-bold text-emerald-500 ${metricsLoading ? 'opacity-50' : ''}`}>
+                                        {metrics.dailyExposure?.profit || '0.00'}%
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
                         {/* New Exposure */}
                         <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="text-gray-500 text-sm mb-2">New Exposure</div>
-                            <div className="space-y-2">
-                                <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Risk</div>
-                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.newExposure?.risk || 0}%</div>
+                            <div className="text-primary text-sm font-semibold mb-2">New Exposure</div>
+                            <div className="flex flex-col items-center mb-1">
+                                <DeltaGauge 
+                                    profit={Number(metrics.newExposure?.profit) || 0}
+                                    risk={Number(metrics.newExposure?.risk) || 0}
+                                    size={100}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <div className="flex justify-between items-center">
+                                    <div className="text-xs">New Risk</div>
+                                    <div className={`text-sm font-bold text-rose-500 ${metricsLoading ? 'opacity-50' : ''}`}>
+                                        {metrics.newExposure?.risk || '0.00'}%
+                                    </div>
                                 </div>
-                                <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Profit</div>
-                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.newExposure?.profit || 0}%</div>
-                                </div>
-                                <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Delta</div>
-                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.newExposure?.delta || 0}%</div>
+                                <div className="flex justify-between items-center">
+                                    <div className="text-xs">New Profit</div>
+                                    <div className={`text-sm font-bold text-emerald-500 ${metricsLoading ? 'opacity-50' : ''}`}>
+                                        {metrics.newExposure?.profit || '0.00'}%
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
                         {/* Open Exposure */}
                         <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="text-gray-500 text-sm mb-2">Open Exposure</div>
-                            <div className="space-y-2">
-                                <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Risk</div>
-                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.openExposure?.risk || 0}%</div>
+                            <div className="text-primary text-sm font-semibold mb-2">Open Exposure</div>
+                            <div className="flex flex-col items-center mb-2">
+                                <DeltaGauge 
+                                    profit={Number(metrics.openExposure?.profit) || 0}
+                                    risk={Number(metrics.openExposure?.risk) || 0}
+                                    size={100}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <div className="flex justify-between items-center">
+                                    <div className="text-xs">Open Risk</div>
+                                    <div className={`text-sm font-bold text-rose-500 ${metricsLoading ? 'opacity-50' : ''}`}>
+                                        {metrics.openExposure?.risk || '0.00'}%
+                                    </div>
                                 </div>
-                                <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Profit</div>
-                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.openExposure?.profit || 0}%</div>
-                                </div>
-                                <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Delta</div>
-                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.openExposure?.delta || 0}%</div>
+                                <div className="flex justify-between items-center">
+                                    <div className="text-xs">Open Profit</div>
+                                    <div className={`text-sm font-bold text-emerald-500 ${metricsLoading ? 'opacity-50' : ''}`}>
+                                        {metrics.openExposure?.profit || '0.00'}%
+                                    </div>
                                 </div>
                             </div>
                         </div>

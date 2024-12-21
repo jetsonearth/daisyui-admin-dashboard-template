@@ -689,6 +689,23 @@ export class MetricsService {
         }
     }
 
+    async fetchHistoricalExposureMetrics(userId: string, days: number = 21): Promise<any[]> {
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+
+        const { data, error } = await supabase
+            .from('trading_metrics')
+            .select('date, der, dep, delta_de, ner, nep, delta_ne, oer, oep, delta_oe')
+            .eq('user_id', userId)
+            .gte('date', startDate.toISOString().split('T')[0])
+            .lte('date', endDate.toISOString().split('T')[0])
+            .order('date', { ascending: true });
+
+        if (error) throw error;
+        return data || [];
+    }
+
     public async upsertExposureMetrics(
         userId: string,
         exposureMetrics: ExposureMetrics
