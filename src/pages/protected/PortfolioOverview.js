@@ -162,6 +162,25 @@ function PortfolioOverview() {
                 setLoading(true);
                 setMetricsLoading(true);
 
+                // Check cache first
+                const cachedData = localStorage.getItem('portfolioMetricsCache');
+                if (cachedData) {
+                    const { timestamp, data } = JSON.parse(cachedData);
+                    const cacheAge = Date.now() - timestamp;
+                    const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+
+                    if (cacheAge < CACHE_DURATION) {
+                        console.log('🟢 Using cached portfolio metrics');
+                        setCurrentCapital(data.currentCapital);
+                        setActiveTrades(data.activeTrades || []);
+                        setMetrics(data.metrics);
+                        setLastUpdate(data.lastUpdate);
+                        setLoading(false);
+                        setMetricsLoading(false);
+                        return;
+                    }
+                }
+
                 // Fetch user authentication once
                 const { data: { user }, error: userError } = await supabase.auth.getUser();
                 if (userError || !user) {
@@ -170,12 +189,13 @@ function PortfolioOverview() {
                 }
 
                 // Parallel fetch of all initial data
+                console.log('----------- Fetching initial data... -----------');
                 const [
                     currentCapital,
                     { data: trades },
                     latestMetrics
                 ] = await Promise.all([
-                    capitalService.getCurrentCapital(),
+                    capitalService.calculateCurrentCapital(), // Use calculateCurrentCapital instead of getCurrentCapital
                     supabase
                         .from('trades')
                         .select('*')
@@ -184,6 +204,27 @@ function PortfolioOverview() {
                         .order('entry_datetime', { ascending: false }),
                     metricsService.fetchLatestPortfolioMetrics(user.id, false)
                 ]);
+                console.log("Initial fetch curr cap:", currentCapital);
+                console.log('----------- Latest Portfolio Metrics Fetched: -----------', latestMetrics);
+
+                // Calculate fresh exposure metrics
+                const freshExposureMetrics = await metricsService.calculateExposureMetrics(trades || [], currentCapital);
+                console.log('----------- Fresh Exposure Metrics Calculated: -----------', freshExposureMetrics);
+
+                // Merge fresh exposure metrics into latestMetrics
+                const updatedLatestMetrics = {
+                    ...latestMetrics,
+                    delta_de: freshExposureMetrics.deltaDE,
+                    delta_ne: freshExposureMetrics.deltaNE,
+                    delta_oe: freshExposureMetrics.deltaOE,
+                    dep: freshExposureMetrics.dep,
+                    der: freshExposureMetrics.der,
+                    nep: freshExposureMetrics.nep,
+                    ner: freshExposureMetrics.ner,
+                    oep: freshExposureMetrics.oep,
+                    oer: freshExposureMetrics.oer
+                };
+                console.log('----------- Updated Latest Metrics: -----------', updatedLatestMetrics);
 
                 // Update all states
                 setCurrentCapital(currentCapital);
@@ -192,19 +233,34 @@ function PortfolioOverview() {
                 if (latestMetrics) {
                     setMetrics(prevMetrics => ({
                         ...prevMetrics,
-                        profitFactor: latestMetrics.profit_factor ?? prevMetrics.profitFactor,
-                        avgRRR: latestMetrics.avg_rrr ?? prevMetrics.avgRRR,
-                        winRate: latestMetrics.win_rate ?? prevMetrics.winRate,
-                        expectancy: latestMetrics.expectancy ?? prevMetrics.expectancy,
-                        totalTrades: latestMetrics.total_trades ?? prevMetrics.totalTrades,
-                        profitableTradesCount: latestMetrics.profitable_trades_count ?? prevMetrics.profitableTradesCount,
-                        lossTradesCount: latestMetrics.loss_trades_count ?? prevMetrics.lossTradesCount,
-                        currentStreak: latestMetrics.current_streak ?? prevMetrics.currentStreak,
-                        longestWinStreak: latestMetrics.longest_win_streak ?? prevMetrics.longestWinStreak,
-                        longestLossStreak: latestMetrics.longest_loss_streak ?? prevMetrics.longestLossStreak,
-                        maxDrawdown: latestMetrics.max_drawdown ?? prevMetrics.maxDrawdown,
-                        maxRunup: latestMetrics.max_runup ?? prevMetrics.maxRunup,
-                        exposureMetrics: latestMetrics.exposure_metrics ?? prevMetrics.exposureMetrics
+                        profitFactor: updatedLatestMetrics.profit_factor ?? prevMetrics.profitFactor,
+                        avgRRR: updatedLatestMetrics.avg_rrr ?? prevMetrics.avgRRR,
+                        winRate: updatedLatestMetrics.win_rate ?? prevMetrics.winRate,
+                        expectancy: updatedLatestMetrics.expectancy ?? prevMetrics.expectancy,
+                        totalTrades: updatedLatestMetrics.total_trades ?? prevMetrics.totalTrades,
+                        profitableTradesCount: updatedLatestMetrics.profitable_trades_count ?? prevMetrics.profitableTradesCount,
+                        lossTradesCount: updatedLatestMetrics.loss_trades_count ?? prevMetrics.lossTradesCount,
+                        currentStreak: updatedLatestMetrics.current_streak ?? prevMetrics.currentStreak,
+                        longestWinStreak: updatedLatestMetrics.longest_win_streak ?? prevMetrics.longestWinStreak,
+                        longestLossStreak: updatedLatestMetrics.longest_loss_streak ?? prevMetrics.longestLossStreak,
+                        maxDrawdown: updatedLatestMetrics.max_drawdown ?? prevMetrics.maxDrawdown,
+                        maxRunup: updatedLatestMetrics.max_runup ?? prevMetrics.maxRunup,
+                        // Map exposure metrics to UI structure
+                        dailyExposure: {
+                            risk: freshExposureMetrics.der.toFixed(2),
+                            profit: freshExposureMetrics.dep.toFixed(2),
+                            delta: freshExposureMetrics.deltaDE.toFixed(2)
+                        },
+                        newExposure: {
+                            risk: freshExposureMetrics.ner.toFixed(2),
+                            profit: freshExposureMetrics.nep.toFixed(2),
+                            delta: freshExposureMetrics.deltaNE.toFixed(2)
+                        },
+                        openExposure: {
+                            risk: freshExposureMetrics.oer.toFixed(2),
+                            profit: freshExposureMetrics.oep.toFixed(2),
+                            delta: freshExposureMetrics.deltaOE.toFixed(2)
+                        }
                     }));
                 }
 
@@ -234,6 +290,19 @@ function PortfolioOverview() {
                         setLastUpdate(new Date().toLocaleTimeString());
                     }
                 }
+
+                // Cache the current state
+                const cacheData = {
+                    timestamp: Date.now(),
+                    data: {
+                        currentCapital,
+                        activeTrades: trades || [],
+                        metrics,
+                        lastUpdate: new Date().toLocaleTimeString()
+                    }
+                };
+                localStorage.setItem('portfolioMetricsCache', JSON.stringify(cacheData));
+                console.log('🔵 Cached fresh portfolio metrics');
 
             } catch (error) {
                 console.error('Error fetching initial data:', error);
@@ -277,10 +346,14 @@ function PortfolioOverview() {
             // Update metrics with loading state
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
+                // Get fresh capital calculation
+                const freshCapital = await capitalService.calculateCurrentCapital();
+                setCurrentCapital(freshCapital);
+
                 // Calculate exposure metrics with updated market prices
                 const exposureMetrics = await metricsService.calculateExposureMetrics(
                     updatedTrades,
-                    currentCapital,
+                    freshCapital, // Use fresh capital for exposure calculations
                     quotes  // Pass the quotes we already fetched
                 );
 
@@ -288,20 +361,20 @@ function PortfolioOverview() {
 
                 console.log('---------------- 🚀🚀 Latest Metrics:', exposureMetrics);
                 if (latestMetrics) {
-                    setMetrics(prevMetrics => ({
-                        ...prevMetrics,
-                        profitFactor: latestMetrics.profit_factor ?? prevMetrics.profitFactor,
-                        avgRRR: latestMetrics.avg_rrr ?? prevMetrics.avgRRR,
-                        winRate: latestMetrics.win_rate ?? prevMetrics.winRate,
-                        expectancy: latestMetrics.expectancy ?? prevMetrics.expectancy,
-                        totalTrades: latestMetrics.total_trades ?? prevMetrics.totalTrades,
-                        profitableTradesCount: latestMetrics.profitable_trades_count ?? prevMetrics.profitableTradesCount,
-                        lossTradesCount: latestMetrics.loss_trades_count ?? prevMetrics.lossTradesCount,
-                        currentStreak: latestMetrics.current_streak ?? prevMetrics.currentStreak,
-                        longestWinStreak: latestMetrics.longest_win_streak ?? prevMetrics.longestWinStreak,
-                        longestLossStreak: latestMetrics.longest_loss_streak ?? prevMetrics.longestLossStreak,
-                        maxDrawdown: latestMetrics.max_drawdown ?? prevMetrics.maxDrawdown,
-                        maxRunup: latestMetrics.max_runup ?? prevMetrics.maxRunup,
+                    const newMetrics = {
+                        ...metrics,
+                        profitFactor: latestMetrics.profit_factor ?? metrics.profitFactor,
+                        avgRRR: latestMetrics.avg_rrr ?? metrics.avgRRR,
+                        winRate: latestMetrics.win_rate ?? metrics.winRate,
+                        expectancy: latestMetrics.expectancy ?? metrics.expectancy,
+                        totalTrades: latestMetrics.total_trades ?? metrics.totalTrades,
+                        profitableTradesCount: latestMetrics.profitable_trades_count ?? metrics.profitableTradesCount,
+                        lossTradesCount: latestMetrics.loss_trades_count ?? metrics.lossTradesCount,
+                        currentStreak: latestMetrics.current_streak ?? metrics.currentStreak,
+                        longestWinStreak: latestMetrics.longest_win_streak ?? metrics.longestWinStreak,
+                        longestLossStreak: latestMetrics.longest_loss_streak ?? metrics.longestLossStreak,
+                        maxDrawdown: latestMetrics.max_drawdown ?? metrics.maxDrawdown,
+                        maxRunup: latestMetrics.max_runup ?? metrics.maxRunup,
                         // Map exposure metrics to UI structure
                         dailyExposure: {
                             risk: exposureMetrics.der.toFixed(2),
@@ -318,11 +391,23 @@ function PortfolioOverview() {
                             profit: exposureMetrics.oep.toFixed(2),
                             delta: exposureMetrics.deltaOE.toFixed(2)
                         }
-                        // portfolioAllocation: exposureMetrics.portfolioAllocation.toFixed(2)
-                    }));
+                    };
+                    setMetrics(newMetrics);
+
+                    // Update cache with new data
+                    const cacheData = {
+                        timestamp: Date.now(),
+                        data: {
+                            currentCapital: freshCapital,
+                            activeTrades: updatedTrades,
+                            metrics: newMetrics,
+                            lastUpdate: new Date().toLocaleTimeString()
+                        }
+                    };
+                    localStorage.setItem('portfolioMetricsCache', JSON.stringify(cacheData));
+                    console.log('🔵 Updated portfolio metrics cache');
                 }
             }
-
         } catch (error) {
             console.error('Error updating market data:', error);
             toast.error(error.message || 'Failed to update market data');
@@ -417,7 +502,7 @@ function PortfolioOverview() {
             {/* Metrics Row */}
             <div className="grid grid-cols-5 gap-4 mb-7">
                 {/* Each metric card with better overflow handling */}
-                <div className="stats bg-base-100 shadow-lg hover:shadow-primary/10">
+                <div className="stats bg-base-100 shadow-lg hover:shadow-lg hover:shadow-primary/10">
                     <div className="stat">
                         <div className="stat-title text-xs text-gray-500">Current Capital</div>
                         <div className="stat-value text-2xl font-semibold">
@@ -434,7 +519,7 @@ function PortfolioOverview() {
                     </div>
                 </div>
 
-                <div className="stats bg-base-100 shadow-lg hover:shadow-primary/10">
+                <div className="stats bg-base-100 shadow-lg hover:shadow-lg hover:shadow-primary/10">
                     <div className="stat">
                         <div className="stat-title text-xs text-gray-500">Profit Factor</div>
                         <div className="stat-value text-2xl font-semibold">
@@ -446,7 +531,7 @@ function PortfolioOverview() {
                     </div>
                 </div>
 
-                <div className="stats bg-base-100 shadow-lg hover:shadow-primary/10">
+                <div className="stats bg-base-100 shadow-lg hover:shadow-lg hover:shadow-primary/10">
                     <div className="stat">
                         <div className="stat-title text-xs text-gray-500">RRR</div>
                         <div className="stat-value text-2xl font-semibold">
@@ -458,7 +543,7 @@ function PortfolioOverview() {
                     </div>
                 </div>
 
-                <div className="stats bg-base-100 shadow-lg hover:shadow-primary/10">
+                <div className="stats bg-base-100 shadow-lg hover:shadow-lg hover:shadow-primary/10">
                     <div className="stat">
                         <div className="stat-title text-xs text-gray-500">Max Drawdown</div>
                         <div className="stat-value text-2xl font-semibold text-error">
@@ -469,7 +554,7 @@ function PortfolioOverview() {
                     </div>
                 </div>
 
-                <div className="stats bg-base-100 shadow-lg hover:shadow-primary/10">
+                <div className="stats bg-base-100 shadow-lg hover:shadow-lg hover:shadow-primary/10">
                     <div className="stat">
                         <div className="stat-title text-xs text-gray-500">Max Runup</div>
                         <div className="stat-value text-2xl font-semibold text-success">
@@ -642,7 +727,7 @@ function PortfolioOverview() {
                         </div>
 
                         {/* Open Exposure */}
-                        <div className="bg-base-100 p-4 rounded-lg shadow-lg hover:shadow-primary/10 shadow">
+                        <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
                             <div className="text-gray-500 text-sm mb-2">Open Exposure</div>
                             <div className="space-y-2">
                                 <div className="flex justify-between">
