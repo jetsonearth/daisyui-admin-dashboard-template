@@ -407,7 +407,7 @@ const TradePlanner: React.FC = () => {
                 last_price: parseFloat(inputs.entryPrice), 
                 portfolio_impact: 0,
                 trimmed_percentage: 0,
-                position_risk: inputs.positionRisk,
+                initial_position_risk: inputs.positionRisk,
                 market_value: metrics.positionSize * parseFloat(inputs.entryPrice),
                 status: "Open",
                 entry_datetime: new Date().toISOString(),
@@ -465,7 +465,7 @@ const TradePlanner: React.FC = () => {
             <div className="grid grid-cols-12 gap-6">
                 {/* Left Column - Trade Entry Form */}
                 <div className="col-span-5">
-                    <div className="card bg-base-100 shadow-xl">
+                    <div className="card bg-base-100 shadow-xl ounded-lg hover:shadow-lg hover:shadow-primary/10">
                         <div className="card-body px-6 py-3">
                             {/* Header */}
                             <div className="flex justify-between items-center border-b border-base-200 pb-4">
@@ -613,7 +613,7 @@ const TradePlanner: React.FC = () => {
                                             </span>
                                         </label>
                                         <div className="input input-bordered input-md bg-base-200 flex items-center justify-end font-mono text-right">
-                                            ${(inputs.positionRisk / 100 * inputs.currentCapital).toFixed(2)}
+                                            ${(Number(inputs.positionRisk) / 100 * Number(inputs.currentCapital)).toFixed(2)}
                                         </div>
                                     </div>
 
@@ -781,7 +781,7 @@ const TradePlanner: React.FC = () => {
 
                 {/* Right Column - TradingView Chart */}
                 <div className="col-span-7">
-                    <div className="card bg-base-100 shadow-xl h-full">
+                    <div className="card bg-base-100 shadow-xl ounded-lg hover:shadow-lg hover:shadow-primary/10 h-full">
                         <div className="card-body p-0 rounded-xl overflow-hidden">
                             {inputs.ticker ? (
                                 <TradingViewWidget symbol={`NASDAQ:${inputs.ticker}`} />
@@ -800,7 +800,7 @@ const TradePlanner: React.FC = () => {
                 {/* Row 1: Metrics for both systems */}
                 <div className="grid grid-cols-2 gap-4">
                     {/* 3-Tiered System Card */}
-                    <div className="card bg-base-100 shadow-xl">
+                    <div className="card bg-base-100 shadow-xl ounded-lg hover:shadow-lg hover:shadow-primary/10">
                         <div className="card-body p-4">
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-2">
@@ -819,13 +819,13 @@ const TradePlanner: React.FC = () => {
                             
                             {/* Row 1: Position Metrics */}
                             <div className="grid grid-cols-4 gap-3">
-                                <div className="bg-base-300 rounded-lg p-3">
+                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
                                     <div className="text-primary text-sm mb-1">Position Size</div>
                                     <div className="text-2xl font-bold">{positionMetrics.tiered.positionSize}</div>
                                     <div className="text-base-content/60">shares</div>
                                 </div>
 
-                                <div className="bg-base-300 rounded-lg p-3">
+                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
                                     <div className="text-primary text-sm mb-1">Dollar Exposure</div>
                                     <div className="text-2xl font-bold">
                                         ${positionMetrics.tiered.dollarExposure.toLocaleString('en-US', {
@@ -836,7 +836,7 @@ const TradePlanner: React.FC = () => {
                                     <div className="text-base-content/60">total</div>
                                 </div>
 
-                                <div className="bg-base-300 rounded-lg p-3">
+                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
                                     <div className="text-primary text-sm mb-1">Position Weight</div>
                                     <div className="text-2xl font-bold">
                                         {(positionMetrics.tiered.portfolioWeight * 100).toFixed(2)}%
@@ -844,7 +844,7 @@ const TradePlanner: React.FC = () => {
                                     <div className="text-base-content/60">of capital</div>
                                 </div>
 
-                                <div className="bg-base-300 rounded-lg p-3">
+                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
                                     <div className="text-primary text-sm mb-1">Stop Method</div>
                                     <div className="text-lg font-medium">
                                         {getStopMethod(
@@ -860,18 +860,18 @@ const TradePlanner: React.FC = () => {
                             {/* Row 2: Stop Levels, Open Risk, and Targets */}
                             <div className="grid grid-cols-3 gap-3 mt-3">
                                 {/* Stop Levels */}
-                                <div className="bg-base-300 rounded-lg p-3">
+                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
                                     <div className="text-primary text-sm mb-3">Stop Levels</div>
                                     <div className="flex flex-col gap-2">
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex items-center justify-between leading-none">
                                             <div className="text-base-content/60">33% Stop</div>
                                             <div className="text-lg font-bold text-warning">${positionMetrics.tiered.stop33.toFixed(2)}</div>
                                         </div>
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex items-center justify-between leading-none">
                                             <div className="text-base-content/60">66% Stop</div>
                                             <div className="text-lg font-bold text-warning">${positionMetrics.tiered.stop66.toFixed(2)}</div>
                                         </div>
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex items-center justify-between leading-none">
                                             <div className="text-base-content/60">Full Stop</div>
                                             <div className="text-lg font-bold text-error">${positionMetrics.tiered.fullStopPrice.toFixed(2)}</div>
                                         </div>
@@ -879,7 +879,7 @@ const TradePlanner: React.FC = () => {
                                 </div>
 
                                 {/* Open Risk */}
-                                <div className="bg-base-300 rounded-lg p-3">
+                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
                                     <div className="text-primary text-sm mb-3">Stoploss Distance</div>
                                     <div className="flex flex-col items-center justify-center h-[calc(100%-2rem)]">
                                         <div className="text-4xl font-bold text-error mb-1">
@@ -890,7 +890,7 @@ const TradePlanner: React.FC = () => {
                                 </div>
 
                                 {/* Targets */}
-                                <div className="bg-base-300 rounded-lg p-3">
+                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
                                     <div className="text-primary text-sm mb-3">Targets</div>
                                     <div className="flex flex-col gap-3">
                                         <div className="flex items-center justify-between">
@@ -912,7 +912,7 @@ const TradePlanner: React.FC = () => {
                     </div>
 
                     {/* Single Stop System Card */}
-                    <div className="card bg-base-100 shadow-xl">
+                    <div className="card bg-base-100 shadow-xl ounded-lg hover:shadow-lg hover:shadow-primary/10">
                         <div className="card-body p-4">
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-2">
@@ -931,13 +931,13 @@ const TradePlanner: React.FC = () => {
 
                             {/* Row 1: Position Metrics */}
                             <div className="grid grid-cols-4 gap-3">
-                                <div className="bg-base-300 rounded-lg p-3">
+                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
                                     <div className="text-primary text-sm mb-1">Position Size</div>
                                     <div className="text-2xl font-bold">{positionMetrics.single.positionSize}</div>
                                     <div className="text-base-content/60">shares</div>
                                 </div>
 
-                                <div className="bg-base-300 rounded-lg p-3">
+                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
                                     <div className="text-primary text-sm mb-1">Dollar Exposure</div>
                                     <div className="text-2xl font-bold">
                                         ${positionMetrics.single.dollarExposure.toLocaleString('en-US', {
@@ -948,7 +948,7 @@ const TradePlanner: React.FC = () => {
                                     <div className="text-base-content/60">total</div>
                                 </div>
 
-                                <div className="bg-base-300 rounded-lg p-3">
+                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
                                     <div className="text-primary text-sm mb-1">Position Weight</div>
                                     <div className="text-2xl font-bold">
                                         {(positionMetrics.single.portfolioWeight * 100).toFixed(2)}%
@@ -956,7 +956,7 @@ const TradePlanner: React.FC = () => {
                                     <div className="text-base-content/60">of capital</div>
                                 </div>
 
-                                <div className="bg-base-300 rounded-lg p-3">
+                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
                                     <div className="text-primary text-sm mb-1">Stop Method</div>
                                     <div className="text-lg font-medium">
                                         {getStopMethod(
@@ -972,7 +972,7 @@ const TradePlanner: React.FC = () => {
                             {/* Row 2: Stop Level, Open Risk, and Targets */}
                             <div className="grid grid-cols-3 gap-3 mt-3">
                                 {/* Stop Level */}
-                                <div className="bg-base-300 rounded-lg p-3">
+                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
                                     <div className="text-primary text-sm mb-3">Stop Level</div>
                                     <div className="flex flex-col items-center justify-center h-24">
                                         <div className="text-4xl font-bold text-error mb-1">
@@ -982,7 +982,7 @@ const TradePlanner: React.FC = () => {
                                     </div>
                                 </div>
                                 {/* Open Risk */}
-                                <div className="bg-base-300 rounded-lg p-3">
+                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
                                     <div className="text-primary text-sm mb-3"> Stoploss Distance</div>
                                     <div className="flex flex-col items-center justify-center h-[calc(100%-2rem)]">
                                         <div className="text-4xl font-bold text-error mb-1">
@@ -991,9 +991,8 @@ const TradePlanner: React.FC = () => {
                                         <div className="text-base-content/60 text-sm">from entry to SL</div>
                                     </div>
                                 </div>
-
                                 {/* Targets */}
-                                <div className="bg-base-300 rounded-lg p-3">
+                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
                                     <div className="text-primary text-sm mb-3">Targets</div>
                                     <div className="flex flex-col gap-3">
                                         <div className="flex items-center justify-between">
@@ -1018,7 +1017,7 @@ const TradePlanner: React.FC = () => {
                 {/* Row 2: Price Ladders */}
                 <div className="grid grid-cols-2 gap-4">
                     {/* 3-Tiered Price Ladder */}
-                    <div className="card bg-base-100 shadow-xl">
+                    <div className="card bg-base-100 shadow-xl ounded-lg hover:shadow-lg hover:shadow-primary/10">
                         <div className="card-body p-4">
                             <div className="flex items-center gap-2 mb-4">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1041,7 +1040,7 @@ const TradePlanner: React.FC = () => {
                     </div>
 
                     {/* Single Stop Price Ladder */}
-                    <div className="card bg-base-100 shadow-xl">
+                    <div className="card bg-base-100 shadow-xl ounded-lg hover:shadow-lg hover:shadow-primary/10">
                         <div className="card-body p-4">
                             <div className="flex items-center gap-2 mb-4">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">

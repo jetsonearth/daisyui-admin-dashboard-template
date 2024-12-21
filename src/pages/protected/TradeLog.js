@@ -314,7 +314,7 @@ function TradeLog(){
                                         <th className="text-center whitespace-nowrap">Weight %</th>
                                         <th className="text-center whitespace-nowrap">Trimmed %</th>
                                         <th className="text-center whitespace-nowrap">SL Distance</th>
-                                        <th className="text-center whitespace-nowrap">Position Heat</th>
+                                        <th className="text-center whitespace-nowrap">Position Risk</th>
                                         <th className="text-center whitespace-nowrap">Portfolio Impact</th>
                                         <th className="text-center whitespace-nowrap">MAE</th>
                                         <th className="text-center whitespace-nowrap">MFE</th>
@@ -509,14 +509,14 @@ function TradeLog(){
 
                                                 <td className={`
                                                     text-center font-semibold tabular-nums
-                                                    ${trade.portfolio_heat > 0 ? 'text-rose-400' : 'text-emerald-400'}
+                                                    ${trade.position_risk > 0 ? 'text-rose-400' : 'text-emerald-400'}
                                                 `}>
-                                                    {trade.portfolio_heat === 0 ? (
+                                                    {trade.position_risk === 0 ? (
                                                         <span className="text-white">-</span>
                                                     ) : (
                                                         <>
-                                                            {trade.portfolio_heat > 0 ? '+' : ''}
-                                                            {safeToFixed(trade.portfolio_heat)}%
+                                                            {trade.position_risk > 0 ? '-' : ''}
+                                                            {safeToFixed(trade.position_risk)}%
                                                         </>
                                                     )}
                                                 </td>

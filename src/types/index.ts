@@ -31,6 +31,9 @@ export interface Trade {
     initial_risk_amount?: number;
     current_risk_amount?: number;
     trailing_stoploss?: number;
+    initial_position_risk?: number;
+    current_var?: number;                 
+
   
     // Performance Metrics
     realized_pnl: number;
@@ -42,8 +45,6 @@ export interface Trade {
   
     // Portfolio Metrics
     portfolio_weight?: number;
-    position_heat?: number;
-    position_risk?: number;
     portfolio_impact?: number;
     trimmed_percentage?: number;
     risk_reward_ratio?: number;

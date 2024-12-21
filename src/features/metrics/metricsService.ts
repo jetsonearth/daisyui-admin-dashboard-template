@@ -164,6 +164,28 @@ export class MetricsService {
         }
     }
 
+    private calculateCurrentRiskAmount(trade: Trade, currentPrice: number): number {
+        if (trade.status === TRADE_STATUS.CLOSED) return 0;
+        
+        const remainingShares = trade.remaining_shares;
+        
+        // If trailing stop is set
+        if (trade.trailing_stoploss) {
+            return trade.direction === 'LONG'
+                ? (currentPrice - trade.trailing_stoploss) * remainingShares
+                : (trade.trailing_stoploss - currentPrice) * remainingShares;
+        }
+        
+        // If no trailing stop, use original stop based on open_risk
+        const stopPrice = trade.direction === 'LONG'
+            ? trade.entry_price * (1 - trade.open_risk / 100)
+            : trade.entry_price * (1 + trade.open_risk / 100);
+        
+        return trade.direction === 'LONG'
+            ? (currentPrice - stopPrice) * remainingShares
+            : (stopPrice - currentPrice) * remainingShares;
+    }
+
     public async calculateTradeMetrics(
         trade: Trade, 
         quotes: Record<string, Quote>, 
@@ -176,37 +198,40 @@ export class MetricsService {
         marketValue: number;
         portfolioWeight: number;
         portfolioImpact: number;
-        positionRisk: number;
         riskRewardRatio: number;
         lastPrice: number;
         realizedPnL: number;
         realizedPnLPercentage: number;
+        current_risk_amount: number;
+        initial_position_risk: number;
+        current_var: number;
     }> {
         // For closed trades, use exit price and skip market data
         if (trade.status === TRADE_STATUS.CLOSED) {
-            const exitPrice = trade.exit_price || 0;
             return {
-                lastPrice: exitPrice,
-                marketValue: 0,  // Closed trades have no market value
-                unrealizedPnL: 0,  // No unrealized P&L for closed trades
+                lastPrice: trade.exit_price || 0,
+                marketValue: 0,
+                unrealizedPnL: 0,
                 unrealizedPnLPercentage: 0,
                 realizedPnL: trade.realized_pnl || 0,
                 realizedPnLPercentage: trade.realized_pnl ? (trade.realized_pnl / (trade.entry_price * trade.total_shares)) * 100 : 0,
-                trimmedPercentage: 100,  // Fully trimmed
-                portfolioWeight: 0,  // No portfolio weight for closed trades
-                // portfolioImpact: ((trade.realized_pnl || 0) / startingCapital) * 100,
+                trimmedPercentage: 100,
+                portfolioWeight: 0,
                 portfolioImpact: 0,
-                positionRisk: 0,  // No heat for closed trades
-                riskRewardRatio: trade.realized_pnl ? trade.realized_pnl / (trade.total_shares * trade.entry_price * (trade.open_risk / 100)) : 0
+                current_risk_amount: 0,
+                initial_position_risk: 0,
+                current_var: 0,
+                riskRewardRatio: trade.realized_pnl ? trade.realized_pnl / trade.initial_risk_amount! : 0
             };
         }
 
         // For active trades, calculate metrics using market data
         const quote = quotes[trade.ticker];
         if (!quote) {
-            log('warn', `No market data available for active trade ${trade.ticker}`);
+            const currentRiskAmount = this.calculateCurrentRiskAmount(trade, trade.entry_price);
+            const initialPositionRisk = ((trade.initial_risk_amount || 0) / currentCapital) * 100;
             return {
-                lastPrice: trade.entry_price,  // Fall back to entry price
+                lastPrice: trade.entry_price,
                 marketValue: trade.remaining_shares * trade.entry_price,
                 unrealizedPnL: 0,
                 unrealizedPnLPercentage: 0,
@@ -215,8 +240,10 @@ export class MetricsService {
                 trimmedPercentage: ((trade.total_shares - trade.remaining_shares) / trade.total_shares) * 100,
                 portfolioWeight: (trade.remaining_shares * trade.entry_price / currentCapital) * 100,
                 portfolioImpact: ((trade.realized_pnl || 0) / startingCapital) * 100,
-                positionRisk: ((trade.initial_risk_amount ?? (trade.open_risk * trade.total_shares * trade.entry_price / 100)) / currentCapital) * 100,
-                riskRewardRatio: (trade.unrealized_pnl + trade.realized_pnl) / (trade.initial_risk_amount ?? (trade.open_risk * trade.total_shares * trade.entry_price / 100))
+                current_risk_amount: currentRiskAmount,
+                initial_position_risk: initialPositionRisk,
+                current_var: (currentRiskAmount / currentCapital) * 100,
+                riskRewardRatio: (trade.unrealized_pnl + trade.realized_pnl) / (currentRiskAmount || 1)
             };
         }
 
@@ -232,10 +259,18 @@ export class MetricsService {
         // Portfolio metrics
         const portfolioWeight = (marketValue / currentCapital) * 100;
         const portfolioImpact = ((unrealizedPnL + realizedPnL) / startingCapital) * 100;
-        const positionRisk = ((trade.initial_risk_amount ?? (trade.open_risk * trade.total_shares * trade.entry_price / 100)) / currentCapital) * 100;
         
         // Risk metrics
-        const riskRewardRatio = (unrealizedPnL + realizedPnL) / (trade.initial_risk_amount ?? (trade.open_risk * trade.total_shares * trade.entry_price / 100));
+        const currentRiskAmount = this.calculateCurrentRiskAmount(trade, currentPrice);
+        const initialPositionRisk = ((trade.initial_risk_amount!) / currentCapital) * 100;
+
+        // console.log('------------------------ Current Cap:', currentCapital);
+        // console.log('------------------------ Initial Position Risk:', initialPositionRisk);
+
+        const current_var = (currentRiskAmount / currentCapital) * 100;
+        // console.log('------------------------ Current VAR:', current_var);
+        // Risk reward ratio using current risk amount
+        const riskRewardRatio = (unrealizedPnL + realizedPnL) / (trade.initial_risk_amount!);
 
         return {
             lastPrice: currentPrice,
@@ -247,7 +282,9 @@ export class MetricsService {
             trimmedPercentage,
             portfolioWeight,
             portfolioImpact,
-            positionRisk,
+            current_risk_amount: currentRiskAmount,
+            initial_position_risk: initialPositionRisk,
+            current_var,
             riskRewardRatio
         };
     }
@@ -427,7 +464,7 @@ export class MetricsService {
                 dayjs(trade.entry_datetime).isSame(dayjs(), 'day'));
             
             const der = todaysTrades.reduce((sum, trade) => 
-                sum + (trade.open_risk ?? 0), 0);
+                sum + (trade.initial_position_risk ?? 0), 0);
             
             const dep = todaysTrades.reduce((sum, trade) => {
                 const unrealizedPnL = trade.unrealized_pnl ?? 0;
@@ -439,7 +476,7 @@ export class MetricsService {
                 dayjs(trade.entry_datetime).isAfter(dayjs().subtract(7, 'days')));
             
             const ner = recentTrades.reduce((sum, trade) => 
-                sum + ((trade.initial_risk_amount ?? 0) / currentCapital * 100), 0);
+                sum + (trade.initial_position_risk ?? 0), 0);
             
             const nep = recentTrades.reduce((sum, trade) => {
                 const unrealizedPnL = trade.unrealized_pnl ?? 0;
@@ -448,7 +485,7 @@ export class MetricsService {
     
             // 3. Open Exposure
             const oer = activeTrades.reduce((sum, trade) => 
-                sum + (trade.position_risk ?? 0), 0);
+                sum + (trade.initial_position_risk ?? 0), 0);
             
             const oep = activeTrades.reduce((sum, trade) => {
                 const totalPnL = (trade.unrealized_pnl ?? 0) + (trade.realized_pnl ?? 0);
@@ -569,10 +606,10 @@ export class MetricsService {
     
         // Get starting capital
         const startingCapital = await this.retrieveStartingCapital();
-    
+
         // Calculate current capital to get total capital for metrics
         const currentCapital = await capitalService.calculateCurrentCapital();
-    
+
         // Process trades with detailed metrics
         const updatedTrades = await Promise.all(trades.map(async (trade) => {
             // Calculate trade-specific metrics
@@ -594,7 +631,9 @@ export class MetricsService {
                 trimmed_percentage: tradeMetrics.trimmedPercentage,
                 portfolio_weight: tradeMetrics.portfolioWeight,
                 portfolio_impact: tradeMetrics.portfolioImpact,
-                position_risk: tradeMetrics.positionRisk,
+                current_risk_amount: tradeMetrics.current_risk_amount,
+                initial_position_risk: tradeMetrics.initial_position_risk,
+                current_var: tradeMetrics.current_var,
                 risk_reward_ratio: tradeMetrics.riskRewardRatio,
                 updated_at: new Date().toISOString()
             };
