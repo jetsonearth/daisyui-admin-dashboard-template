@@ -11,9 +11,9 @@
     top: 0;
     left: 0;
     z-index: 1000;
-  }
-  
-  .loading-indicator:after {
+}
+
+.loading-indicator:after {
     content: ' ';
     position: fixed;
     top: 40%;

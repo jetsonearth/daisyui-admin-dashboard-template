@@ -727,8 +727,9 @@ export class MetricsService {
                 oer: exposureMetrics.oer,
                 oep: exposureMetrics.oep,
                 delta_oe: exposureMetrics.deltaOE,
-                // portfolio_allocation: exposureMetrics.portfolioAllocation,
                 updated_at: new Date().toISOString()
+            }, {
+                onConflict: 'user_id,date'
             })
             .select();
     
@@ -791,6 +792,21 @@ export class MetricsService {
         this.metricsCache = null;
         console.log('🔴 Metrics cache invalidated');
     }
+
+    // // Add this function to fetch historical trades
+    // async fetchHistoricalTrades(userId: string, start?: Date, end?: Date) {
+    //     try {
+    //         const queryParams = new URLSearchParams();
+    //         if (start) queryParams.append('start', start.toISOString());
+    //         if (end) queryParams.append('end', end.toISOString());
+            
+    //         const response = await axios.get(`${API_URL}/trades/historical/${userId}?${queryParams}`);
+    //         return response.data;
+    //     } catch (error) {
+    //         console.error('Error fetching historical trades:', error);
+    //         return [];
+    //     }
+    // }
 }
 
 // Export an instance of the service

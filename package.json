@@ -11,6 +11,10 @@
   "main": "src/index.tsx",
   "browser": "src/index.tsx",
   "dependencies": {
+    "@fullcalendar/core": "^6.1.15",
+    "@fullcalendar/daygrid": "^6.1.15",
+    "@fullcalendar/interaction": "^6.1.15",
+    "@fullcalendar/react": "^6.1.15",
     "@google-cloud/local-auth": "^3.0.1",
     "@heroicons/react": "^2.0.13",
     "@reduxjs/toolkit": "^1.9.0",
@@ -25,6 +29,7 @@
     "capitalize-the-first-letter": "^1.0.8",
     "chart.js": "^4.0.1",
     "crypto-browserify": "^3.12.1",
+    "date-fns": "^4.1.0",
     "dayjs": "^1.11.13",
     "googleapis": "^144.0.0",
     "https-browserify": "^1.0.0",

@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { Chart as ChartJS, ArcElement, Tooltip } from 'chart.js';
+import React from 'react';
+import { Chart as ChartJS, ArcElement, Tooltip, ChartOptions, ChartData } from 'chart.js';
 import { Doughnut } from 'react-chartjs-2';
 
 ChartJS.register(ArcElement, Tooltip);
@@ -17,7 +17,6 @@ export const DeltaGauge: React.FC<DeltaGaugeProps> = ({
     size = 100,
     type = 'daily'
 }) => {
-    const chartRef = useRef<ChartJS>(null);
     const total = risk + profit;
     const delta = (profit - risk).toFixed(1);
 
@@ -33,7 +32,7 @@ export const DeltaGauge: React.FC<DeltaGaugeProps> = ({
         );
     }
 
-    const data = {
+    const data: ChartData<'doughnut'> = {
         datasets: [{
             data: [risk, profit],
             backgroundColor: [
@@ -47,7 +46,7 @@ export const DeltaGauge: React.FC<DeltaGaugeProps> = ({
         }]
     };
 
-    const options = {
+    const options: ChartOptions<'doughnut'> = {
         responsive: true,
         maintainAspectRatio: false,
         cutout: '70%',
@@ -62,9 +61,9 @@ export const DeltaGauge: React.FC<DeltaGaugeProps> = ({
                 enabled: true,
                 position: 'nearest',
                 callbacks: {
-                    label: (context: any) => {
-                        const value = context.raw.toFixed(2);
-                        return context.dataIndex === 0 ? `Risk: ${value}%` : `Profit: ${value}%`;
+                    label: (context) => {
+                        const value = context.raw as number;
+                        return context.dataIndex === 0 ? `Risk: ${value.toFixed(2)}%` : `Profit: ${value.toFixed(2)}%`;
                     }
                 },
                 backgroundColor: '#1f2937',
@@ -73,7 +72,7 @@ export const DeltaGauge: React.FC<DeltaGaugeProps> = ({
                 padding: 12,
                 cornerRadius: 8,
                 displayColors: false,
-                external: function(context: any) {
+                external: function(context) {
                     const tooltipModel = context.tooltip;
                     
                     // Adjust position based on which segment (risk or profit)
@@ -94,8 +93,11 @@ export const DeltaGauge: React.FC<DeltaGaugeProps> = ({
 
     const textCenter = {
         id: 'textCenter',
-        beforeDraw(chart: ChartJS) {
-            const { ctx, chartArea: { width, height } } = chart;
+        beforeDraw: (chart: ChartJS) => {
+            const { ctx, chartArea } = chart;
+            const width = chartArea.width;
+            const height = chartArea.height;
+            
             ctx.save();
 
             // Draw delta value
@@ -115,7 +117,6 @@ export const DeltaGauge: React.FC<DeltaGaugeProps> = ({
     return (
         <div style={{ width: size, height: size/2 + 10 }}>
             <Doughnut
-                ref={chartRef}
                 data={data}
                 options={options}
                 plugins={[textCenter]}

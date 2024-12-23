@@ -647,7 +647,7 @@ const TradePlanner: React.FC = () => {
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                                                 </svg>
-                                                HSM FOMO Ratio
+                                                FOMO Ratio
                                             </span>
                                         </label>
                                         <div className="input input-bordered input-md bg-base-200 flex items-center justify-end font-mono text-right">
@@ -810,8 +810,8 @@ const TradePlanner: React.FC = () => {
                                     <h2 className="card-title text-lg">3-Tiered Stop Loss System</h2>
                                 </div>
                                 <button 
-                                    className="btn text-white btn-primary btn-sm glass"
                                     onClick={() => handleSubmitTrade('tiered')}
+                                    className="btn btn-primary shadow-lg transition-all duration-300 hover:scale-[1.02] bg-gradient-to-r from-primary to-primary/80"
                                 >
                                     Place Trade with 3-Tiered System
                                 </button>
@@ -859,24 +859,30 @@ const TradePlanner: React.FC = () => {
 
                             {/* Row 2: Stop Levels, Open Risk, and Targets */}
                             <div className="grid grid-cols-3 gap-3 mt-3">
-                                {/* Stop Levels */}
-                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
-                                    <div className="text-primary text-sm mb-3">Stop Levels</div>
-                                    <div className="flex flex-col gap-2">
-                                        <div className="flex items-center justify-between leading-none">
-                                            <div className="text-base-content/60">33% Stop</div>
-                                            <div className="text-lg font-bold text-warning">${positionMetrics.tiered.stop33.toFixed(2)}</div>
-                                        </div>
-                                        <div className="flex items-center justify-between leading-none">
-                                            <div className="text-base-content/60">66% Stop</div>
-                                            <div className="text-lg font-bold text-warning">${positionMetrics.tiered.stop66.toFixed(2)}</div>
-                                        </div>
-                                        <div className="flex items-center justify-between leading-none">
-                                            <div className="text-base-content/60">Full Stop</div>
-                                            <div className="text-lg font-bold text-error">${positionMetrics.tiered.fullStopPrice.toFixed(2)}</div>
-                                        </div>
-                                    </div>
-                                </div>
+{/* Stop Levels */}
+<div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
+    <div className="text-primary text-sm mb-2">Stop Levels</div>
+    <div className="relative pt-1">
+        {/* Visual progress bar */}
+        <div className="flex mb-2 h-1.5 bg-base-300 rounded-full overflow-hidden">
+            <div className="w-1/3 bg-warning/70" />
+            <div className="w-1/3 bg-error/50" />
+            <div className="w-1/3 bg-error" />
+        </div>
+        {/* Stop levels with compact spacing */}
+        <div className="grid grid-cols-3 gap-1 text-center text-xs mb-1">
+            <div>33%</div>
+            <div>66%</div>
+            <div>Full</div>
+        </div>
+        <div className="grid grid-cols-3 gap-1 text-center">
+            <div className="font-semibold text-warning/70">${positionMetrics.tiered.stop33.toFixed(2)}</div>
+            <div className="font-semibold text-error/50">${positionMetrics.tiered.stop66.toFixed(2)}</div>
+            <div className="font-semibold text-error">${positionMetrics.tiered.fullStopPrice.toFixed(2)}</div>
+        </div>
+    </div>
+</div>
+
 
                                 {/* Open Risk */}
                                 <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
@@ -889,24 +895,30 @@ const TradePlanner: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* Targets */}
-                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
-                                    <div className="text-primary text-sm mb-3">Targets</div>
-                                    <div className="flex flex-col gap-3">
-                                        <div className="flex items-center justify-between">
-                                            <div className="text-base-content/60">2R Target</div>
-                                            <div className="text-lg font-bold text-info">
-                                                ${positionMetrics.tiered.target2R.toFixed(2)}
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <div className="text-base-content/60">3R Target</div>
-                                            <div className="text-lg font-bold text-info">
-                                                ${positionMetrics.tiered.target3R.toFixed(2)}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+{/* Targets */}
+<div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
+    <div className="text-primary text-sm mb-2">Targets</div>
+    <div className="relative pt-1">
+        {/* Visual target bars */}
+        <div className="flex mb-2 h-1.5 bg-base-300 rounded-full overflow-hidden">
+            <div className="w-2/5 bg-success/50" />
+            <div className="w-3/5 bg-emerald-500" />
+        </div>
+        {/* Target levels with compact spacing */}
+        <div className="grid grid-cols-2 gap-1 text-center text-xs mb-1">
+            <div>2R</div>
+            <div>3R</div>
+        </div>
+        <div className="grid grid-cols-2 gap-1 text-center">
+            <div className="font-semibold text-emerald-500/70">
+                ${positionMetrics.tiered.target2R.toFixed(2)}
+            </div>
+            <div className="font-semibold text-emerald-500">
+                ${positionMetrics.tiered.target3R.toFixed(2)}
+            </div>
+        </div>
+    </div>
+</div>
                             </div>
                         </div>
                     </div>
@@ -922,10 +934,10 @@ const TradePlanner: React.FC = () => {
                                     <h2 className="card-title text-lg">Single Stop Loss System</h2>
                                 </div>
                                 <button 
-                                    className="btn btn-info text-white glass btn-sm"
                                     onClick={() => handleSubmitTrade('single')}
+                                    className="btn btn-secondary shadow-lg transition-all duration-300 hover:scale-[1.02] bg-gradient-to-r from-secondary to-secondary/80"
                                 >
-                                    Place Trade with Single Stop
+                                    Place Trade with Single Stop Loss
                                 </button>
                             </div>
 
@@ -974,7 +986,7 @@ const TradePlanner: React.FC = () => {
                                 {/* Stop Level */}
                                 <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
                                     <div className="text-primary text-sm mb-3">Stop Level</div>
-                                    <div className="flex flex-col items-center justify-center h-24">
+                                    <div className="flex flex-col items-center justify-center">
                                         <div className="text-4xl font-bold text-error mb-1">
                                             ${positionMetrics.single.fullStopPrice.toFixed(2)}
                                         </div>
@@ -991,24 +1003,30 @@ const TradePlanner: React.FC = () => {
                                         <div className="text-base-content/60 text-sm">from entry to SL</div>
                                     </div>
                                 </div>
-                                {/* Targets */}
-                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
-                                    <div className="text-primary text-sm mb-3">Targets</div>
-                                    <div className="flex flex-col gap-3">
-                                        <div className="flex items-center justify-between">
-                                            <div className="text-base-content/60">2R Target</div>
-                                            <div className="text-lg font-bold text-info">
-                                                ${positionMetrics.single.target2R.toFixed(2)}
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <div className="text-base-content/60">3R Target</div>
-                                            <div className="text-lg font-bold text-info">
-                                                ${positionMetrics.single.target3R.toFixed(2)}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+{/* Targets */}
+<div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
+    <div className="text-primary text-sm mb-2">Targets</div>
+    <div className="relative pt-1">
+        {/* Visual target bars */}
+        <div className="flex mb-2 h-1.5 bg-base-300 rounded-full overflow-hidden">
+            <div className="w-2/5 bg-success/50" />
+            <div className="w-3/5 bg-emerald-500" />
+        </div>
+        {/* Target levels with compact spacing */}
+        <div className="grid grid-cols-2 gap-1 text-center text-xs mb-1">
+            <div>2R</div>
+            <div>3R</div>
+        </div>
+        <div className="grid grid-cols-2 gap-1 text-center">
+            <div className="font-semibold text-emerald-500/70">
+                ${positionMetrics.tiered.target2R.toFixed(2)}
+            </div>
+            <div className="font-semibold text-emerald-500">
+                ${positionMetrics.tiered.target3R.toFixed(2)}
+            </div>
+        </div>
+    </div>
+</div>
                             </div>
                         </div>
                     </div>

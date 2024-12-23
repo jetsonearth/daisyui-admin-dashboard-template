@@ -5,6 +5,7 @@ import TitleCard from '../../components/Cards/TitleCard'
 import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from '../../types/index'; 
 import { metricsService } from '../../features/metrics/metricsService';
 import { marketDataService } from '../../features/marketData/marketDataService';
+import { capitalService } from '../../services/capitalService';
 import { toast } from 'react-toastify'
 import TradeHistoryModal from '../../features/user/components/TradeHistory/TradeHistoryModal'; // Import the modal
 import './TradeLog.css';
@@ -151,6 +152,18 @@ function TradeLog(){
 
             // Update only active trades with detailed metrics
             const tradesWithMetrics = await metricsService.updateTradesWithDetailedMetrics(quotes, updatedActiveTrades);
+            
+            // Calculate and record capital changes with the updated trade metrics
+            const freshCapital = await capitalService.calculateCurrentCapital();
+            console.log('------ 📈 Calculating capital changes...', freshCapital);
+            await capitalService.recordCapitalChange(freshCapital, {
+                type: 'interim_snapshot',
+                trades_count: activeTrades.length,
+                trade_details: tradesWithMetrics.map(trade => ({
+                    ticker: trade.ticker,
+                    unrealized_pnl: trade.unrealized_pnl
+                }))
+            });
             
             // Combine updated active trades with unchanged closed trades
             const allUpdatedTrades = [...tradesWithMetrics, ...closedTrades];

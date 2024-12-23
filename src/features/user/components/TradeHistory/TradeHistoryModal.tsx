@@ -6,7 +6,9 @@ import { supabase } from '../../../../config/supabaseClient';
 import { toast } from 'react-toastify';
 import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from '../../../../types'; 
 import { metricsService } from '../../../../features/metrics/metricsService';
+import { capitalService } from '../../../../services/capitalService';
 import { L, p } from 'chart.js/dist/chunks/helpers.core';
+import dayjs from 'dayjs';
 
 interface Action {
     type: 'BUY' | 'SELL';
@@ -576,36 +578,74 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
 
             if (remainingShares === 0) {
                 console.log('----------- Computing metrics after trade closure! -----------');
-
+            
                 const { data: { user }, error: userError } = await supabase.auth.getUser();
                 if (userError || !user) {
                     throw new Error('User not authenticated');
                 }
-
+            
                 const allTrades = await metricsService.fetchTrades();
                 const closedTrades = allTrades.filter(t => t.status === TRADE_STATUS.CLOSED);
-
+            
                 if (closedTrades.length > 0) {
+                    // Calculate and update metrics
                     const performanceMetrics = await metricsService.calculateTradePerformanceMetrics(closedTrades);
                     console.log('Performance Metrics:', performanceMetrics);
-
+            
                     const streakMetrics = metricsService.calculateStreakMetrics(closedTrades);
                     console.log('Streak Metrics:', streakMetrics);
-
+                    
                     const combinedMetrics = {
                         ...performanceMetrics,
                         currentStreak: streakMetrics.currentStreak,
                         longestWinStreak: streakMetrics.longestWinStreak,
                         longestLossStreak: streakMetrics.longestLossStreak
                     };
-                    console.log('Combined Metrics to be upserted:', combinedMetrics);
-
+            
                     await metricsService.upsertPerformanceMetrics(user.id, combinedMetrics);
-                    metricsService.invalidateMetricsCache(); // Invalidate cache after updating metrics
+                    
+                    // Get user settings for account creation date
+                    const { data: userSettings } = await supabase
+                        .from('user_settings')
+                        .select('created_at')
+                        .eq('user_id', user.id)
+                        .single();
+            
+                    // After the insert/update, use the result
+                    if (result?.[0]) {
+                        const tradeExitDate = new Date(result[0].exit_datetime);
+                        const realizedPnL = result[0].realized_pnl || 0;
+
+                        console.log('Trade details:', {
+                            exitDate: tradeExitDate,
+                            accountCreationDate: userSettings?.created_at,
+                            isHistorical: userSettings?.created_at && new Date(tradeExitDate) < new Date(userSettings.created_at),
+                            realizedPnL
+                        });
+
+                        // Calculate fresh capital including this trade's realized P&L
+                        const freshCapital = await capitalService.calculateCurrentCapital();
+                        console.log('Fresh capital:', freshCapital);
+                        
+                        // If this is a historical trade (before account creation)
+                        if (userSettings?.created_at && new Date(tradeExitDate) < new Date(userSettings.created_at)) {
+                            console.log('Processing historical trade from:', dayjs(tradeExitDate).format('YYYY-MM-DD'));
+                            await capitalService.recordCapitalChange(freshCapital, {}, dayjs(tradeExitDate).format('YYYY-MM-DD'));
+
+                            // Process all historical trades to ensure metrics are correct
+                            await capitalService.processHistoricalTrades(user.id);
+                        } else {
+                            console.log('Processing current day trade');
+                            // Current day trade
+                            await capitalService.recordCapitalChange(freshCapital, {});
+                        }
+                    }
+            
+                    metricsService.invalidateMetricsCache();
                 }
             }
+            onClose();
 
-            onClose(); // Close the modal
         } catch (error: any) {
             const errorMessage = error?.message || 'An unknown error occurred';
             toast.error(existingTrade ? 'Failed to update trade' : 'Failed to add trade');

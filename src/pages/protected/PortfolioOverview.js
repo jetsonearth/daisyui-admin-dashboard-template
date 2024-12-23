@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { supabase } from '../../config/supabaseClient'
 import { toast } from 'react-toastify'
 import TitleCard from '../../components/Cards/TitleCard'
+import Chart from 'chart.js/auto'
 import dayjs from 'dayjs'
 import { metricsService } from '../../features/metrics/metricsService';
 import { closeTrade } from '../../features/trades/tradesSlice'
@@ -13,10 +14,8 @@ import { marketDataService } from '../../features/marketData/marketDataService'
 import { userSettingsService } from '../../services/userSettingsService'
 import { DeltaGauge } from '../../components/charts/DeltaGauge';
 import { DeltaSparkline } from '../../components/charts/DeltaSparkline';
-
-// At the top of PortfolioOverview.js, after imports
-// console.log('metricsService:', metricsService);
-// console.log('Available methods:', Object.getOwnPropertyNames(metricsService.prototype));
+import TradeCalendar from '../../components/calendar/TradeCalendar';
+import EquityMetricsChart from '../../components/charts/EquityMetricsChart';
 
 // Time filter buttons configuration
 const timeFilters = [
@@ -42,6 +41,9 @@ function PortfolioOverview() {
     const [loading, setLoading] = useState(false);
     const [metricsLoading, setMetricsLoading] = useState(false);
     const [historicalMetrics, setHistoricalMetrics] = useState([]);
+    const [capitalHistory, setCapitalHistory] = useState([]);
+    const capitalChartRef = useRef(null);
+    const capitalChartInstance = useRef(null);
 
     useEffect(() => {
         const fetchUserSettings = async () => {
@@ -195,7 +197,8 @@ function PortfolioOverview() {
                 console.log('----------- Fetching initial data... -----------');
                 const [
                     currentCapital,
-                    { data: trades },
+                    { data: openTrades },
+                    { data: allTrades },
                     latestMetrics
                 ] = await Promise.all([
                     capitalService.calculateCurrentCapital(), // Use calculateCurrentCapital instead of getCurrentCapital
@@ -203,7 +206,12 @@ function PortfolioOverview() {
                         .from('trades')
                         .select('*')
                         .eq('user_id', user.id)
-                        .eq('status', 'Open')
+                        .eq('status', 'Open')  // Match the enum value exactly
+                        .order('entry_datetime', { ascending: false }),
+                    supabase
+                        .from('trades')
+                        .select('*')
+                        .eq('user_id', user.id)
                         .order('entry_datetime', { ascending: false }),
                     metricsService.fetchLatestPortfolioMetrics(user.id, false)
                 ]);
@@ -211,7 +219,7 @@ function PortfolioOverview() {
                 console.log('----------- Latest Portfolio Metrics Fetched: -----------', latestMetrics);
 
                 // Calculate fresh exposure metrics
-                const freshExposureMetrics = await metricsService.calculateExposureMetrics(trades || [], currentCapital);
+                const freshExposureMetrics = await metricsService.calculateExposureMetrics(openTrades || [], currentCapital);
                 console.log('----------- Fresh Exposure Metrics Calculated: -----------', freshExposureMetrics);
 
                 // Merge fresh exposure metrics into latestMetrics
@@ -231,7 +239,8 @@ function PortfolioOverview() {
 
                 // Update all states
                 setCurrentCapital(currentCapital);
-                setActiveTrades(trades || []);
+                setActiveTrades(openTrades || []);
+                setTrades(allTrades || []);
 
                 if (latestMetrics) {
                     setMetrics(prevMetrics => ({
@@ -268,30 +277,27 @@ function PortfolioOverview() {
                 }
 
                 // If we have trades, filter for active ones and fetch their market data
-                if (trades && trades.length > 0) {
-                    const activeTrades = trades.filter(trade => trade.status === TRADE_STATUS.OPEN);
-                    if (activeTrades.length > 0) {
-                        const quotes = await marketDataService.getBatchQuotes(activeTrades.map(trade => trade.ticker));
+                if (openTrades && openTrades.length > 0) {
+                    const quotes = await marketDataService.getBatchQuotes(openTrades.map(trade => trade.ticker));
 
-                        const updatedTrades = activeTrades.map(trade => {
-                            const quote = quotes[trade.ticker];
-                            if (!quote) return trade;
+                    const updatedTrades = openTrades.map(trade => {
+                        const quote = quotes[trade.ticker];
+                        if (!quote) return trade;
 
-                            const unrealizedPnL = (quote.price - trade.entry_price) * trade.remaining_shares;
-                            const unrealizedPnLPercent = (unrealizedPnL / (trade.entry_price * trade.remaining_shares)) * 100;
+                        const unrealizedPnL = (quote.price - trade.entry_price) * trade.remaining_shares;
+                        const unrealizedPnLPercent = (unrealizedPnL / (trade.entry_price * trade.remaining_shares)) * 100;
 
-                            return {
-                                ...trade,
-                                currentPrice: quote.price,
-                                lastUpdate: quote.lastUpdate,
-                                unrealized_pnl: unrealizedPnL,
-                                unrealized_pnl_percent: unrealizedPnLPercent
-                            };
-                        });
+                        return {
+                            ...trade,
+                            currentPrice: quote.price,
+                            lastUpdate: quote.lastUpdate,
+                            unrealized_pnl: unrealizedPnL,
+                            unrealized_pnl_percent: unrealizedPnLPercent
+                        };
+                    });
 
-                        setActiveTrades(updatedTrades);
-                        setLastUpdate(new Date().toLocaleTimeString());
-                    }
+                    setActiveTrades(updatedTrades);
+                    setLastUpdate(new Date().toLocaleTimeString());
                 }
 
                 // Cache the current state
@@ -299,7 +305,7 @@ function PortfolioOverview() {
                     timestamp: Date.now(),
                     data: {
                         currentCapital,
-                        activeTrades: trades || [],
+                        activeTrades: openTrades || [],
                         metrics,
                         lastUpdate: new Date().toLocaleTimeString()
                     }
@@ -341,6 +347,8 @@ function PortfolioOverview() {
         try {
             setLoading(true);
             setMetricsLoading(true);
+            
+            // Get fresh market data
             const quotes = await marketDataService.getBatchQuotes(activeTrades.map(trade => trade.ticker));
             const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(quotes, activeTrades);
             setActiveTrades(updatedTrades);
@@ -353,12 +361,26 @@ function PortfolioOverview() {
                 const freshCapital = await capitalService.calculateCurrentCapital();
                 setCurrentCapital(freshCapital);
 
+                // Record capital snapshot with trade details
+                await capitalService.recordCapitalChange(freshCapital, {
+                    type: 'interim_snapshot',
+                    trades_count: updatedTrades.length,
+                    trade_details: updatedTrades.map(trade => ({
+                        ticker: trade.ticker,
+                        unrealized_pnl: trade.unrealized_pnl || 0
+                    })),
+                    high_watermark: freshCapital
+                });
+
                 // Calculate exposure metrics with updated market prices
                 const exposureMetrics = await metricsService.calculateExposureMetrics(
                     updatedTrades,
-                    freshCapital, // Use fresh capital for exposure calculations
-                    quotes  // Pass the quotes we already fetched
+                    freshCapital,
+                    quotes
                 );
+
+                // Upsert exposure metrics
+                await metricsService.upsertExposureMetrics(user.id, exposureMetrics);
 
                 const latestMetrics = await metricsService.fetchLatestPortfolioMetrics(user.id, true);
 
@@ -396,6 +418,8 @@ function PortfolioOverview() {
                         }
                     };
                     setMetrics(newMetrics);
+
+                    console.log(" ===== Metrics after update ===== :", metrics);
 
                     // Update cache with new data
                     const cacheData = {
@@ -489,14 +513,154 @@ function PortfolioOverview() {
         fetchHistoricalData();
     }, []);
 
-    // // Function to handle trade closure
-    // const handleCloseTrade = (trade) => {
-    //     dispatch(closeTrade({
-    //         id: trade.id,
-    //         exitPrice: trade.last_price,
-    //         exitDate: new Date().toISOString()
-    //     }))
-    // }
+    useEffect(() => {
+        const fetchCapitalHistory = async () => {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                
+                const { data, error } = await supabase
+                    .from('capital_changes')
+                    .select('date, capital_amount')
+                    .eq('user_id', user.id)
+                    .order('date', { ascending: true });
+
+                if (error) throw error;
+                
+                console.log('Capital history data:', data?.map(item => ({
+                    date: item.date,
+                    amount: item.capital_amount.toLocaleString('en-US', {
+                        style: 'currency',
+                        currency: 'USD'
+                    })
+                })));
+                
+                setCapitalHistory(data || []);
+            } catch (error) {
+                console.error('Error fetching capital history:', error);
+            }
+        };
+
+        fetchCapitalHistory();
+    }, []);
+
+    useEffect(() => {
+        if (!capitalHistory.length || !capitalChartRef.current) return;
+
+        // Destroy existing chart if it exists
+        if (capitalChartInstance.current) {
+            capitalChartInstance.current.destroy();
+        }
+
+        const ctx = capitalChartRef.current.getContext('2d');
+        
+        capitalChartInstance.current = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: capitalHistory.map(item => dayjs(item.date).format('MM/DD')),
+                datasets: [{
+                    label: 'Capital',
+                    data: capitalHistory.map(item => item.capital_amount),
+                    borderColor: '#10b981', // emerald-500
+                    tension: 0.4,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                    borderWidth: 2,
+                    fill: true,
+                    backgroundColor: (context) => {
+                        const ctx = context.chart.ctx;
+                        const gradient = ctx.createLinearGradient(0, 0, 0, 100);
+                        gradient.addColorStop(0, 'rgba(16, 185, 129, 0.2)');
+                        gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
+                        return gradient;
+                    }
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        padding: 12,
+                        titleColor: '#fff',
+                        titleFont: {
+                            size: 12,
+                            weight: 'normal'
+                        },
+                        bodyColor: '#fff',
+                        bodyFont: {
+                            size: 14,
+                            weight: 'bold'
+                        },
+                        displayColors: false,
+                        callbacks: {
+                            title: (tooltipItems) => {
+                                const idx = tooltipItems[0].dataIndex;
+                                const date = capitalHistory[idx].date;
+                                return dayjs(date).format('MMM D, YYYY');
+                            },
+                            label: (context) => {
+                                return `$${context.raw.toLocaleString(undefined, {
+                                    minimumFractionDigits: 0,
+                                    maximumFractionDigits: 0
+                                })}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        display: false,
+                        grid: {
+                            display: false
+                        }
+                    },
+                    y: {
+                        display: false,
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+
+        return () => {
+            if (capitalChartInstance.current) {
+                capitalChartInstance.current.destroy();
+            }
+        };
+    }, [capitalHistory]);
+
+    useEffect(() => {
+        if (lastUpdate) {
+            const fetchCapitalHistory = async () => {
+                try {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    
+                    const { data, error } = await supabase
+                        .from('capital_changes')
+                        .select('date, capital_amount')
+                        .eq('user_id', user.id)
+                        .order('date', { ascending: true });
+
+                    if (error) throw error;
+                    setCapitalHistory(data || []);
+                } catch (error) {
+                    console.error('Error fetching capital history:', error);
+                }
+            };
+
+            fetchCapitalHistory();
+        }
+    }, [lastUpdate]);
 
     return (
         <div className="p-4">
@@ -519,18 +683,18 @@ function PortfolioOverview() {
             </div>
 
             {/* Metrics Row */}
-            <div className="grid grid-cols-5 gap-4 mb-7">
+            <div className="grid grid-cols-5 gap-5 mb-7">
                 {/* Each metric card with better overflow handling */}
-                <div className="stats bg-base-100 shadow-lg hover:shadow-lg hover:shadow-primary/10">
+                <div className="stats bg-base-100 shadow-lg hover:shadow-lg hover:shadow-primary/10 h-36">
                     <div className="stat">
-                        <div className="stat-title text-xs text-gray-500">Current Capital</div>
+                        <div className="stat-title text-xs text-gray-400">Current Capital</div>
                         <div className="stat-value text-2xl font-semibold">
                             ${currentCapital.toLocaleString(undefined, {
                                 minimumFractionDigits: 0,
                                 maximumFractionDigits: 0
                             })}
                         </div>
-                        <div className="stat-desc text-success text-xs mt-auto">
+                        <div className="stat-desc text-emerald-500 text-xs mt-3">
                             {startingCapital > 0
                                 ? ((currentCapital - startingCapital) / startingCapital * 100).toFixed(1)
                                 : '0.0'}% from start
@@ -546,7 +710,7 @@ function PortfolioOverview() {
                                 ? metrics.profitFactor.toFixed(2)
                                 : '0.00'}
                         </div>
-                        <div className="stat-desc text-success text-xs mt-auto">+8.1% from last</div>
+                        <div className="stat-desc text-emerald-500 text-xs mt-3">+8.1% from last</div>
                     </div>
                 </div>
 
@@ -558,239 +722,21 @@ function PortfolioOverview() {
                                 ? metrics.avgRRR.toFixed(2)
                                 : '0.00'}
                         </div>
-                        <div className="stat-desc text-success text-xs mt-auto">+4.2% from last</div>
+                        <div className="stat-desc text-emerald-500 text-xs mt-3">+4.2% from last</div>
                     </div>
                 </div>
 
-                <div className="stats bg-base-100 shadow-lg hover:shadow-lg hover:shadow-primary/10">
-                    <div className="stat">
-                        <div className="stat-title text-xs text-gray-500">Max Drawdown</div>
-                        <div className="stat-value text-2xl font-semibold text-error">
-                            {typeof metrics.maxDrawdown === 'number'
-                                ? metrics.maxDrawdown.toFixed(2)
-                                : '0.00'}%
-                        </div>
-                    </div>
-                </div>
-
-                <div className="stats bg-base-100 shadow-lg hover:shadow-lg hover:shadow-primary/10">
-                    <div className="stat">
-                        <div className="stat-title text-xs text-gray-500">Max Runup</div>
-                        <div className="stat-value text-2xl font-semibold text-success">
-                            {typeof metrics.maxRunup === 'number'
-                                ? metrics.maxRunup.toFixed(2)
-                                : '0.00'}%
+                <div className="stats bg-base-100 shadow-lg hover:shadow-lg hover:shadow-primary/10 col-span-2">
+                    <div className="stat w-full h-32">
+                        <div className="stat-title text-xs text-gray-500">Capital History</div>
+                        <div className="w-full h-24 mt-1">
+                            <canvas ref={capitalChartRef} />
                         </div>
                     </div>
                 </div>
             </div>
-
-            {/* Main Content Grid */}
-            <div className="grid grid-cols-12 gap-6">
-                {/* Equity Curve - Spans 5 columns */}
-                <div className="col-span-6 bg-base-100 p-6 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-lg font-bold">Equity Curve</h2>
-                        <div className="text-sm text-gray-500 bg-base-200 px-3 py-1 rounded-full">
-                            Starting Capital: <span className="font-semibold text-gray-400">${startingCapital.toLocaleString()}</span>
-                        </div>
-                    </div>
-                    <div className="h-[300px] flex items-center justify-center text-gray-500">
-                        Equity curve visualization placeholder...
-                    </div>
-                </div>
-
-                {/* Right Side Stats - Spans 7 columns */}
-                <div className="col-span-6 space-y-4">
-                    {/* Win Rate, PnL and Streak Grid */}
-                    <div className="grid grid-cols-3 gap-4">
-                        {/* Win Rate Box */}
-                        <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="text-sm text-primary truncate">Win Rate</div>
-                            <div className={`text-4xl font-semibold truncate flex items-center justify-center w-full h-full ${metricsLoading ? 'opacity-50' : ''}`}>
-                                {typeof metrics.winRate === 'number'
-                                    ? metrics.winRate.toFixed(1)
-                                    : '0.0'}%
-                            </div>
-                        </div>
-
-                        {/* PnL Box */}
-                        <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="mb-3">
-                                <div className="text-gray-500 text-sm mb-1">Total Realized PnL</div>
-                                <div className="text-lg font-bold">
-                                    ${typeof metrics.totalGrossProfits === 'number'
-                                        ? metrics.totalGrossProfits.toLocaleString()
-                                        : '0'}
-                                </div>
-                            </div>
-                            <div>
-                                <div className="text-gray-500 text-sm mb-1">Total Unrealized PnL</div>
-                                <div className="text-lg font-bold">
-                                    ${typeof metrics.totalGrossLosses === 'number'
-                                        ? metrics.totalGrossLosses.toLocaleString()
-                                        : '0'}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Current Streak */}
-                        <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="text-gray-500 text-sm mb-2">Current Streak</div>
-                            <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                    <div className="text-xs text-gray-500">Win</div>
-                                    <div className={`text-lg font-bold text-green-500 ${metricsLoading ? 'opacity-50' : ''}`}>
-                                        {typeof metrics.winCount === 'number'
-                                            ? metrics.winCount
-                                            : '0'}
-                                    </div>
-                                </div>
-                                <div>
-                                    <div className="text-xs text-gray-500">Lose</div>
-                                    <div className={`text-lg font-bold text-red-500 ${metricsLoading ? 'opacity-50' : ''}`}>
-                                        {typeof metrics.loseCount === 'number'
-                                            ? metrics.loseCount
-                                            : '0'}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Average Win and Exposure Metrics */}
-
-                    <div className="grid grid-cols-3 gap-4">
-
-                        {/* Avg Win */}
-                        <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="text-gray-500 text-sm mb-2">Avg Win</div>
-                            <div className={`text-4xl font-semibold truncate flex items-center justify-center w-full h-full ${metricsLoading ? 'opacity-50' : ''}`}>
-                                {/* <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Gross</div>
-                                    <div className="text-sm font-bold">${metrics.dailyExposure?.gross || 0}</div>
-                                </div> */}
-                            </div>
-                        </div>
-
-                        {/* Average Loss */}
-                        <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="text-gray-500 text-sm mb-2">Avg Loss</div>
-                            <div className={`text-4xl font-semibold truncate flex items-center justify-center w-full h-full ${metricsLoading ? 'opacity-50' : ''}`}>
-                                {/* <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Gross</div>
-                                    <div className="text-sm font-bold">${metrics.dailyExposure?.gross || 0}</div>
-                                </div> */}
-                            </div>
-                        </div>
-
-
-                        {/* Period Returns */}
-                        <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="text-gray-500 text-sm mb-2">Period Returns</div>
-                            <div className="space-y-2">
-                                <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Weekly</div>
-                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.weeklyReturn}%</div>
-                                </div>
-                                <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Monthly</div>
-                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.monthlyReturn}%</div>
-                                </div>
-                                <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Quarterly</div>
-                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.quarterlyReturn}%</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Average Loss, New and Open Exposure */}
-                    <div className="grid grid-cols-3 gap-4">
-                        {/* Daily Exposure */}
-                        <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="text-primary text-sm font-semibold mb-2">Daily Exposure</div>
-                            <div className="flex flex-col items-center mb-2">
-                                <DeltaGauge 
-                                    profit={Number(metrics.dailyExposure?.profit) || 0}
-                                    risk={Number(metrics.dailyExposure?.risk) || 0}
-                                    size={100}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <div className="flex justify-between items-center">
-                                    <div className="text-xs">Daily Risk</div>
-                                    <div className={`text-sm font-bold text-rose-500 ${metricsLoading ? 'opacity-50' : ''}`}>
-                                        {metrics.dailyExposure?.risk || '0.00'}%
-                                    </div>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <div className="text-xs">Daily Profit</div>
-                                    <div className={`text-sm font-bold text-emerald-500 ${metricsLoading ? 'opacity-50' : ''}`}>
-                                        {metrics.dailyExposure?.profit || '0.00'}%
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* New Exposure */}
-                        <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="text-primary text-sm font-semibold mb-2">New Exposure</div>
-                            <div className="flex flex-col items-center mb-1">
-                                <DeltaGauge 
-                                    profit={Number(metrics.newExposure?.profit) || 0}
-                                    risk={Number(metrics.newExposure?.risk) || 0}
-                                    size={100}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <div className="flex justify-between items-center">
-                                    <div className="text-xs">New Risk</div>
-                                    <div className={`text-sm font-bold text-rose-500 ${metricsLoading ? 'opacity-50' : ''}`}>
-                                        {metrics.newExposure?.risk || '0.00'}%
-                                    </div>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <div className="text-xs">New Profit</div>
-                                    <div className={`text-sm font-bold text-emerald-500 ${metricsLoading ? 'opacity-50' : ''}`}>
-                                        {metrics.newExposure?.profit || '0.00'}%
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Open Exposure */}
-                        <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="text-primary text-sm font-semibold mb-2">Open Exposure</div>
-                            <div className="flex flex-col items-center mb-2">
-                                <DeltaGauge 
-                                    profit={Number(metrics.openExposure?.profit) || 0}
-                                    risk={Number(metrics.openExposure?.risk) || 0}
-                                    size={100}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <div className="flex justify-between items-center">
-                                    <div className="text-xs">Open Risk</div>
-                                    <div className={`text-sm font-bold text-rose-500 ${metricsLoading ? 'opacity-50' : ''}`}>
-                                        {metrics.openExposure?.risk || '0.00'}%
-                                    </div>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <div className="text-xs">Open Profit</div>
-                                    <div className={`text-sm font-bold text-emerald-500 ${metricsLoading ? 'opacity-50' : ''}`}>
-                                        {metrics.openExposure?.profit || '0.00'}%
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-
             {/* Active Trades */}
-            <div className="mt-6 max-h-[800px]">
+            <div className="mt-4 max-h-[800px]">
                 <TitleCard
                     title={
                         <div className="w-full flex justify-between items-center gap-4">
@@ -944,7 +890,7 @@ function PortfolioOverview() {
                                                     `}>
                                                         {trade.initial_position_risk > 0 ? '-' : ''}{safeToFixed(trade.initial_position_risk, 3)}%
                                                     </td>
-                                                    
+
                                                     <td className={`text-center font-semibold tabular-nums ${trade.current_var > 0 ? 'text-rose-400' : ''}`}>
                                                         {trade.current_var > 0 ? `${safeToFixed(trade.current_var, 3)}%` : '-'}
                                                     </td>
@@ -999,6 +945,261 @@ function PortfolioOverview() {
                         existingTrade={selectedTradeDetails}  // Pass the details instead
                     />
                 </TitleCard>
+            </div>
+
+            {/* Main Content Grid */}
+            <div className="grid grid-cols-12 mt-6 gap-6">
+                {/* Trade Calendar - Now below the equity curve */}
+                <div className="col-span-8 bg-base-100 p-6 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-lg font-bold">Trade Calendar</h2>
+                        <div className="text-sm text-gray-500 bg-base-200 px-3 py-1 rounded-full">
+                            Starting Capital: <span className="font-semibold text-gray-400">${startingCapital.toLocaleString()}</span>
+                        </div>
+                    </div>
+                    <TradeCalendar
+                        trades={trades}
+                        startingCapital={startingCapital}
+                        onDateClick={(date) => {
+                            console.log('Selected date:', date);
+                        }}
+                        onMonthChange={(start, end) => {
+                            console.log('Month changed:', { start, end });
+                            // You can fetch trades for the new month here
+                        }}
+                    />
+                </div>
+
+                {/* Right Side Stats - Spans 7 columns */}
+                <div className="col-span-4 space-y-4">
+                    {/* Win Rate, PnL and Streak Grid */}
+                    <div className="grid grid-cols-2 gap-4">
+
+                        {/* Daily Exposure */}
+                        <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
+                            <div className="text-primary text-sm font-semibold">Daily Exposure</div>
+                            {/* Added justify-center to center the content vertically */}
+                            <div className="flex-1 flex flex-col justify-center">
+                                <div className="flex flex-col items-center mb-1 mt-auto">
+                                    <DeltaGauge
+                                        profit={Number(metrics.dailyExposure?.profit) || 0}
+                                        risk={Number(metrics.dailyExposure?.risk) || 0}
+                                        size={100}
+                                    />
+                                </div>
+                                <div className="space-y-1 mt-auto">
+                                    <div className="flex justify-between items-center">
+                                        <div className="text-xs">Daily Risk</div>
+                                        <div className={`text-sm font-bold text-rose-500 ${metricsLoading ? 'opacity-50' : ''}`}>
+                                            {metrics.dailyExposure?.risk || '0.00'}%
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <div className="text-xs">Daily Profit</div>
+                                        <div className={`text-sm font-bold text-emerald-500 ${metricsLoading ? 'opacity-50' : ''}`}>
+                                            {metrics.dailyExposure?.profit || '0.00'}%
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* PnL Box */}
+                        {/* <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
+                            <div className="mb-3">
+                                <div className="text-gray-500 text-sm mb-1">Total Realized PnL</div>
+                                <div className="text-lg font-bold">
+                                    ${typeof metrics.totalGrossProfits === 'number'
+                                        ? metrics.totalGrossProfits.toLocaleString()
+                                        : '0'}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-gray-500 text-sm mb-1">Total Unrealized PnL</div>
+                                <div className="text-lg font-bold">
+                                    ${typeof metrics.totalGrossLosses === 'number'
+                                        ? metrics.totalGrossLosses.toLocaleString()
+                                        : '0'}
+                                </div>
+                            </div>
+                        </div> */}
+
+                        {/* Current Streak */}
+                        {/* <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
+                            <div className="text-gray-500 text-sm mb-2">Current Streak</div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <div className="text-xs text-gray-500">Win</div>
+                                    <div className={`text-lg font-bold text-green-500 ${metricsLoading ? 'opacity-50' : ''}`}>
+                                        {typeof metrics.winCount === 'number'
+                                            ? metrics.winCount
+                                            : '0'}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="text-xs text-gray-500">Lose</div>
+                                    <div className={`text-lg font-bold text-red-500 ${metricsLoading ? 'opacity-50' : ''}`}>
+                                        {typeof metrics.loseCount === 'number'
+                                            ? metrics.loseCount
+                                            : '0'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div> */}
+
+                        {/* Win Rate Box */}
+                        <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
+                            <div className="text-sm text-primary truncate">Win Rate</div>
+                            <div className={`text-4xl font-semibold truncate flex items-center justify-center w-full h-full ${metricsLoading ? 'opacity-50' : ''}`}>
+                                {typeof metrics.winRate === 'number'
+                                    ? metrics.winRate.toFixed(1)
+                                    : '0.0'}%
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Average Win and Exposure Metrics */}
+
+                    <div className="grid grid-cols-2 gap-4">
+
+                        {/* Avg Win */}
+                        {/* <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
+                            <div className="text-gray-500 text-sm mb-2">Avg Win</div>
+                            <div className={`text-4xl font-semibold truncate flex items-center justify-center w-full h-full ${metricsLoading ? 'opacity-50' : ''}`}>
+                                <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">Gross</div>
+                                    <div className="text-sm font-bold">${metrics.dailyExposure?.gross || 0}</div>
+                                </div>
+                            </div>
+                        </div> */}
+
+                        {/* Average Loss */}
+                        {/* /* <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
+                            <div className="text-gray-500 text-sm mb-2">Avg Loss</div>
+                            <div className={`text-4xl font-semibold truncate flex items-center justify-center w-full h-full ${metricsLoading ? 'opacity-50' : ''}`}>
+                                <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">Gross</div>
+                                    <div className="text-sm font-bold">${metrics.dailyExposure?.gross || 0}</div>
+                                </div>
+                            </div>
+                        </div> */ }
+
+
+                        {/* Period Returns */}
+                        {/* <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
+                            <div className="text-gray-500 text-sm mb-2">Period Returns</div>
+                            <div className="space-y-2">
+                                <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">Weekly</div>
+                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.weeklyReturn}%</div>
+                                </div>
+                                <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">Monthly</div>
+                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.monthlyReturn}%</div>
+                                </div>
+                                <div className="flex justify-between">
+                                    <div className="text-xs text-gray-500">Quarterly</div>
+                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.quarterlyReturn}%</div>
+                                </div>
+                            </div>
+                        </div> */}
+
+                        {/* New Exposure */}
+                        <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
+                            <div className="text-primary text-sm font-semibold">New Exposure</div>
+                            {/* Added justify-center to center the content vertically */}
+                            <div className="flex-1 flex flex-col justify-center">
+                                <div className="flex flex-col items-center mb-1 mt-auto">
+                                    <DeltaGauge
+                                        profit={Number(metrics.newExposure?.profit) || 0}
+                                        risk={Number(metrics.newExposure?.risk) || 0}
+                                        size={100}
+                                    />
+                                </div>
+                                <div className="space-y-1 mt-auto">
+                                    <div className="flex justify-between items-center">
+                                        <div className="text-xs">New Risk</div>
+                                        <div className={`text-sm font-bold text-rose-500 ${metricsLoading ? 'opacity-50' : ''}`}>
+                                            {metrics.newExposure?.risk || '0.00'}%
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <div className="text-xs">New Profit</div>
+                                        <div className={`text-sm font-bold text-emerald-500 ${metricsLoading ? 'opacity-50' : ''}`}>
+                                            {metrics.newExposure?.profit || '0.00'}%
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
+                            <div className="text-primary text-sm font-semibold">Trade Stats</div>
+                            {/* Added justify-center to center the content vertically */}
+                            <div className="flex-1 flex flex-col justify-center">
+
+                                <div className="space-y-1 mt-auto">
+
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    {/* Average Loss, New and Open Exposure */}
+                    <div className="grid grid-cols-2 gap-4">
+                        {/* Open Exposure */}
+                        <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
+                            <div className="text-primary text-sm font-semibold">Open Exposure</div>
+                            {/* Added justify-center to center the content vertically */}
+                            <div className="flex-1 flex flex-col justify-center">
+                                <div className="flex flex-col items-center mb-1 mt-auto">
+                                    <DeltaGauge
+                                        profit={Number(metrics.openExposure?.profit) || 0}
+                                        risk={Number(metrics.openExposure?.risk) || 0}
+                                        size={100}
+                                    />
+                                </div>
+                                <div className="space-y-1 mt-auto">
+                                    <div className="flex justify-between items-center">
+                                        <div className="text-xs">Open Risk</div>
+                                        <div className={`text-sm font-bold text-rose-500 ${metricsLoading ? 'opacity-50' : ''}`}>
+                                            {metrics.openExposure?.risk || '0.00'}%
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <div className="text-xs">Open Profit</div>
+                                        <div className={`text-sm font-bold text-emerald-500 ${metricsLoading ? 'opacity-50' : ''}`}>
+                                            {metrics.openExposure?.profit || '0.00'}%
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Open Exposure */}
+                        <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
+                            <div className="text-primary text-sm font-semibold">Trade Stats</div>
+
+                        </div>
+
+                        <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
+                            <div className="text-primary text-sm font-semibold">Trade Stats</div>
+                            {/* Added justify-center to center the content vertically */}
+                            <div className="flex-1 flex flex-col justify-center">
+
+                            </div>
+                        </div>
+
+                        <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
+                            <div className="text-primary text-sm font-semibold">Trade Stats</div>
+                            {/* Added justify-center to center the content vertically */}
+                            <div className="flex-1 flex flex-col justify-center">
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     )
