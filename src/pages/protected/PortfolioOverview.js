@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { supabase } from '../../config/supabaseClient'
 import { toast } from 'react-toastify'
@@ -16,6 +16,7 @@ import { DeltaGauge } from '../../components/charts/DeltaGauge';
 import { DeltaSparkline } from '../../components/charts/DeltaSparkline';
 import TradeCalendar from '../../components/calendar/TradeCalendar';
 import EquityMetricsChart from '../../components/charts/EquityMetricsChart';
+import ReactApexChart from 'react-apexcharts';
 
 // Time filter buttons configuration
 const timeFilters = [
@@ -42,8 +43,84 @@ function PortfolioOverview() {
     const [metricsLoading, setMetricsLoading] = useState(false);
     const [historicalMetrics, setHistoricalMetrics] = useState([]);
     const [capitalHistory, setCapitalHistory] = useState([]);
+    const [capitalComposition, setCapitalComposition] = useState({
+        startingCapital: 0,
+        realizedPnL: 0,
+        unrealizedPnL: 0
+    });
     const capitalChartRef = useRef(null);
     const capitalChartInstance = useRef(null);
+    const compositionChartRef = useRef(null);
+    const compositionChartInstance = useRef(null);
+    const winRateChartRef = useRef(null);
+    const winRateChartInstance = useRef(null);
+
+    const [compositionChartOptions] = useState({
+        chart: {
+            type: 'bar',
+            height: 50,
+            stacked: true,
+            stackType: '100%',
+            toolbar: {
+                show: false
+            },
+            sparkline: {
+                enabled: true
+            }
+        },
+        plotOptions: {
+            bar: {
+                horizontal: true,
+                barHeight: '100%',
+            }
+        },
+        grid: {
+            show: false,
+        },
+        colors: ['#374151',
+            function ({ value, seriesIndex, dataPointIndex }) {
+                return value >= 0 ? '#10b981' : '#ef4444'
+            },
+            function ({ value, seriesIndex, dataPointIndex }) {
+                return value >= 0 ? '#10b981' : '#ef4444'
+            }
+        ],
+        dataLabels: {
+            enabled: false
+        },
+        tooltip: {
+            enabled: true,
+            y: {
+                formatter: (value) => `$${Math.abs(value).toLocaleString()}`
+            }
+        },
+        xaxis: {
+            labels: {
+                show: false
+            },
+            axisBorder: {
+                show: false
+            },
+            axisTicks: {
+                show: false
+            }
+        },
+        yaxis: {
+            labels: {
+                show: false
+            }
+        },
+        legend: {
+            show: false
+        },
+        states: {
+            hover: {
+                filter: {
+                    type: 'none'
+                }
+            }
+        }
+    });
 
     useEffect(() => {
         const fetchUserSettings = async () => {
@@ -68,12 +145,34 @@ function PortfolioOverview() {
         avgRRR: 0,
         winRate: 0,
         expectancy: 0,
+        payoffRatio: 0,
         totalTrades: 0,
         profitableTradesCount: 0,
         lossTradesCount: 0,
-        currentStreak: 0,
-        longestWinStreak: 0,
-        longestLossStreak: 0
+        avgWin: 0,
+        avgLoss: 0,
+        avgGainPercentage: 0,
+        avgLossPercentage: 0,
+        totalProfits: 0,
+        totalLosses: 0,
+        portfolioAllocation: 0,
+        dailyExposure: {
+            risk: 0,
+            profit: 0,
+            delta: 0
+        },
+        newExposure: {
+            risk: 0,
+            profit: 0,
+            delta: 0
+        },
+        openExposure: {
+            risk: 0,
+            profit: 0,
+            delta: 0
+        },
+        avgWinR: 0,
+        avgLossR: 0
     });
 
     const [selectedTrade, setSelectedTrade] = useState(null);
@@ -246,17 +345,29 @@ function PortfolioOverview() {
                     setMetrics(prevMetrics => ({
                         ...prevMetrics,
                         profitFactor: updatedLatestMetrics.profit_factor ?? prevMetrics.profitFactor,
+                        avgWin: updatedLatestMetrics.avg_win ?? prevMetrics.avgWin,
+                        avgLoss: updatedLatestMetrics.avg_loss ?? prevMetrics.avgLoss,
                         avgRRR: updatedLatestMetrics.avg_rrr ?? prevMetrics.avgRRR,
                         winRate: updatedLatestMetrics.win_rate ?? prevMetrics.winRate,
                         expectancy: updatedLatestMetrics.expectancy ?? prevMetrics.expectancy,
+                        payoffRatio: updatedLatestMetrics.payoff_ratio ?? prevMetrics.payoffRatio,
                         totalTrades: updatedLatestMetrics.total_trades ?? prevMetrics.totalTrades,
                         profitableTradesCount: updatedLatestMetrics.profitable_trades_count ?? prevMetrics.profitableTradesCount,
                         lossTradesCount: updatedLatestMetrics.loss_trades_count ?? prevMetrics.lossTradesCount,
+                        breakEvenTradesCount: updatedLatestMetrics.break_even_trades_count ?? prevMetrics.breakEvenTradesCount,
+                        largestWin: updatedLatestMetrics.largest_win ?? prevMetrics.largestWin,
+                        largestLoss: updatedLatestMetrics.largest_loss ?? prevMetrics.largestLoss,
                         currentStreak: updatedLatestMetrics.current_streak ?? prevMetrics.currentStreak,
                         longestWinStreak: updatedLatestMetrics.longest_win_streak ?? prevMetrics.longestWinStreak,
                         longestLossStreak: updatedLatestMetrics.longest_loss_streak ?? prevMetrics.longestLossStreak,
                         maxDrawdown: updatedLatestMetrics.max_drawdown ?? prevMetrics.maxDrawdown,
                         maxRunup: updatedLatestMetrics.max_runup ?? prevMetrics.maxRunup,
+                        totalProfits: updatedLatestMetrics.total_profits ?? prevMetrics.totalProfits,
+                        totalLosses: updatedLatestMetrics.total_losses ?? prevMetrics.totalLosses,
+                        avgWinR: updatedLatestMetrics.avg_r_win ?? prevMetrics.avgWinR,
+                        avgLossR: updatedLatestMetrics.avg_r_loss ?? prevMetrics.avgLossR,
+                        avgGainPercentage: updatedLatestMetrics.avg_gain_percentage ?? metrics.avgGainPercentage,
+                        avgLossPercentage: updatedLatestMetrics.avg_loss_percentage ?? metrics.avgLossPercentage,
                         // Map exposure metrics to UI structure
                         dailyExposure: {
                             risk: freshExposureMetrics.der.toFixed(2),
@@ -295,6 +406,18 @@ function PortfolioOverview() {
                             unrealized_pnl_percent: unrealizedPnLPercent
                         };
                     });
+
+                    // Calculate portfolio allocation
+                    const totalAllocation = updatedTrades.reduce((sum, trade) => {
+                        return sum + (trade.currentPrice * trade.remaining_shares);
+                    }, 0);
+                    
+                    const portfolioAllocation = (totalAllocation / currentCapital) * 100;
+
+                    setMetrics(prevMetrics => ({
+                        ...prevMetrics,
+                        portfolioAllocation
+                    }));
 
                     setActiveTrades(updatedTrades);
                     setLastUpdate(new Date().toLocaleTimeString());
@@ -347,7 +470,7 @@ function PortfolioOverview() {
         try {
             setLoading(true);
             setMetricsLoading(true);
-            
+
             // Get fresh market data
             const quotes = await marketDataService.getBatchQuotes(activeTrades.map(trade => trade.ticker));
             const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(quotes, activeTrades);
@@ -389,17 +512,29 @@ function PortfolioOverview() {
                     const newMetrics = {
                         ...metrics,
                         profitFactor: latestMetrics.profit_factor ?? metrics.profitFactor,
+                        avgWin: latestMetrics.avg_win ?? metrics.avgWin,
+                        avgLoss: latestMetrics.avg_loss ?? metrics.avgLoss,
                         avgRRR: latestMetrics.avg_rrr ?? metrics.avgRRR,
                         winRate: latestMetrics.win_rate ?? metrics.winRate,
                         expectancy: latestMetrics.expectancy ?? metrics.expectancy,
+                        payoffRatio: latestMetrics.payoff_ratio ?? metrics.payoffRatio,
                         totalTrades: latestMetrics.total_trades ?? metrics.totalTrades,
                         profitableTradesCount: latestMetrics.profitable_trades_count ?? metrics.profitableTradesCount,
                         lossTradesCount: latestMetrics.loss_trades_count ?? metrics.lossTradesCount,
+                        breakEvenTradesCount: latestMetrics.break_even_trades_count ?? metrics.breakEvenTradesCount,
+                        largestWin: latestMetrics.largest_win ?? metrics.largestWin,
+                        largestLoss: latestMetrics.largest_loss ?? metrics.largestLoss,
                         currentStreak: latestMetrics.current_streak ?? metrics.currentStreak,
                         longestWinStreak: latestMetrics.longest_win_streak ?? metrics.longestWinStreak,
                         longestLossStreak: latestMetrics.longest_loss_streak ?? metrics.longestLossStreak,
                         maxDrawdown: latestMetrics.max_drawdown ?? metrics.maxDrawdown,
                         maxRunup: latestMetrics.max_runup ?? metrics.maxRunup,
+                        totalProfits: latestMetrics.total_profits ?? metrics.totalProfits,
+                        totalLosses: latestMetrics.total_losses ?? metrics.totalLosses,
+                        avgWinR: latestMetrics.avg_r_win ?? metrics.avgWinR,
+                        avgLossR: latestMetrics.avg_r_loss ?? metrics.avgLossR,
+                        avgGainPercentage: latestMetrics.avg_gain_percentage ?? metrics.avgGainPercentage,
+                        avgLossPercentage: latestMetrics.avg_loss_percentage ?? metrics.avgLossPercentage,
                         // Map exposure metrics to UI structure
                         dailyExposure: {
                             risk: exposureMetrics.der.toFixed(2),
@@ -443,6 +578,35 @@ function PortfolioOverview() {
             setMetricsLoading(false);
         }
     };
+
+    // Memoize capital calculations to avoid unnecessary recalculations
+    const calculateCapitalComposition = useCallback(async () => {
+        try {
+            const updateCapitalComposition = () => {
+                // Use metrics.totalProfits and metrics.totalLosses as source of truth
+                const totalRealizedPnL = (metrics.totalProfits || 0) + (metrics.totalLosses || 0);
+                
+                // Calculate unrealized PnL from active trades
+                const totalUnrealizedPnL = activeTrades?.reduce((sum, trade) =>
+                    sum + (trade.unrealized_pnl || 0), 0) || 0;
+
+                setCapitalComposition({
+                    startingCapital: currentCapital - totalRealizedPnL - totalUnrealizedPnL,
+                    realizedPnL: totalRealizedPnL,
+                    unrealizedPnL: totalUnrealizedPnL
+                });
+            };
+
+            updateCapitalComposition();
+        } catch (error) {
+            console.error('Error calculating capital composition:', error);
+        }
+    }, [currentCapital, metrics.totalProfits, metrics.totalLosses, activeTrades]);
+
+    // Update composition when trades change
+    useEffect(() => {
+        calculateCapitalComposition();
+    }, [calculateCapitalComposition]);
 
     // Fetch active trades from Supabase
     const fetchActiveTrades = async () => {
@@ -517,7 +681,7 @@ function PortfolioOverview() {
         const fetchCapitalHistory = async () => {
             try {
                 const { data: { user } } = await supabase.auth.getUser();
-                
+
                 const { data, error } = await supabase
                     .from('capital_changes')
                     .select('date, capital_amount')
@@ -525,7 +689,7 @@ function PortfolioOverview() {
                     .order('date', { ascending: true });
 
                 if (error) throw error;
-                
+
                 console.log('Capital history data:', data?.map(item => ({
                     date: item.date,
                     amount: item.capital_amount.toLocaleString('en-US', {
@@ -533,7 +697,7 @@ function PortfolioOverview() {
                         currency: 'USD'
                     })
                 })));
-                
+
                 setCapitalHistory(data || []);
             } catch (error) {
                 console.error('Error fetching capital history:', error);
@@ -552,7 +716,7 @@ function PortfolioOverview() {
         }
 
         const ctx = capitalChartRef.current.getContext('2d');
-        
+
         capitalChartInstance.current = new Chart(ctx, {
             type: 'line',
             data: {
@@ -644,7 +808,7 @@ function PortfolioOverview() {
             const fetchCapitalHistory = async () => {
                 try {
                     const { data: { user } } = await supabase.auth.getUser();
-                    
+
                     const { data, error } = await supabase
                         .from('capital_changes')
                         .select('date, capital_amount')
@@ -661,6 +825,140 @@ function PortfolioOverview() {
             fetchCapitalHistory();
         }
     }, [lastUpdate]);
+
+    useEffect(() => {
+        if (!winRateChartRef.current) return;
+
+        if (winRateChartInstance.current) {
+            winRateChartInstance.current.destroy();
+        }
+
+        const ctx = winRateChartRef.current.getContext('2d');
+        const winRate = typeof metrics.winRate === 'number' ? metrics.winRate : 0;
+
+        // Calculate gradient colors based on win rate
+        const getColor = (rate) => {
+            if (rate >= 60) return '#10b981'; // emerald-500 for great
+            if (rate >= 50) return '#22c55e'; // green-500 for good
+            if (rate >= 40) return '#eab308'; // yellow-500 for okay
+            return '#ef4444'; // red-500 for needs improvement
+        };
+
+        winRateChartInstance.current = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                datasets: [{
+                    data: [winRate, 100 - winRate],
+                    backgroundColor: [
+                        getColor(winRate),
+                        '#1f2937' // gray-800 for background
+                    ],
+                    borderWidth: 0,
+                    circumference: 180, // Half circle
+                    rotation: 270 // Start from top
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 2, // Make it wider than tall
+                cutout: '80%',
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        enabled: false
+                    }
+                }
+            }
+        });
+
+        return () => {
+            if (winRateChartInstance.current) {
+                winRateChartInstance.current.destroy();
+            }
+        };
+    }, [metrics.winRate]);
+
+    useEffect(() => {
+        if (!compositionChartRef.current) return;
+
+        // Destroy existing chart if it exists
+        if (compositionChartInstance.current) {
+            compositionChartInstance.current.destroy();
+        }
+
+        const ctx = compositionChartRef.current.getContext('2d');
+
+        compositionChartInstance.current = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Capital'],
+                datasets: [
+                    {
+                        label: 'Starting',
+                        data: [capitalComposition.startingCapital],
+                        backgroundColor: '#374151', // gray-700
+                        barPercentage: 1,
+                        stack: 'stack0',
+                        order: 1
+                    },
+                    {
+                        label: 'Realized',
+                        data: [capitalComposition.realizedPnL],
+                        backgroundColor: capitalComposition.realizedPnL >= 0 ? '#10b981' : '#ef4444', // emerald-500 : red-500
+                        barPercentage: 1,
+                        stack: 'stack1',
+                        order: 2
+                    },
+                    {
+                        label: 'Unrealized',
+                        data: [capitalComposition.unrealizedPnL],
+                        backgroundColor: capitalComposition.unrealizedPnL >= 0 ? '#10b981' : '#ef4444', // emerald-500 : red-500
+                        barPercentage: 1,
+                        stack: 'stack2',
+                        order: 3
+                    }
+                ]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        enabled: false
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: false,
+                        display: false,
+                        grid: {
+                            display: false
+                        }
+                    },
+                    y: {
+                        stacked: false,
+                        display: false,
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+
+        return () => {
+            if (compositionChartInstance.current) {
+                compositionChartInstance.current.destroy();
+            }
+        };
+    }, [capitalComposition]);
 
     return (
         <div className="p-4">
@@ -686,36 +984,77 @@ function PortfolioOverview() {
             <div className="grid grid-cols-5 gap-5 mb-7">
                 {/* Each metric card with better overflow handling */}
                 <div className="stats bg-base-100 shadow-lg hover:shadow-lg hover:shadow-primary/10 h-36">
-                    <div className="stat">
-                        <div className="stat-title text-xs text-gray-400">Current Capital</div>
-                        <div className="stat-value text-2xl font-semibold">
+                    <div className="stat p-4">
+                        <div className="stat-title text-base text-gray-400 mb-1">Current Capital</div>
+                        <div className="stat-value text-3xl font-bold text-gray-300">
                             ${currentCapital.toLocaleString(undefined, {
                                 minimumFractionDigits: 0,
                                 maximumFractionDigits: 0
                             })}
                         </div>
-                        <div className="stat-desc text-emerald-500 text-xs mt-3">
-                            {startingCapital > 0
-                                ? ((currentCapital - startingCapital) / startingCapital * 100).toFixed(1)
-                                : '0.0'}% from start
+                        <div className="stat-desc flex justify-between mt-3">
+                            <div className="flex items-center gap-1">
+                                <span className="text-gray-400">Realized PnL:</span>
+                                <span className={`font-medium ${(metrics.totalProfits - metrics.totalLosses) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                    ${(metrics.totalProfits + metrics.totalLosses)?.toLocaleString() || '0'}
+                                </span>
+                            </div>
+                            <span className="text-gray-400 font-medium mt-1">
+                                {metrics.totalTrades || 0} trades
+                            </span>
                         </div>
                     </div>
                 </div>
 
-                <div className="stats bg-base-100 shadow-lg hover:shadow-lg hover:shadow-primary/10">
-                    <div className="stat">
-                        <div className="stat-title text-xs text-gray-500">Profit Factor</div>
-                        <div className="stat-value text-2xl font-semibold">
-                            {typeof metrics.profitFactor === 'number'
-                                ? metrics.profitFactor.toFixed(2)
-                                : '0.00'}
+                <div className="stats bg-base-100 shadow-lg hover:shadow-lg hover:shadow-primary/10 h-36">
+                    <div className="stat p-4">
+                        <div className="stat-title text-base text-gray-400 mb-1">Average RRR</div>
+                        <div className="stat-value text-3xl font-bold text-gray-300">
+                            {typeof metrics.avgRRR === 'number'
+                                ? metrics.avgRRR.toFixed(2)
+                                : '0.00'
+                            }
                         </div>
-                        <div className="stat-desc text-emerald-500 text-xs mt-3">+8.1% from last</div>
+                        <div className="stat-desc flex justify-between mt-2">
+                            <span className="text-emerald-500 text-sm font-medium">
+                                Win: {metrics.avgWinR?.toFixed(2) || '0.00'}R
+                            </span>
+                            <span className="text-rose-500 text-sm font-medium">
+                                Loss: {Math.abs(metrics.avgLossR?.toFixed(2) || 0)}R
+                            </span>
+                        </div>
                     </div>
                 </div>
 
-                <div className="stats bg-base-100 shadow-lg hover:shadow-lg hover:shadow-primary/10">
+                <div className="stats bg-base-100 shadow-lg hover:shadow-lg hover:shadow-primary/10 h-36">
                     <div className="stat">
+                        <div className="stat-title text-base text-gray-400">Win Rate</div>
+                        <div className="flex justify-between">
+                            <div className="flex flex-col">
+                                <div className="stat-value text-3xl text-gray-300 font-semibold mb-2">
+                                    {typeof metrics.winRate === 'number' ? metrics.winRate.toFixed(1) : '0.0'}%
+                                </div>
+                                <div className="flex gap-3">
+                                    <div className="flex items-center gap-1 mt-1">
+                                        <span className="text-sm text-emerald-500 font-medium">
+                                            {Math.round((metrics.totalTrades || 0) * ((metrics.winRate || 0) / 100))}
+                                        </span>
+                                        <span className="text-sm text-white">W</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 mt-1">
+                                        <span className="text-sm text-red-500 font-medium">
+                                            {(metrics.totalTrades || 0) - Math.round((metrics.totalTrades || 0) * ((metrics.winRate || 0) / 100))}
+                                        </span>
+                                        <span className="text-sm text-white">L</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="w-28 h-14 flex items-center">
+                                <canvas ref={winRateChartRef} className={metricsLoading ? 'opacity' : ''} />
+                            </div>
+                        </div>
+                    </div>
+                    {/* <div className="stat">
                         <div className="stat-title text-xs text-gray-500">RRR</div>
                         <div className="stat-value text-2xl font-semibold">
                             {typeof metrics.avgRRR === 'number'
@@ -723,12 +1062,12 @@ function PortfolioOverview() {
                                 : '0.00'}
                         </div>
                         <div className="stat-desc text-emerald-500 text-xs mt-3">+4.2% from last</div>
-                    </div>
+                    </div> */}
                 </div>
 
                 <div className="stats bg-base-100 shadow-lg hover:shadow-lg hover:shadow-primary/10 col-span-2">
                     <div className="stat w-full h-32">
-                        <div className="stat-title text-xs text-gray-500">Capital History</div>
+                        <div className="stat-title text-base text-gray-400">Capital History</div>
                         <div className="w-full h-24 mt-1">
                             <canvas ref={capitalChartRef} />
                         </div>
@@ -739,9 +1078,9 @@ function PortfolioOverview() {
             <div className="mt-4 max-h-[800px]">
                 <TitleCard
                     title={
-                        <div className="w-full flex justify-between items-center gap-4">
-                            <h2 className="text-xl top-2 font-semibold items-center gap-4">Active Trades</h2>
-                            <div className="absolute top-5 right-4 flex items-center gap-4">
+                        <div className="w-full flex justify-between items-center">
+                            <h2 className="text-xl top-2 font-semibold gap-4 mb-1">Active Trades</h2>
+                            <div className="absolute top-6 right-5 flex items-center gap-4">
                                 <button
                                     onClick={() => setIsAutoRefresh(!isAutoRefresh)}
                                     className={`btn btn-sm ${isAutoRefresh ? 'btn-primary' : 'btn-success'}`}
@@ -755,6 +1094,9 @@ function PortfolioOverview() {
                                     Update Prices
                                 </button>
                                 {lastUpdate && <span className="text-sm text-gray-500">Last update: {lastUpdate}</span>}
+                                {/* <div className="badge badge-primary">
+                                    {metrics.portfolioAllocation?.toFixed(1)}% Allocated
+                                </div> */}
                             </div>
                         </div>
                     }
@@ -977,135 +1319,6 @@ function PortfolioOverview() {
 
                         {/* Daily Exposure */}
                         <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
-                            <div className="text-primary text-sm font-semibold">Daily Exposure</div>
-                            {/* Added justify-center to center the content vertically */}
-                            <div className="flex-1 flex flex-col justify-center">
-                                <div className="flex flex-col items-center mb-1 mt-auto">
-                                    <DeltaGauge
-                                        profit={Number(metrics.dailyExposure?.profit) || 0}
-                                        risk={Number(metrics.dailyExposure?.risk) || 0}
-                                        size={100}
-                                    />
-                                </div>
-                                <div className="space-y-1 mt-auto">
-                                    <div className="flex justify-between items-center">
-                                        <div className="text-xs">Daily Risk</div>
-                                        <div className={`text-sm font-bold text-rose-500 ${metricsLoading ? 'opacity-50' : ''}`}>
-                                            {metrics.dailyExposure?.risk || '0.00'}%
-                                        </div>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <div className="text-xs">Daily Profit</div>
-                                        <div className={`text-sm font-bold text-emerald-500 ${metricsLoading ? 'opacity-50' : ''}`}>
-                                            {metrics.dailyExposure?.profit || '0.00'}%
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* PnL Box */}
-                        {/* <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="mb-3">
-                                <div className="text-gray-500 text-sm mb-1">Total Realized PnL</div>
-                                <div className="text-lg font-bold">
-                                    ${typeof metrics.totalGrossProfits === 'number'
-                                        ? metrics.totalGrossProfits.toLocaleString()
-                                        : '0'}
-                                </div>
-                            </div>
-                            <div>
-                                <div className="text-gray-500 text-sm mb-1">Total Unrealized PnL</div>
-                                <div className="text-lg font-bold">
-                                    ${typeof metrics.totalGrossLosses === 'number'
-                                        ? metrics.totalGrossLosses.toLocaleString()
-                                        : '0'}
-                                </div>
-                            </div>
-                        </div> */}
-
-                        {/* Current Streak */}
-                        {/* <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="text-gray-500 text-sm mb-2">Current Streak</div>
-                            <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                    <div className="text-xs text-gray-500">Win</div>
-                                    <div className={`text-lg font-bold text-green-500 ${metricsLoading ? 'opacity-50' : ''}`}>
-                                        {typeof metrics.winCount === 'number'
-                                            ? metrics.winCount
-                                            : '0'}
-                                    </div>
-                                </div>
-                                <div>
-                                    <div className="text-xs text-gray-500">Lose</div>
-                                    <div className={`text-lg font-bold text-red-500 ${metricsLoading ? 'opacity-50' : ''}`}>
-                                        {typeof metrics.loseCount === 'number'
-                                            ? metrics.loseCount
-                                            : '0'}
-                                    </div>
-                                </div>
-                            </div>
-                        </div> */}
-
-                        {/* Win Rate Box */}
-                        <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="text-sm text-primary truncate">Win Rate</div>
-                            <div className={`text-4xl font-semibold truncate flex items-center justify-center w-full h-full ${metricsLoading ? 'opacity-50' : ''}`}>
-                                {typeof metrics.winRate === 'number'
-                                    ? metrics.winRate.toFixed(1)
-                                    : '0.0'}%
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Average Win and Exposure Metrics */}
-
-                    <div className="grid grid-cols-2 gap-4">
-
-                        {/* Avg Win */}
-                        {/* <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="text-gray-500 text-sm mb-2">Avg Win</div>
-                            <div className={`text-4xl font-semibold truncate flex items-center justify-center w-full h-full ${metricsLoading ? 'opacity-50' : ''}`}>
-                                <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Gross</div>
-                                    <div className="text-sm font-bold">${metrics.dailyExposure?.gross || 0}</div>
-                                </div>
-                            </div>
-                        </div> */}
-
-                        {/* Average Loss */}
-                        {/* /* <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="text-gray-500 text-sm mb-2">Avg Loss</div>
-                            <div className={`text-4xl font-semibold truncate flex items-center justify-center w-full h-full ${metricsLoading ? 'opacity-50' : ''}`}>
-                                <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Gross</div>
-                                    <div className="text-sm font-bold">${metrics.dailyExposure?.gross || 0}</div>
-                                </div>
-                            </div>
-                        </div> */ }
-
-
-                        {/* Period Returns */}
-                        {/* <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
-                            <div className="text-gray-500 text-sm mb-2">Period Returns</div>
-                            <div className="space-y-2">
-                                <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Weekly</div>
-                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.weeklyReturn}%</div>
-                                </div>
-                                <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Monthly</div>
-                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.monthlyReturn}%</div>
-                                </div>
-                                <div className="flex justify-between">
-                                    <div className="text-xs text-gray-500">Quarterly</div>
-                                    <div className={`text-sm font-bold ${metricsLoading ? 'opacity-50' : ''}`}>{metrics.quarterlyReturn}%</div>
-                                </div>
-                            </div>
-                        </div> */}
-
-                        {/* New Exposure */}
-                        <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
                             <div className="text-primary text-sm font-semibold">New Exposure</div>
                             {/* Added justify-center to center the content vertically */}
                             <div className="flex-1 flex flex-col justify-center">
@@ -1131,24 +1344,128 @@ function PortfolioOverview() {
                                     </div>
                                 </div>
                             </div>
+                            {/* <div className="text-primary text-sm font-semibold">Daily Exposure</div>
+                            <div className="flex-1 flex flex-col justify-center">
+                                <div className="flex flex-col items-center mb-1 mt-auto">
+                                    <DeltaGauge
+                                        profit={Number(metrics.dailyExposure?.profit) || 0}
+                                        risk={Number(metrics.dailyExposure?.risk) || 0}
+                                        size={100}
+                                    />
+                                </div>
+                                <div className="space-y-1 mt-auto">
+                                    <div className="flex justify-between items-center">
+                                        <div className="text-xs">Daily Risk</div>
+                                        <div className={`text-sm font-bold text-rose-500 ${metricsLoading ? 'opacity-50' : ''}`}>
+                                            {metrics.dailyExposure?.risk || '0.00'}%
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <div className="text-xs">Daily Profit</div>
+                                        <div className={`text-sm font-bold text-emerald-500 ${metricsLoading ? 'opacity-50' : ''}`}>
+                                            {metrics.dailyExposure?.profit || '0.00'}%
+                                        </div>
+                                    </div>
+                                </div>
+                            </div> */}
                         </div>
 
+                        {/* PnL Box */}
+                        {/* <div className="bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow">
+                            <div className="mb-3">
+                                <div className="text-gray-500 text-sm mb-1">Total Realized PnL</div>
+                                <div className="text-lg font-bold">
+                                    ${typeof metrics.totalGrossProfits === 'number'
+                                        ? metrics.totalGrossProfits.toLocaleString()
+                                        : '0'}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-gray-500 text-sm mb-1">Total Unrealized PnL</div>
+                                <div className="text-lg font-bold">
+                                    ${typeof metrics.totalGrossLosses === 'number'
+                                        ? metrics.totalGrossLosses.toLocaleString()
+                                        : '0'}
+                                </div>
+                            </div>
+                        </div> */}
+
                         <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
-                            <div className="text-primary text-sm font-semibold">Trade Stats</div>
-                            {/* Added justify-center to center the content vertically */}
-                            <div className="flex-1 flex flex-col justify-center">
+                            <div className="text-primary text-sm font-semibold mb-4">Average Trade Performance</div>
+                            <div className="flex-1 flex flex-col">
+                                <div className="flex justify-between text-sm text-gray-400 mb-1">
+                                    <span>Dollar Value</span>
+                                    <span>Return %</span>
+                                </div>
+                                {/* Win Row */}
+                                <div className="flex justify-between mb-3">
+                                    <span className="text-base font-medium text-emerald-400">
+                                        <span className="text-xs mr-2">WIN</span>
+                                        ${metrics.avgWin?.toLocaleString(undefined, {
+                                            minimumFractionDigits: 0,
+                                            maximumFractionDigits: 0
+                                        }) || '0'}
+                                    </span>
+                                    <span className="text-base font-medium text-emerald-400">
+                                        +{metrics.avgGainPercentage?.toFixed(2) || '0.00'}%
+                                    </span>
+                                </div>
+                                {/* Loss Row */}
+                                <div className="flex justify-between mb-4">
+                                    <span className="text-base font-medium text-rose-400">
+                                        <span className="text-xs mr-2">LOSS</span>
+                                        ${metrics.avgLoss?.toLocaleString(undefined, {
+                                            minimumFractionDigits: 0,
+                                            maximumFractionDigits: 0
+                                        }) || '0'}
+                                    </span>
+                                    <span className="text-base font-medium text-rose-400">
+                                        -{Math.abs(metrics.avgLossPercentage)?.toFixed(2) || '0.00'}%
+                                    </span>
+                                </div>
 
-                                <div className="space-y-1 mt-auto">
-
+                                {/* Bar Chart */}
+                                <div className="h-16">
+                                    <ReactApexChart
+                                        options={{
+                                            chart: {
+                                                type: 'bar',
+                                                toolbar: { show: false },
+                                                sparkline: { enabled: true }
+                                            },
+                                            colors: ['#34d399', '#fb7185'],
+                                            plotOptions: {
+                                                bar: {
+                                                    borderRadius: 4,
+                                                    columnWidth: '40%',
+                                                }
+                                            },
+                                            grid: { show: false },
+                                            tooltip: { enabled: false },
+                                            xaxis: {
+                                                labels: { show: false },
+                                                axisBorder: { show: false },
+                                                axisTicks: { show: false }
+                                            },
+                                            yaxis: { show: false }
+                                        }}
+                                        series={[
+                                            {
+                                                name: 'Average Win',
+                                                data: [Math.abs(metrics.avgWin || 0)]
+                                            },
+                                            {
+                                                name: 'Average Loss',
+                                                data: [Math.abs(metrics.avgLoss || 0)]
+                                            }
+                                        ]}
+                                        type="bar"
+                                        height={64}
+                                    />
                                 </div>
                             </div>
                         </div>
 
-                    </div>
-
-                    {/* Average Loss, New and Open Exposure */}
-                    <div className="grid grid-cols-2 gap-4">
-                        {/* Open Exposure */}
                         <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
                             <div className="text-primary text-sm font-semibold">Open Exposure</div>
                             {/* Added justify-center to center the content vertically */}
@@ -1177,25 +1494,100 @@ function PortfolioOverview() {
                             </div>
                         </div>
 
-                        {/* Open Exposure */}
                         <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
-                            <div className="text-primary text-sm font-semibold">Trade Stats</div>
-
-                        </div>
-
-                        <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
-                            <div className="text-primary text-sm font-semibold">Trade Stats</div>
-                            {/* Added justify-center to center the content vertically */}
-                            <div className="flex-1 flex flex-col justify-center">
-
+                            <div className="text-primary text-sm font-semibold mb-4">Trade Expectancy</div>
+                            <div className="flex-1 flex flex-col justify-center items-center">
+                                <div className="text-4xl font-bold mb-3 text-gray-200">
+                                    ${metrics.expectancy?.toLocaleString(undefined, {
+                                        minimumFractionDigits: 0,
+                                        maximumFractionDigits: 0
+                                    }) || '0'}
+                                </div>
+                                <div className="text-gray-400 text-sm">Expected Value per Trade</div>
                             </div>
                         </div>
 
                         <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
-                            <div className="text-primary text-sm font-semibold">Trade Stats</div>
-                            {/* Added justify-center to center the content vertically */}
-                            <div className="flex-1 flex flex-col justify-center">
+                            <div className="text-primary text-sm font-semibold mb-4">Streaks</div>
+                            <div className="flex-1 flex flex-col justify-center items-center">
+                                <div className={`text-4xl font-bold mb-3 ${metrics.currentStreak > 0 ? 'text-emerald-400' : metrics.currentStreak < 0 ? 'text-rose-400' : 'text-gray-400'}`}>
+                                    {Math.abs(metrics.currentStreak)} {metrics.currentStreak > 0 ? 'Wins' : metrics.currentStreak < 0 ? 'Losses' : '-'}
+                                </div>
+                                <div className="text-gray-400 text-sm">Current Streak</div>
+                                <div className="mt-4 text-sm text-gray-500">
+                                    Best: {metrics.longestWinStreak}W / {metrics.longestLossStreak}L
+                                </div>
+                            </div>
+                        </div>
 
+                        <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
+                            <div className="text-primary text-sm font-semibold">Profit Factor</div>
+                            <div className="flex-1 flex flex-col justify-center">
+                                <div className="stat-value text-4xl text-gray-300 font-bold mb-6 mt-auto">
+                                    {(metrics.totalProfits / Math.abs(metrics.totalLosses || 1)).toFixed(2)}
+                                </div>
+                                <div className="flex flex-col mt-autogap-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-gray-400 text-xs">Total Profits:</span>
+                                        <span className="text-emerald-400 font-xs">
+                                            ${metrics.totalProfits?.toLocaleString() || '0'}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-gray-400 text-xs">Total Losses:</span>
+                                        <span className="text-rose-400 font-xs">
+                                            ${Math.abs(metrics.totalLosses)?.toLocaleString() || '0'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="h-48 bg-base-100 p-6 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow col-span-2">
+                            <div className="text-primary text-sm font-semibold mb-4">Capital Breakdown</div>
+                            {/* Capital Composition */}
+                            <div className="flex-1 flex flex-col">
+                                <div className="flex justify-between text-sm text-gray-400 mb-1">
+                                    <span>Starting Capital</span>
+                                    <span>Realized P&L</span>
+                                    <span>Unrealized P&L</span>
+                                </div>
+                                <div className="flex justify-between mb-3">
+                                    <span className="text-base font-medium">
+                                        ${capitalComposition.startingCapital.toLocaleString()}
+                                    </span>
+                                    <span className={`text-base font-medium ${capitalComposition.realizedPnL >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                        {capitalComposition.realizedPnL >= 0 ? '+' : '-'}${Math.abs(capitalComposition.realizedPnL).toLocaleString()}
+                                    </span>
+                                    <span className={`text-base font-medium ${capitalComposition.unrealizedPnL >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                        {capitalComposition.unrealizedPnL >= 0 ? '+' : '-'}${Math.abs(capitalComposition.unrealizedPnL).toLocaleString()}
+                                    </span>
+                                </div>
+                                <div className="h-16 mb-4">
+                                    <ReactApexChart
+                                        options={compositionChartOptions}
+                                        series={[
+                                            {
+                                                name: 'Starting Capital',
+                                                data: [Math.abs(capitalComposition.startingCapital)]
+                                            },
+                                            {
+                                                name: 'Realized P&L',
+                                                data: [Math.abs(capitalComposition.realizedPnL)]
+                                            },
+                                            {
+                                                name: 'Unrealized P&L',
+                                                data: [Math.abs(capitalComposition.unrealizedPnL)]
+                                            }
+                                        ]}
+                                        type="bar"
+                                        height={32}
+                                    />
+                                </div>
+                                <div className="space-y-1 mt-auto">
+                                    {/* Other trade stats will go here */}
+                                </div>
                             </div>
                         </div>
                     </div>

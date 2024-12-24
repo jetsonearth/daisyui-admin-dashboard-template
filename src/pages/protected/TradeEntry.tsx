@@ -76,9 +76,9 @@ const TradePlanner: React.FC = () => {
         const atrStop = entry - atr;
         const percentStop = entry * 0.93; // 7% stop
         const lodStop = lod;
-        
+
         const stopPrice = Math.max(atrStop, percentStop, lodStop);
-        
+
         if (stopPrice === atrStop) return 'ATR stop';
         if (stopPrice === percentStop) return '7% stop';
         return 'LoD stop';
@@ -158,10 +158,10 @@ const TradePlanner: React.FC = () => {
                 console.log('Attempting to fetch current capital...');
                 const currentCapital = await userSettingsService.getCurrentCapital();
                 console.log('Raw currentCapital:', currentCapital);
-                
+
                 // Ensure currentCapital is a valid number
                 const parsedCapital = Number(currentCapital);
-                
+
                 if (isNaN(parsedCapital) || parsedCapital <= 0) {
                     console.warn('Invalid capital value received, using default');
                     setAccountSize(25000);
@@ -188,7 +188,7 @@ const TradePlanner: React.FC = () => {
                 toast.error('Failed to fetch account size. Using default.');
             }
         };
-        
+
         fetchAccountSize();
     }, []);
 
@@ -206,7 +206,7 @@ const TradePlanner: React.FC = () => {
                     latestInputs.current = newInputs; // Keep ref in sync
                     return newInputs;
                 });
-                
+
                 // Clear previous timer
                 if (debounceTimer) {
                     clearTimeout(debounceTimer);
@@ -390,7 +390,7 @@ const TradePlanner: React.FC = () => {
             }
 
             console.log("📝 In Trade Planner, Preparing Trade Object");
-     
+
             // Base trade data common to both systems
             const tradeData = {
                 user_id: user.id,
@@ -404,7 +404,7 @@ const TradePlanner: React.FC = () => {
                 total_cost: metrics.dollarExposure,
                 remaining_shares: metrics.positionSize,
                 entry_price: parseFloat(inputs.entryPrice),
-                last_price: parseFloat(inputs.entryPrice), 
+                last_price: parseFloat(inputs.entryPrice),
                 portfolio_impact: 0,
                 trimmed_percentage: 0,
                 initial_position_risk: inputs.positionRisk,
@@ -429,7 +429,7 @@ const TradePlanner: React.FC = () => {
             };
 
             // Add system-specific data
-            const systemTradeData = system === 'tiered' 
+            const systemTradeData = system === 'tiered'
                 ? {
                     ...tradeData,
                     stop_loss_33_percent: (metrics as TieredRiskPositionMetrics).stop33,
@@ -470,8 +470,8 @@ const TradePlanner: React.FC = () => {
                             {/* Header */}
                             <div className="flex justify-between items-center border-b border-base-200 pb-4">
                                 <div className="flex items-center gap-3">
-                                <h2 className="text-2xl font-bold text-white-300">
-                                    Trade Entry
+                                    <h2 className="text-2xl font-bold text-white-300">
+                                        Trade Entry
                                     </h2>
                                     <div className="badge badge-primary badge-lg bg-opacity-20 text-primary font-semibold">
                                         New Trade
@@ -498,12 +498,12 @@ const TradePlanner: React.FC = () => {
                                                 Ticker
                                             </span>
                                         </label>
-                                        <input 
-                                            type="text" 
+                                        <input
+                                            type="text"
                                             className="input input-bordered input-md focus:input-primary uppercase
                                                     transition-all duration-200 ease-in-out
                                                     hover:shadow-md hover:border-primary/50
-                                                    focus:shadow-lg focus:shadow-primary/20" 
+                                                    focus:shadow-lg focus:shadow-primary/20"
                                             value={inputs.ticker}
                                             onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('ticker', e.target.value.toUpperCase())}
                                             onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -524,12 +524,12 @@ const TradePlanner: React.FC = () => {
                                                 Entry Price
                                             </span>
                                         </label>
-                                        <input 
-                                            type="number" 
+                                        <input
+                                            type="number"
                                             className="input input-bordered input-md focus:input-primary
                                                     transition-all duration-200 ease-in-out
                                                     hover:shadow-md hover:border-primary/50
-                                                    focus:shadow-lg focus:shadow-primary/20" 
+                                                    focus:shadow-lg focus:shadow-primary/20"
                                             value={inputs.entryPrice}
                                             onChange={e => handleInputChange('entryPrice', e.target.value)}
                                             placeholder="Entry Price"
@@ -545,12 +545,12 @@ const TradePlanner: React.FC = () => {
                                                 ATR
                                             </span>
                                         </label>
-                                        <input 
-                                            type="number" 
+                                        <input
+                                            type="number"
                                             className="input input-bordered input-md focus:input-primary
                                                     transition-all duration-200 ease-in-out
                                                     hover:shadow-md hover:border-primary/50
-                                                    focus:shadow-lg focus:shadow-primary/20" 
+                                                    focus:shadow-lg focus:shadow-primary/20"
                                             value={inputs.atr}
                                             onChange={e => handleInputChange('atr', e.target.value)}
                                             placeholder="ATR"
@@ -566,12 +566,12 @@ const TradePlanner: React.FC = () => {
                                                 LoD
                                             </span>
                                         </label>
-                                        <input 
-                                            type="number" 
+                                        <input
+                                            type="number"
                                             className="input input-bordered input-md focus:input-primary
                                                     transition-all duration-200 ease-in-out
                                                     hover:shadow-md hover:border-primary/50
-                                                    focus:shadow-lg focus:shadow-primary/20" 
+                                                    focus:shadow-lg focus:shadow-primary/20"
                                             value={inputs.lowOfDay}
                                             onChange={e => handleInputChange('lowOfDay', e.target.value)}
                                             placeholder="Low of Day"
@@ -590,12 +590,12 @@ const TradePlanner: React.FC = () => {
                                                 Position Risk %
                                             </span>
                                         </label>
-                                        <input 
-                                            type="number" 
+                                        <input
+                                            type="number"
                                             className="input input-bordered input-md focus:input-primary
                                                     transition-all duration-200 ease-in-out
                                                     hover:shadow-md hover:border-primary/50
-                                                    focus:shadow-lg focus:shadow-primary/20" 
+                                                    focus:shadow-lg focus:shadow-primary/20"
                                             value={inputs.positionRisk}
                                             onChange={e => handleInputChange('positionRisk', e.target.value)}
                                             placeholder="0.5"
@@ -657,13 +657,13 @@ const TradePlanner: React.FC = () => {
                                 </div>
 
                                 {/* Strategy, Setups, and Current Capital Row */}
-                            <div className="grid grid-cols-3 gap-4">
+                                <div className="grid grid-cols-3 gap-4">
                                     {/* Current Capital */}
                                     <div>
                                         <label className="label">
                                             <span className="label-text font-medium flex items-center gap-2">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                 </svg>
                                                 Current Capital
                                             </span>
@@ -673,7 +673,7 @@ const TradePlanner: React.FC = () => {
                                             className="input input-bordered input-md focus:input-primary
                                                     transition-all duration-200 ease-in-out
                                                     hover:shadow-md hover:border-primary/50
-                                                    focus:shadow-lg focus:shadow-primary/20" 
+                                                    focus:shadow-lg focus:shadow-primary/20"
                                             value={inputs.currentCapital}
                                             onChange={(e) => {
                                                 setInputs({
@@ -763,12 +763,12 @@ const TradePlanner: React.FC = () => {
                                             Notes
                                         </span>
                                     </label>
-                                    <textarea 
+                                    <textarea
                                         className="textarea textarea-bordered h-20 focus:textarea-primary {/* Reduced height */}
                                                 transition-all duration-200 ease-in-out
                                                 hover:shadow-md hover:border-primary/50
                                                 focus:shadow-lg focus:shadow-primary/20
-                                                bg-base-100" 
+                                                bg-base-100"
                                         placeholder="Enter trade notes..."
                                         value={inputs.notes}
                                         onChange={e => handleInputChange('notes', e.target.value)}
@@ -809,14 +809,14 @@ const TradePlanner: React.FC = () => {
                                     </svg>
                                     <h2 className="card-title text-lg">3-Tiered Stop Loss System</h2>
                                 </div>
-                                <button 
+                                <button
                                     onClick={() => handleSubmitTrade('tiered')}
                                     className="btn btn-primary shadow-lg transition-all duration-300 hover:scale-[1.02] bg-gradient-to-r from-primary to-primary/80"
                                 >
                                     Place Trade with 3-Tiered System
                                 </button>
                             </div>
-                            
+
                             {/* Row 1: Position Metrics */}
                             <div className="grid grid-cols-4 gap-3">
                                 <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
@@ -848,8 +848,8 @@ const TradePlanner: React.FC = () => {
                                     <div className="text-primary text-sm mb-1">Stop Method</div>
                                     <div className="text-lg font-medium">
                                         {getStopMethod(
-                                            parseFloat(inputs.entryPrice), 
-                                            parseFloat(inputs.atr), 
+                                            parseFloat(inputs.entryPrice),
+                                            parseFloat(inputs.atr),
                                             parseFloat(inputs.lowOfDay)
                                         )}
                                     </div>
@@ -859,29 +859,29 @@ const TradePlanner: React.FC = () => {
 
                             {/* Row 2: Stop Levels, Open Risk, and Targets */}
                             <div className="grid grid-cols-3 gap-3 mt-3">
-{/* Stop Levels */}
-<div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
-    <div className="text-primary text-sm mb-2">Stop Levels</div>
-    <div className="relative pt-1">
-        {/* Visual progress bar */}
-        <div className="flex mb-2 h-1.5 bg-base-300 rounded-full overflow-hidden">
-            <div className="w-1/3 bg-warning/70" />
-            <div className="w-1/3 bg-error/50" />
-            <div className="w-1/3 bg-error" />
-        </div>
-        {/* Stop levels with compact spacing */}
-        <div className="grid grid-cols-3 gap-1 text-center text-xs mb-1">
-            <div>33%</div>
-            <div>66%</div>
-            <div>Full</div>
-        </div>
-        <div className="grid grid-cols-3 gap-1 text-center">
-            <div className="font-semibold text-warning/70">${positionMetrics.tiered.stop33.toFixed(2)}</div>
-            <div className="font-semibold text-error/50">${positionMetrics.tiered.stop66.toFixed(2)}</div>
-            <div className="font-semibold text-error">${positionMetrics.tiered.fullStopPrice.toFixed(2)}</div>
-        </div>
-    </div>
-</div>
+                                {/* Stop Levels */}
+                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
+                                    <div className="text-primary text-sm mb-2">Stop Levels</div>
+                                    <div className="relative pt-1">
+                                        {/* Visual progress bar */}
+                                        <div className="flex mb-2 h-1.5 bg-base-300 rounded-full overflow-hidden">
+                                            <div className="w-1/3 bg-warning/70" />
+                                            <div className="w-1/3 bg-error/50" />
+                                            <div className="w-1/3 bg-error" />
+                                        </div>
+                                        {/* Stop levels with compact spacing */}
+                                        <div className="grid grid-cols-3 gap-1 text-center text-xs mb-1">
+                                            <div>33%</div>
+                                            <div>66%</div>
+                                            <div>Full</div>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-1 text-center">
+                                            <div className="font-semibold text-warning/70">${positionMetrics.tiered.stop33.toFixed(2)}</div>
+                                            <div className="font-semibold text-error/50">${positionMetrics.tiered.stop66.toFixed(2)}</div>
+                                            <div className="font-semibold text-error">${positionMetrics.tiered.fullStopPrice.toFixed(2)}</div>
+                                        </div>
+                                    </div>
+                                </div>
 
 
                                 {/* Open Risk */}
@@ -895,32 +895,53 @@ const TradePlanner: React.FC = () => {
                                     </div>
                                 </div>
 
-{/* Targets */}
-<div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
-    <div className="text-primary text-sm mb-2">Targets</div>
-    <div className="relative pt-1">
-        {/* Visual target bars */}
-        <div className="flex mb-2 h-1.5 bg-base-300 rounded-full overflow-hidden">
-            <div className="w-2/5 bg-success/50" />
-            <div className="w-3/5 bg-emerald-500" />
-        </div>
-        {/* Target levels with compact spacing */}
-        <div className="grid grid-cols-2 gap-1 text-center text-xs mb-1">
-            <div>2R</div>
-            <div>3R</div>
-        </div>
-        <div className="grid grid-cols-2 gap-1 text-center">
-            <div className="font-semibold text-emerald-500/70">
-                ${positionMetrics.tiered.target2R.toFixed(2)}
-            </div>
-            <div className="font-semibold text-emerald-500">
-                ${positionMetrics.tiered.target3R.toFixed(2)}
-            </div>
-        </div>
-    </div>
-</div>
+                                {/* Targets */}
+                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
+                                    <div className="text-primary text-sm mb-2">Targets</div>
+                                    <div className="relative pt-1">
+                                        {/* Visual target bars */}
+                                        <div className="flex mb-2 h-1.5 bg-base-300 rounded-full overflow-hidden">
+                                            <div className="w-2/5 bg-success/50" />
+                                            <div className="w-3/5 bg-emerald-500" />
+                                        </div>
+                                        {/* Target levels with compact spacing */}
+                                        <div className="grid grid-cols-2 gap-1 text-center text-xs mb-1">
+                                            <div>2R</div>
+                                            <div>3R</div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-1 text-center">
+                                            <div className="font-semibold text-emerald-500/70">
+                                                ${positionMetrics.tiered.target2R.toFixed(2)}
+                                            </div>
+                                            <div className="font-semibold text-emerald-500">
+                                                ${positionMetrics.tiered.target3R.toFixed(2)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
+                        <div className="card bg-base-100 shadow-xl ounded-lg hover:shadow-lg hover:shadow-primary/10">
+                        <div className="card-body p-4">
+                            <div className="flex items-center gap-2 mb-4">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                                </svg>
+                                <h2 className="card-title text-lg">3-Tiered Price Ladder</h2>
+                            </div>
+                            <div className="bg-base-300 rounded-lg p-4 h-[400px]">
+                                <PriceLadder
+                                    currentPrice={parseFloat(inputs.entryPrice)}
+                                    fullStop={positionMetrics.tiered.fullStopPrice}
+                                    stop33={positionMetrics.tiered.stop33}
+                                    stop66={positionMetrics.tiered.stop66}
+                                    target2R={positionMetrics.tiered.target2R}
+                                    target3R={positionMetrics.tiered.target3R}
+                                    showLegend={true}
+                                />
+                            </div>
+                        </div>
+                    </div>
                     </div>
 
                     {/* Single Stop System Card */}
@@ -933,7 +954,7 @@ const TradePlanner: React.FC = () => {
                                     </svg>
                                     <h2 className="card-title text-lg">Single Stop Loss System</h2>
                                 </div>
-                                <button 
+                                <button
                                     onClick={() => handleSubmitTrade('single')}
                                     className="btn btn-secondary shadow-lg transition-all duration-300 hover:scale-[1.02] bg-gradient-to-r from-secondary to-secondary/80"
                                 >
@@ -972,8 +993,8 @@ const TradePlanner: React.FC = () => {
                                     <div className="text-primary text-sm mb-1">Stop Method</div>
                                     <div className="text-lg font-medium">
                                         {getStopMethod(
-                                            parseFloat(inputs.entryPrice), 
-                                            parseFloat(inputs.atr), 
+                                            parseFloat(inputs.entryPrice),
+                                            parseFloat(inputs.atr),
                                             parseFloat(inputs.lowOfDay)
                                         )}
                                     </div>
@@ -1003,61 +1024,33 @@ const TradePlanner: React.FC = () => {
                                         <div className="text-base-content/60 text-sm">from entry to SL</div>
                                     </div>
                                 </div>
-{/* Targets */}
-<div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
-    <div className="text-primary text-sm mb-2">Targets</div>
-    <div className="relative pt-1">
-        {/* Visual target bars */}
-        <div className="flex mb-2 h-1.5 bg-base-300 rounded-full overflow-hidden">
-            <div className="w-2/5 bg-success/50" />
-            <div className="w-3/5 bg-emerald-500" />
-        </div>
-        {/* Target levels with compact spacing */}
-        <div className="grid grid-cols-2 gap-1 text-center text-xs mb-1">
-            <div>2R</div>
-            <div>3R</div>
-        </div>
-        <div className="grid grid-cols-2 gap-1 text-center">
-            <div className="font-semibold text-emerald-500/70">
-                ${positionMetrics.tiered.target2R.toFixed(2)}
-            </div>
-            <div className="font-semibold text-emerald-500">
-                ${positionMetrics.tiered.target3R.toFixed(2)}
-            </div>
-        </div>
-    </div>
-</div>
+                                {/* Targets */}
+                                <div className="card bg-base-200 rounded-lg p-3 shadow-xl rounded-lg hover:shadow-lg hover:shadow-primary/10">
+                                    <div className="text-primary text-sm mb-2">Targets</div>
+                                    <div className="relative pt-1">
+                                        {/* Visual target bars */}
+                                        <div className="flex mb-2 h-1.5 bg-base-300 rounded-full overflow-hidden">
+                                            <div className="w-2/5 bg-success/50" />
+                                            <div className="w-3/5 bg-emerald-500" />
+                                        </div>
+                                        {/* Target levels with compact spacing */}
+                                        <div className="grid grid-cols-2 gap-1 text-center text-xs mb-1">
+                                            <div>2R</div>
+                                            <div>3R</div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-1 text-center">
+                                            <div className="font-semibold text-emerald-500/70">
+                                                ${positionMetrics.tiered.target2R.toFixed(2)}
+                                            </div>
+                                            <div className="font-semibold text-emerald-500">
+                                                ${positionMetrics.tiered.target3R.toFixed(2)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </div>
-
-                {/* Row 2: Price Ladders */}
-                <div className="grid grid-cols-2 gap-4">
-                    {/* 3-Tiered Price Ladder */}
-                    <div className="card bg-base-100 shadow-xl ounded-lg hover:shadow-lg hover:shadow-primary/10">
-                        <div className="card-body p-4">
-                            <div className="flex items-center gap-2 mb-4">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                                </svg>
-                                <h2 className="card-title text-lg">3-Tiered Price Ladder</h2>
-                            </div>
-                            <div className="bg-base-300 rounded-lg p-4 h-[400px]">
-                                <PriceLadder 
-                                    currentPrice={parseFloat(inputs.entryPrice)}
-                                    fullStop={positionMetrics.tiered.fullStopPrice}
-                                    stop33={positionMetrics.tiered.stop33}
-                                    stop66={positionMetrics.tiered.stop66}
-                                    target2R={positionMetrics.tiered.target2R}
-                                    target3R={positionMetrics.tiered.target3R}
-                                    showLegend={true}
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Single Stop Price Ladder */}
+                                            {/* Single Stop Price Ladder */}
                     <div className="card bg-base-100 shadow-xl ounded-lg hover:shadow-lg hover:shadow-primary/10">
                         <div className="card-body p-4">
                             <div className="flex items-center gap-2 mb-4">
@@ -1067,7 +1060,7 @@ const TradePlanner: React.FC = () => {
                                 <h2 className="card-title text-lg">Single Stop Price Ladder</h2>
                             </div>
                             <div className="bg-base-300 rounded-lg p-4 h-[400px]">
-                                <PriceLadder 
+                                <PriceLadder
                                     currentPrice={parseFloat(inputs.entryPrice)}
                                     fullStop={positionMetrics.single.fullStopPrice}
                                     stop33={0}
@@ -1079,17 +1072,8 @@ const TradePlanner: React.FC = () => {
                             </div>
                         </div>
                     </div>
+                    </div>
                 </div>
-            </div>
-
-            {/* Row 3: Submit */}
-            <div className="grid grid-cols-1 gap-4">
-                {/* <button 
-                    className="btn btn-primary"
-                    onClick={handleSubmit}
-                >
-                    Place Trade
-                </button> */}
             </div>
         </div>
     )

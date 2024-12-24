@@ -36,16 +36,24 @@ interface PerformanceMetrics {
     avgWin: number;
     avgLoss: number;
     profitFactor: number;
-    avgRRR: number;
-    totalPnL: number;
-    expectancy: number;           // (winRate * avgWin) - ((1 - winRate) * avgLoss)
-    payoffRatio: number;         // avgWin / avgLoss
-    totalTrades: number;         // Total number of trades
+    expectancy: number;
+    payoffRatio: number;
+    totalTrades: number;
     profitableTradesCount: number;
     lossTradesCount: number;
     breakEvenTradesCount: number;
-    largestWin: number;          // Biggest winning trade
-    largestLoss: number;         // Biggest losing trade
+    totalProfits: number;
+    totalLosses: number;
+    largestWin: number;
+    largestLoss: number;
+    avgWinR: number;
+    avgLossR: number;
+    avgRRR: number;
+    currentStreak?: number;
+    longestWinStreak?: number;
+    longestLossStreak?: number;
+    avgGainPercentage: number;
+    avgLossPercentage: number;
 }
 
 interface StreakMetrics {
@@ -80,8 +88,6 @@ interface PortfolioMetrics {
     performanceMetrics: PerformanceMetrics;
     streakMetrics: StreakMetrics;
     exposureMetrics: ExposureMetrics;
-    maxDrawdown: number;
-    maxRunup: number;
 }
 
 interface CapitalSnapshot {
@@ -342,7 +348,7 @@ export class MetricsService {
         const closedTrades = trades.filter(trade => 
             trade.status === TRADE_STATUS.CLOSED
         );
-    
+
         const profitableTrades = closedTrades.filter(trade => 
             this.safeNumeric(trade.realized_pnl) > 0
         );
@@ -354,12 +360,29 @@ export class MetricsService {
         const breakEvenTrades = closedTrades.filter(trade => 
             this.safeNumeric(trade.realized_pnl) === 0
         );
-    
+
+        let totalProfits = 0;
+        let totalLosses = 0;
+        let totalGainPercentage = 0;
+        let totalLossPercentage = 0;
+
+        profitableTrades.forEach(trade => {
+            const pnl = this.safeNumeric(trade.realized_pnl);
+            const pnlPercentage = this.safeNumeric(trade.realized_pnl_percentage);
+            totalProfits += pnl;
+            totalGainPercentage += pnlPercentage;
+        });
+
+        lossTrades.forEach(trade => {
+            const pnl = this.safeNumeric(trade.realized_pnl);
+            const pnlPercentage = this.safeNumeric(trade.realized_pnl_percentage);
+            totalLosses += pnl;
+            totalLossPercentage += pnlPercentage;
+        });
+
         const totalTrades = closedTrades.length;
-        const winRate = totalTrades > 0 
-            ? (profitableTrades.length / totalTrades) * 100 
-            : 0;
-    
+        const winRate = totalTrades > 0 ? (profitableTrades.length / totalTrades) * 100 : 0;
+
         const avgWin = profitableTrades.length > 0
             ? profitableTrades.reduce((sum, trade) => 
                 sum + this.safeNumeric(trade.realized_pnl), 0) / profitableTrades.length
@@ -370,21 +393,6 @@ export class MetricsService {
                 sum + this.safeNumeric(trade.realized_pnl), 0) / lossTrades.length)
             : 0;
     
-        const totalProfits = profitableTrades.reduce((sum, trade) => 
-            sum + this.safeNumeric(trade.realized_pnl), 0);
-        
-        const totalLosses = Math.abs(lossTrades.reduce((sum, trade) => 
-            sum + this.safeNumeric(trade.realized_pnl), 0));
-    
-        // Calculate largest win/loss
-        const largestWin = profitableTrades.length > 0
-            ? Math.max(...profitableTrades.map(t => this.safeNumeric(t.realized_pnl)))
-            : 0;
-    
-        const largestLoss = lossTrades.length > 0
-            ? Math.abs(Math.min(...lossTrades.map(t => this.safeNumeric(t.realized_pnl))))
-            : 0;
-        
         const profitFactor = totalLosses !== 0 
             ? totalProfits / totalLosses
             : totalProfits > 0 ? Number.POSITIVE_INFINITY : 0;
@@ -395,32 +403,62 @@ export class MetricsService {
     
         const expectancy = (winRate / 100 * avgWin) - ((1 - winRate / 100) * avgLoss);
     
-        const totalPnL = totalProfits - totalLosses;
-    
         const avgRRR = closedTrades.length > 0
             ? closedTrades.reduce((sum, trade) => 
                 sum + this.safeNumeric(trade.risk_reward_ratio), 0) / closedTrades.length
             : 0;
     
+        const avgWinR = profitableTrades.length > 0
+            ? profitableTrades.reduce((sum, trade) => 
+                sum + this.safeNumeric(trade.realized_pnl) / this.safeNumeric(trade.initial_risk_amount!), 0) / profitableTrades.length
+            : 0;
+    
+        const avgLossR = lossTrades.length > 0
+            ? Math.abs(lossTrades.reduce((sum, trade) => 
+                sum + this.safeNumeric(trade.realized_pnl) / this.safeNumeric(trade.initial_risk_amount!), 0) / lossTrades.length)
+            : 0;
+
+        const avgGainPercentage = profitableTrades.length > 0 ? totalGainPercentage / profitableTrades.length : 0;
+        const avgLossPercentage = lossTrades.length > 0 ? totalLossPercentage / lossTrades.length : 0;
+
+        // Calculate largest win/loss
+        const largestWin = profitableTrades.length > 0
+            ? Math.max(...profitableTrades.map(t => this.safeNumeric(t.realized_pnl)))
+            : 0;
+    
+        const largestLoss = lossTrades.length > 0
+            ? Math.abs(Math.min(...lossTrades.map(t => this.safeNumeric(t.realized_pnl))))
+            : 0;
+
+        const streakMetrics = this.calculateStreakMetrics(trades);
+
         return {
             winRate,
             avgWin,
             avgLoss,
             profitFactor,
-            avgRRR,
-            totalPnL,
             expectancy,
             payoffRatio,
             totalTrades,
             profitableTradesCount: profitableTrades.length,
             lossTradesCount: lossTrades.length,
             breakEvenTradesCount: breakEvenTrades.length,
+            totalProfits,
+            totalLosses,
             largestWin,
-            largestLoss
+            largestLoss,
+            avgWinR,
+            avgLossR,
+            avgRRR,
+            currentStreak: streakMetrics.currentStreak,
+            longestWinStreak: streakMetrics.longestWinStreak,
+            longestLossStreak: streakMetrics.longestLossStreak,
+            avgGainPercentage,
+            avgLossPercentage
         };
     }
 
-    //////////////
+    ///////// Compute using Closed Trades Only ////////
     public async fetchLatestPortfolioMetrics(userId: string, forceRefresh: boolean = false): Promise<any> {
         // Return cached data if available and not expired
         if (!forceRefresh && this.metricsCache && 
@@ -514,8 +552,8 @@ export class MetricsService {
         }
     }
 
-    // Calculate comprehensive portfolio metrics
-    async calculatePortfolioMetrics(
+    ///////// Compute using Closed Trades Only ////////
+    public async calculatePortfolioMetrics(
         trades: Trade[] | null = null, 
         startingCapital: number | null = null
     ): Promise<PortfolioMetrics> {
@@ -539,20 +577,119 @@ export class MetricsService {
                 currentCapital
             );
     
-            // In calculatePortfolioMetrics:
-            const { maxDrawdown, maxRunup } = await this.calculateMaxDrawdownAndRunup(validatedTrades);
-
             return {
                 startingCapital: actualStartingCapital,
                 currentCapital,
                 performanceMetrics,
                 exposureMetrics,
-                streakMetrics: this.calculateStreakMetrics(validatedTrades),
-                maxDrawdown,
-                maxRunup
-            };
+                streakMetrics: this.calculateStreakMetrics(validatedTrades)
+        };
         } catch (error) {
             log('error', 'Portfolio metrics calculation failed', { error });
+            throw error;
+        }
+    }
+
+    private async getTradesForDate(userId: string, date: string): Promise<Trade[]> {
+        try {
+            const endOfDay = dayjs(date).endOf('day').toISOString();
+
+            // Get all trades up to this date
+            const { data: trades, error } = await supabase
+                .from('trades')
+                .select('*')
+                .eq('user_id', userId)
+                .lte('created_at', endOfDay)
+                .order('created_at', { ascending: true });
+
+            if (error) throw error;
+            return trades || [];
+        } catch (error) {
+            console.error('Error fetching trades for date:', error);
+            throw error;
+        }
+    }
+
+    public async updateDailyMetrics(userId: string, date: string): Promise<void> {
+        try {
+            // Get all trades up to this date for cumulative metrics
+            const trades = await this.getTradesForDate(userId, date);
+            const performanceMetrics = this.calculateTradePerformanceMetrics(trades);
+
+            // Get today's trades for checking if we need to carry forward
+            const todaysTrades = trades.filter(trade => 
+                dayjs(trade.created_at).isSame(dayjs(date), 'day')
+            );
+
+            // Fetch the previous day's metrics
+            const { data: previousMetrics, error: prevError } = await supabase
+                .from('trading_metrics')
+                .select('*')
+                .eq('user_id', userId)
+                .lt('date', date)
+                .order('date', { ascending: false })
+                .limit(1);
+
+            if (prevError) {
+                console.error('Error fetching previous metrics:', prevError);
+            }
+
+            const previousMetricsData = previousMetrics?.[0];
+
+            // If no trades today, carry forward previous metrics
+            const tradeMetrics = todaysTrades.length === 0 && previousMetricsData ? {
+                win_rate: previousMetricsData.win_rate,
+                avg_win: previousMetricsData.avg_win,
+                avg_loss: previousMetricsData.avg_loss,
+                profit_factor: previousMetricsData.profit_factor,
+                avg_rrr: previousMetricsData.avg_rrr,
+                avg_r_win: previousMetricsData.avg_r_win,
+                avg_r_loss: previousMetricsData.avg_r_loss,
+                total_profits: previousMetricsData.total_profits,
+                total_losses: previousMetricsData.total_losses,
+                expectancy: previousMetricsData.expectancy,
+                payoff_ratio: previousMetricsData.payoff_ratio,
+                total_trades: previousMetricsData.total_trades,
+                profitable_trades_count: previousMetricsData.profitable_trades_count,
+                loss_trades_count: previousMetricsData.loss_trades_count,
+                break_even_trades_count: previousMetricsData.break_even_trades_count,
+                largest_win: previousMetricsData.largest_win,
+                largest_loss: previousMetricsData.largest_loss
+            } : {
+                win_rate: performanceMetrics.winRate,
+                avg_win: performanceMetrics.avgWin,
+                avg_loss: performanceMetrics.avgLoss,
+                profit_factor: performanceMetrics.profitFactor,
+                expectancy: performanceMetrics.expectancy,
+                payoff_ratio: performanceMetrics.payoffRatio,
+                total_trades: performanceMetrics.totalTrades,
+                profitable_trades_count: performanceMetrics.profitableTradesCount,
+                loss_trades_count: performanceMetrics.lossTradesCount,
+                break_even_trades_count: performanceMetrics.breakEvenTradesCount,
+                total_profits: performanceMetrics.totalProfits,
+                total_losses: performanceMetrics.totalLosses,
+                largest_win: performanceMetrics.largestWin,
+                largest_loss: performanceMetrics.largestLoss,
+                avg_win_r: performanceMetrics.avgWinR,
+                avg_loss_r: performanceMetrics.avgLossR,
+                avg_rrr: performanceMetrics.avgRRR
+            };
+
+            const { error } = await supabase
+                .from('trading_metrics')
+                .upsert({
+                    user_id: userId,
+                    date,
+                    ...tradeMetrics,
+                    updated_at: new Date().toISOString()
+                },
+                {
+                    onConflict: 'user_id,date'
+                });
+
+            if (error) throw error;
+        } catch (error) {
+            console.error('Error updating daily metrics:', error);
             throw error;
         }
     }
@@ -751,25 +888,30 @@ export class MetricsService {
                 {
                     user_id: userId,
                     date: today,
-                    // Performance Metrics only
+                    // Performance Metrics
                     win_rate: performanceMetrics.winRate,
                     avg_win: performanceMetrics.avgWin,
                     avg_loss: performanceMetrics.avgLoss,
                     profit_factor: performanceMetrics.profitFactor,
-                    avg_rrr: performanceMetrics.avgRRR,
-                    total_pnl: performanceMetrics.totalPnL,
                     expectancy: performanceMetrics.expectancy,
                     payoff_ratio: performanceMetrics.payoffRatio,
                     total_trades: performanceMetrics.totalTrades,
                     profitable_trades_count: performanceMetrics.profitableTradesCount,
                     loss_trades_count: performanceMetrics.lossTradesCount,
                     break_even_trades_count: performanceMetrics.breakEvenTradesCount,
+                    total_profits: performanceMetrics.totalProfits,
+                    total_losses: performanceMetrics.totalLosses,
                     largest_win: performanceMetrics.largestWin,
                     largest_loss: performanceMetrics.largestLoss,
-                    // // Add streak fields
-                    // current_streak: performanceMetrics.currentStreak,
-                    // longest_win_streak: performanceMetrics.longestWinStreak,
-                    // longest_loss_streak: performanceMetrics.longestLossStreak,
+                    avg_r_win: performanceMetrics.avgWinR,
+                    avg_r_loss: performanceMetrics.avgLossR,
+                    avg_rrr: performanceMetrics.avgRRR,
+                    // Streak Metrics
+                    current_streak: performanceMetrics.currentStreak,
+                    longest_win_streak: performanceMetrics.longestWinStreak,
+                    longest_loss_streak: performanceMetrics.longestLossStreak,
+                    avg_gain_percentage: performanceMetrics.avgGainPercentage,
+                    avg_loss_percentage: performanceMetrics.avgLossPercentage,
                     updated_at: new Date().toISOString()
                 },
                 {

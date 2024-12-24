@@ -110,7 +110,6 @@ export const DeltaSparkline: React.FC<DeltaSparklineProps> = ({
     return (
         <div style={{ height }}>
             <ReactApexChart
-                options={options}
                 series={series}
                 type="area"
                 height={height}
