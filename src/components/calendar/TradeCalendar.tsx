@@ -1,17 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday } from 'date-fns';
-
-interface Trade {
-    id: string;
-    pnl: number;
-    numTrades: number;
-    entry_datetime: string;
-}
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, parseISO } from 'date-fns';
+import { Trade as TradeType } from '../../types';
 
 interface TradeCalendarProps {
-    trades: Trade[];
+    trades: TradeType[];
     startingCapital: number;
-    onDateClick?: (date: Date) => void;
+    onDateClick?: (date: Date, trades: TradeType[]) => void;
     onMonthChange?: (start: Date, end: Date) => void;
 }
 
@@ -28,15 +22,46 @@ const TradeCalendar: React.FC<TradeCalendarProps> = ({
     const monthEnd = endOfMonth(currentDate);
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
-    // Group trades by date
+    // Group trades by date and calculate metrics
     const tradesByDate = trades.reduce((acc, trade) => {
-        const date = new Date(trade.entry_datetime).toISOString().split('T')[0];
+        if (trade.status !== 'Closed' || !trade.exit_datetime) return acc;
+        
+        const date = new Date(trade.exit_datetime).toISOString().split('T')[0];
         if (!acc[date]) {
-            acc[date] = [];
+            acc[date] = {
+                trades: [],
+                metrics: {
+                    numTrades: 0,
+                    totalPnL: 0,
+                    avgR: 0,
+                    winRate: 0,
+                    volume: 0
+                }
+            };
         }
-        acc[date].push(trade);
+        acc[date].trades.push(trade);
+        acc[date].metrics.numTrades++;
+        acc[date].metrics.totalPnL += trade.realized_pnl || 0;
+        acc[date].metrics.avgR += trade.risk_reward_ratio || 0;
+        acc[date].metrics.winRate += (trade.realized_pnl || 0) > 0 ? 1 : 0;
+        acc[date].metrics.volume += trade.total_shares || 0;
         return acc;
-    }, {} as Record<string, Trade[]>);
+    }, {} as Record<string, { 
+        trades: TradeType[], 
+        metrics: { 
+            numTrades: number, 
+            totalPnL: number, 
+            avgR: number,
+            winRate: number,
+            volume: number
+        } 
+    }>);
+
+    // Calculate final averages
+    Object.values(tradesByDate).forEach(dayData => {
+        dayData.metrics.avgR = dayData.metrics.avgR / dayData.metrics.numTrades;
+        dayData.metrics.winRate = (dayData.metrics.winRate / dayData.metrics.numTrades) * 100;
+    });
 
     const handlePrevMonth = () => {
         const newDate = new Date(currentDate.setMonth(currentDate.getMonth() - 1));
@@ -50,8 +75,25 @@ const TradeCalendar: React.FC<TradeCalendarProps> = ({
         onMonthChange?.(startOfMonth(newDate), endOfMonth(newDate));
     };
 
+    const handleDateClick = (date: Date) => {
+        const dateStr = date.toISOString().split('T')[0];
+        const dayData = tradesByDate[dateStr];
+        if (dayData && dayData.trades.length > 0) {
+            onDateClick?.(date, dayData.trades);
+        }
+    };
+
+    const formatCurrency = (value: number) => {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+        }).format(value);
+    };
+
     return (
-        <div className="bg-base-100 rounded-lg shadow-lg">
+        <div className="bg-base-100 rounded-lg">
             <div className="flex justify-between items-center gap-3 mb-5 p-4">
                 <div className="flex items-center gap-4">
                     <h5 className="text-xl font-semibold">{format(currentDate, 'MMMM yyyy')}</h5>
@@ -108,27 +150,29 @@ const TradeCalendar: React.FC<TradeCalendarProps> = ({
                     ))}
                 </div>
 
-                <div className="grid grid-cols-7 divide-x divide-base-300 grid-rows-6">
-                    {Array.from({ length: 42 }).map((_, idx) => {
+                <div className="grid grid-cols-7 divide-x divide-base-300 grid-rows-5">
+                    {Array.from({ length: 35 }).map((_, idx) => {
                         const day = new Date(currentDate);
                         day.setDate(1); // Start from first of month
                         day.setDate(1 - day.getDay() + idx); // Adjust to start from first Sunday
 
-                        const dateStr = format(day, 'yyyy-MM-dd');
-                        const dayTrades = tradesByDate[dateStr] || [];
-                        const totalPnL = dayTrades.reduce((sum, trade) => sum + trade.pnl, 0);
+                        const dateStr = day.toISOString().split('T')[0];
+                        const dayData = tradesByDate[dateStr];
+                        const hasTrades = dayData && dayData.trades.length > 0;
                         const isCurrentMonth = isSameMonth(day, currentDate);
-                        
+                        const isCurrentDay = isToday(day);
+
                         return (
                             <div 
                                 key={dateStr}
-                                onClick={() => onDateClick?.(day)}
+                                onClick={() => handleDateClick(day)}
                                 className={`
-                                    p-3.5 h-[100px] flex flex-col justify-between transition-all hover:bg-base-200 cursor-pointer
+                                    p-3.5 h-[120px] flex flex-col justify-between transition-all relative
+                                    ${hasTrades ? 'hover:bg-base-200 cursor-pointer' : ''}
                                     ${!isCurrentMonth ? 'bg-base-200/50' : ''}
-                                    ${isToday(day) ? 'bg-primary/5' : ''}
+                                    ${isCurrentDay ? 'bg-primary/5' : ''}
                                     ${idx % 7 !== 6 ? 'border-r' : ''} 
-                                    ${Math.floor(idx / 7) !== 5 ? 'border-b' : ''} 
+                                    ${Math.floor(idx / 7) !== 4 ? 'border-b' : ''} 
                                     border-base-300
                                 `}
                             >
@@ -139,14 +183,29 @@ const TradeCalendar: React.FC<TradeCalendarProps> = ({
                                 `}>
                                     {format(day, 'd')}
                                 </span>
-                                {dayTrades.length > 0 && (
-                                    <div className={`
-                                        text-sm font-medium
-                                        ${totalPnL > 0 ? 'text-success' : 'text-error'}
-                                    `}>
-                                        {totalPnL > 0 ? '+' : ''}{totalPnL.toFixed(2)}%
-                                        <div className="text-xs opacity-60">
-                                            {dayTrades.length} trade{dayTrades.length !== 1 ? 's' : ''}
+                                {hasTrades && (
+                                    <div className="flex flex-col gap-1">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs opacity-60">Trades</span>
+                                            <span className="text-xs font-medium">{dayData.metrics.numTrades}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs opacity-60">PnL</span>
+                                            <span className={`text-xs font-medium ${dayData.metrics.totalPnL >= 0 ? 'text-success' : 'text-error'}`}>
+                                                {dayData.metrics.totalPnL >= 0 ? '+' : ''}{formatCurrency(dayData.metrics.totalPnL)}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs opacity-60">Avg R</span>
+                                            <span className={`text-xs font-medium ${dayData.metrics.avgR >= 1 ? 'text-success' : 'text-error'}`}>
+                                                {dayData.metrics.avgR.toFixed(1)}R
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs opacity-60">Win Rate</span>
+                                            <span className={`text-xs font-medium ${dayData.metrics.winRate >= 50 ? 'text-success' : 'text-error'}`}>
+                                                {dayData.metrics.winRate.toFixed(0)}%
+                                            </span>
                                         </div>
                                     </div>
                                 )}

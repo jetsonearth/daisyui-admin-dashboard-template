@@ -34,15 +34,18 @@ function PortfolioOverview() {
     const [activeTrades, setActiveTrades] = useState([])
     const [currentDate] = useState(dayjs().format('MMMM D, YYYY'))
     const [selectedTimeFilter, setSelectedTimeFilter] = useState(timeFilters[0])
-    const [selectedTradeDetails, setSelectedTradeDetails] = useState(null);  // Add this line
+    const [selectedTradeDetails, setSelectedTradeDetails] = useState(null)
     const [isAutoRefresh, setIsAutoRefresh] = useState(true)
     const [lastUpdate, setLastUpdate] = useState(null)
     const [startingCapital, setStartingCapital] = useState(0)
-    const [currentCapital, setCurrentCapital] = useState(0);
-    const [loading, setLoading] = useState(false);
-    const [metricsLoading, setMetricsLoading] = useState(false);
-    const [historicalMetrics, setHistoricalMetrics] = useState([]);
-    const [capitalHistory, setCapitalHistory] = useState([]);
+    const [currentCapital, setCurrentCapital] = useState(0)
+    const [loading, setLoading] = useState(false)
+    const [metricsLoading, setMetricsLoading] = useState(false)
+    const [historicalMetrics, setHistoricalMetrics] = useState([])
+    const [capitalHistory, setCapitalHistory] = useState([])
+    const [isTradeModalOpen, setIsTradeModalOpen] = useState(false)
+    const [selectedDayTrades, setSelectedDayTrades] = useState([])
+    const [selectedTrade, setSelectedTrade] = useState(null)
     const [capitalComposition, setCapitalComposition] = useState({
         startingCapital: 0,
         realizedPnL: 0,
@@ -175,8 +178,22 @@ function PortfolioOverview() {
         avgLossR: 0
     });
 
-    const [selectedTrade, setSelectedTrade] = useState(null);
-    const [isModalOpen, setIsModalOpen] = useState(false);
+    const handleCalendarDateClick = (date, trades) => {
+        console.log('Calendar date clicked:', date, trades);
+        setSelectedDayTrades(trades);
+        setIsTradeModalOpen(true);
+    };
+
+    const handleTradeClick = (trade) => {
+        console.log('Trade clicked:', trade);
+        setSelectedTrade(trade);
+    };
+
+    const closeTradeModal = () => {
+        setIsTradeModalOpen(false);
+        setSelectedDayTrades([]);
+        setSelectedTrade(null);
+    };
 
     // Modified useEffect
     useEffect(() => {
@@ -213,27 +230,68 @@ function PortfolioOverview() {
 
             console.log('Fetched trade details:', trade);
             setSelectedTradeDetails(trade);
-            setIsModalOpen(true); // Move this here to avoid flicker
         } catch (error) {
             console.error('Error fetching trade details:', error);
             toast.error('Failed to fetch trade details');
         }
     };
 
-    // Function to handle closing the modal
-    const closeModal = () => {
-        setIsModalOpen(false);
-        // Instead of resetting selectedTrade to null, update it with latest market data
-        if (selectedTrade) {
-            updateMarketData();
-        }
-        setSelectedTrade(null);
-    };
+    // Fetch trades
+    const fetchTrades = useCallback(async () => {
+        setLoading(true)
+        try {
+            const { data: { user }, error: userError } = await supabase.auth.getUser()
 
-    const handleTradeClick = (trade) => {
-        console.log("Fetching trade with ID:", trade.id);
-        fetchTradeDetails(trade.id);
-    };
+            if (userError || !user) {
+                console.error('Authentication error:', userError)
+                toast.error('Authentication required')
+                return
+            }
+
+            console.log('Authenticated User:', user.id)
+
+            const { data, error } = await supabase
+                .from('trades')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('entry_datetime', { ascending: false });
+
+            if (error) {
+                console.error('Error fetching trades:', error)
+                toast.error('Failed to fetch trades')
+                return
+            }
+
+            console.log('Trades Fetched:', {
+                count: data.length,
+                trades: data.map(trade => ({
+                    id: trade.id,
+                    ticker: trade.ticker,
+                    status: trade.status,
+                    shares_remaining: trade.remaining_shares,
+                    entry_date: dayjs(trade.entry_datetime).format('YYYY-MM-DD'),
+                    full_entry_datetime: trade.entry_datetime
+                }))
+            });
+
+            if (data.length === 0) {
+                toast.info('No trades found')
+            }
+
+            setTrades(data || [])
+            const active = data.filter(trade => trade.status === 'Open')
+            setActiveTrades(active)
+        } catch (error) {
+            console.error('Unexpected error fetching trades:', error)
+            toast.error('Unexpected error occurred')
+        } finally {
+            setLoading(false)
+        }
+    }, [])
+
+    useEffect(() => {
+        fetchTrades()
+    }, [fetchTrades])
 
     const safeToFixed = (number, decimals = 2) => {
         if (number === undefined || number === null) return '0.00';
@@ -287,6 +345,7 @@ function PortfolioOverview() {
 
                 // Fetch user authentication once
                 const { data: { user }, error: userError } = await supabase.auth.getUser();
+
                 if (userError || !user) {
                     console.error('Authentication error:', userError);
                     return;
@@ -429,13 +488,56 @@ function PortfolioOverview() {
                     data: {
                         currentCapital,
                         activeTrades: openTrades || [],
-                        metrics,
-                        lastUpdate: new Date().toLocaleTimeString()
+                        metrics: {
+                            ...metrics,
+                            profitFactor: updatedLatestMetrics.profit_factor,
+                            avgWin: updatedLatestMetrics.avg_win,
+                            avgLoss: updatedLatestMetrics.avg_loss,
+                            avgRRR: updatedLatestMetrics.avg_rrr,
+                            winRate: updatedLatestMetrics.win_rate,
+                            expectancy: updatedLatestMetrics.expectancy,
+                            payoffRatio: updatedLatestMetrics.payoff_ratio,
+                            totalTrades: updatedLatestMetrics.total_trades,
+                            profitableTradesCount: updatedLatestMetrics.profitable_trades_count,
+                            lossTradesCount: updatedLatestMetrics.loss_trades_count,
+                            breakEvenTradesCount: updatedLatestMetrics.break_even_trades_count,
+                            largestWin: updatedLatestMetrics.largest_win,
+                            largestLoss: updatedLatestMetrics.largest_loss,
+                            currentStreak: updatedLatestMetrics.current_streak,
+                            longestWinStreak: updatedLatestMetrics.longest_win_streak,
+                            longestLossStreak: updatedLatestMetrics.longest_loss_streak,
+                            maxDrawdown: updatedLatestMetrics.max_drawdown,
+                            maxRunup: updatedLatestMetrics.max_runup,
+                            totalProfits: updatedLatestMetrics.total_profits,
+                            totalLosses: updatedLatestMetrics.total_losses,
+                            avgWinR: updatedLatestMetrics.avg_r_win,
+                            avgLossR: updatedLatestMetrics.avg_r_loss,
+                            avgGainPercentage: updatedLatestMetrics.avg_gain_percentage,
+                            avgLossPercentage: updatedLatestMetrics.avg_loss_percentage,
+                            exposureMetrics: {
+                                dailyExposure: {
+                                    risk: freshExposureMetrics.der.toFixed(2),
+                                    profit: freshExposureMetrics.dep.toFixed(2),
+                                    delta: freshExposureMetrics.deltaDE.toFixed(2)
+                                },
+                                newExposure: {
+                                    risk: freshExposureMetrics.ner.toFixed(2),
+                                    profit: freshExposureMetrics.nep.toFixed(2),
+                                    delta: freshExposureMetrics.deltaNE.toFixed(2)
+                                },
+                                openExposure: {
+                                    risk: freshExposureMetrics.oer.toFixed(2),
+                                    profit: freshExposureMetrics.oep.toFixed(2),
+                                    delta: freshExposureMetrics.deltaOE.toFixed(2)
+                                }
+                            }
+                        },
+                        lastUpdate: new Date().toISOString()
                     }
                 };
-                localStorage.setItem('portfolioMetricsCache', JSON.stringify(cacheData));
-                console.log('🔵 Cached fresh portfolio metrics');
 
+                console.log('🔵 Caching fresh portfolio metrics:', cacheData);
+                localStorage.setItem('portfolioMetricsCache', JSON.stringify(cacheData));
             } catch (error) {
                 console.error('Error fetching initial data:', error);
                 toast.error('Error loading portfolio data');
@@ -502,6 +604,10 @@ function PortfolioOverview() {
                     quotes
                 );
 
+                // Calculate portfolio allocation
+                const portfolioAllocation = updatedTrades.reduce((sum, trade) => 
+                    sum + (trade.remaining_shares * (quotes[trade.ticker]?.price || trade.currentPrice || 0)), 0) / freshCapital * 100;
+
                 // Upsert exposure metrics
                 await metricsService.upsertExposureMetrics(user.id, exposureMetrics);
 
@@ -550,7 +656,8 @@ function PortfolioOverview() {
                             risk: exposureMetrics.oer.toFixed(2),
                             profit: exposureMetrics.oep.toFixed(2),
                             delta: exposureMetrics.deltaOE.toFixed(2)
-                        }
+                        },
+                        portfolioAllocation, // Add portfolio allocation
                     };
                     setMetrics(newMetrics);
 
@@ -562,8 +669,52 @@ function PortfolioOverview() {
                         data: {
                             currentCapital: freshCapital,
                             activeTrades: updatedTrades,
-                            metrics: newMetrics,
-                            lastUpdate: new Date().toLocaleTimeString()
+                            metrics: {
+                                ...metrics,
+                                profitFactor: latestMetrics.profit_factor,
+                                avgWin: latestMetrics.avg_win,
+                                avgLoss: latestMetrics.avg_loss,
+                                avgRRR: latestMetrics.avg_rrr,
+                                winRate: latestMetrics.win_rate,
+                                expectancy: latestMetrics.expectancy,
+                                payoffRatio: latestMetrics.payoff_ratio,
+                                totalTrades: latestMetrics.total_trades,
+                                profitableTradesCount: latestMetrics.profitable_trades_count,
+                                lossTradesCount: latestMetrics.loss_trades_count,
+                                breakEvenTradesCount: latestMetrics.break_even_trades_count,
+                                largestWin: latestMetrics.largest_win,
+                                largestLoss: latestMetrics.largest_loss,
+                                currentStreak: latestMetrics.current_streak,
+                                longestWinStreak: latestMetrics.longest_win_streak,
+                                longestLossStreak: latestMetrics.longest_loss_streak,
+                                maxDrawdown: latestMetrics.max_drawdown,
+                                maxRunup: latestMetrics.max_runup,
+                                totalProfits: latestMetrics.total_profits,
+                                totalLosses: latestMetrics.total_losses,
+                                avgWinR: latestMetrics.avg_r_win,
+                                avgLossR: latestMetrics.avg_r_loss,
+                                avgGainPercentage: latestMetrics.avg_gain_percentage,
+                                avgLossPercentage: latestMetrics.avg_loss_percentage,
+                                portfolioAllocation,
+                                exposureMetrics: {
+                                    dailyExposure: {
+                                        risk: exposureMetrics.der.toFixed(2),
+                                        profit: exposureMetrics.dep.toFixed(2),
+                                        delta: exposureMetrics.deltaDE.toFixed(2)
+                                    },
+                                    newExposure: {
+                                        risk: exposureMetrics.ner.toFixed(2),
+                                        profit: exposureMetrics.nep.toFixed(2),
+                                        delta: exposureMetrics.deltaNE.toFixed(2)
+                                    },
+                                    openExposure: {
+                                        risk: exposureMetrics.oer.toFixed(2),
+                                        profit: exposureMetrics.oep.toFixed(2),
+                                        delta: exposureMetrics.deltaOE.toFixed(2)
+                                    }
+                                }
+                            },
+                            lastUpdate: new Date().toISOString()
                         }
                     };
                     localStorage.setItem('portfolioMetricsCache', JSON.stringify(cacheData));
@@ -608,59 +759,6 @@ function PortfolioOverview() {
         calculateCapitalComposition();
     }, [calculateCapitalComposition]);
 
-    // Fetch active trades from Supabase
-    const fetchActiveTrades = async () => {
-        try {
-            const { data: { user }, error: userError } = await supabase.auth.getUser()
-
-            if (userError || !user) {
-                console.error('Authentication error:', userError)
-                toast.error('Authentication required')
-                return
-            }
-
-            console.log('Authenticated User:', user.id)
-
-            const { data, error } = await supabase
-                .from('trades')
-                .select('*')
-                .eq('user_id', user.id)
-                .eq('status', 'Open')  // Match the enum value exactly
-                .order('entry_datetime', { ascending: false });
-
-            if (error) {
-                console.error('Error fetching active trades:', error)
-                toast.error('Failed to fetch active trades')
-                return
-            }
-
-            console.log('Active Trades Fetched:', {
-                count: data.length,
-                trades: data.map(trade => ({
-                    id: trade.id,
-                    ticker: trade.ticker,
-                    status: trade.status,
-                    shares_remaining: trade.remaining_shares,
-                    entry_date: dayjs(trade.entry_datetime).format('YYYY-MM-DD'),
-                    full_entry_datetime: trade.entry_datetime
-                }))
-            });
-
-            if (data.length === 0) {
-                toast.info('No active trades found')
-            }
-
-            setActiveTrades(data || [])
-        } catch (error) {
-            console.error('Unexpected error fetching active trades:', error)
-            toast.error('Unexpected error occurred')
-        }
-    };
-
-    useEffect(() => {
-        fetchActiveTrades();
-    }, []);
-
     useEffect(() => {
         const fetchHistoricalData = async () => {
             try {
@@ -689,15 +787,6 @@ function PortfolioOverview() {
                     .order('date', { ascending: true });
 
                 if (error) throw error;
-
-                console.log('Capital history data:', data?.map(item => ({
-                    date: item.date,
-                    amount: item.capital_amount.toLocaleString('en-US', {
-                        style: 'currency',
-                        currency: 'USD'
-                    })
-                })));
-
                 setCapitalHistory(data || []);
             } catch (error) {
                 console.error('Error fetching capital history:', error);
@@ -961,7 +1050,250 @@ function PortfolioOverview() {
     }, [capitalComposition]);
 
     return (
-        <div className="p-4">
+        <div>
+            {isTradeModalOpen && selectedDayTrades && selectedDayTrades.length > 0 && (
+                <div className="fixed inset-0 z-[9999] overflow-y-auto">
+                    <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                        <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+                            <div className="absolute inset-0 bg-base-300 opacity-75"></div>
+                        </div>
+
+                        <div className="inline-block align-bottom bg-base-100 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-7xl sm:w-full">
+                            <div className="bg-base-100 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-lg font-medium">Trade History</h3>
+                                    <button 
+                                        onClick={closeTradeModal}
+                                        className="btn btn-sm btn-ghost"
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+
+                                <div className="overflow-x-auto w-full">
+                                    <table className="table table-xs table-zebra table-pin-rows">
+                                        <thead>
+                                            <tr>
+                                                <th className="text-center whitespace-nowrap">Ticker</th>
+                                                <th className="text-center whitespace-nowrap">Type</th>
+                                                <th className="text-center whitespace-nowrap">Direction</th>
+                                                <th className="text-center whitespace-nowrap">Status</th>
+                                                <th className="text-center whitespace-nowrap">Entry Date</th>
+                                                <th className="text-center whitespace-nowrap">Avg Cost</th>
+                                                <th className="text-center whitespace-nowrap">Unrealized PnL%</th>
+                                                <th className="text-center whitespace-nowrap">Unrealized PnL</th>
+                                                <th className="text-center whitespace-nowrap">Realized PnL%</th>
+                                                <th className="text-center whitespace-nowrap">Realized PnL</th>
+                                                <th className="text-center whitespace-nowrap">RRR</th>
+                                                <th className="text-center whitespace-nowrap">Current Price</th>
+                                                <th className="text-center whitespace-nowrap">Strategy</th>
+                                                <th className="text-center whitespace-nowrap">Setups</th>
+                                                <th className="text-center whitespace-nowrap">Total Shares</th>
+                                                <th className="text-center whitespace-nowrap">Remaining Shares</th>
+                                                <th className="text-center whitespace-nowrap">Total Cost</th>
+                                                <th className="text-center whitespace-nowrap">Market Value</th>
+                                                <th className="text-center whitespace-nowrap">Weight %</th>
+                                                <th className="text-center whitespace-nowrap">Trimmed %</th>
+                                                <th className="text-center whitespace-nowrap">SL Distance</th>
+                                                <th className="text-center whitespace-nowrap">Position Risk</th>
+                                                <th className="text-center whitespace-nowrap">Portfolio Impact</th>
+                                                <th className="text-center whitespace-nowrap">MAE</th>
+                                                <th className="text-center whitespace-nowrap">MFE</th>
+                                                <th className="text-center whitespace-nowrap">MAE $</th>
+                                                <th className="text-center whitespace-nowrap">MFE $</th>
+                                                <th className="text-center whitespace-nowrap">MAE-R</th>
+                                                <th className="text-center whitespace-nowrap">MFE-R</th>
+                                                <th className="text-center whitespace-nowrap">Exit Date</th>
+                                                <th className="text-center whitespace-nowrap">Exit Price</th>
+                                                <th className="text-center whitespace-nowrap">% From Entry</th>
+                                                <th className="text-center whitespace-nowrap">Holding Period</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {selectedDayTrades.map((trade) => {
+                                                const totalCost = trade.total_cost;
+                                                const unrealizedPnL = trade.unrealized_pnl || 0;
+                                                const realizedPnL = trade.realized_pnl || 0;
+                                                const isProfitable = (totalCost + unrealizedPnL + realizedPnL) > totalCost;
+
+                                                return (
+                                                    <tr 
+                                                        key={trade.id} 
+                                                        className="hover cursor-pointer"
+                                                        onClick={() => handleTradeClick(trade)}
+                                                    >
+                                                        <td className="text-center font-medium">
+                                                            {trade.ticker || 'N/A'}
+                                                            <span 
+                                                                className={`indicator ${isProfitable ? 'bg-green-500' : 'bg-red-500'}`}
+                                                                style={{ 
+                                                                    width: '12px', 
+                                                                    height: '12px', 
+                                                                    borderRadius: '50%', 
+                                                                    display: 'inline-block', 
+                                                                    marginLeft: '8px' 
+                                                                }}
+                                                            />
+                                                        </td>
+                                                        <td className="text-center">{trade.asset_type || 'N/A'}</td>
+                                                        <td className="text-center">
+                                                            <span className={`badge badge-pill ${trade.direction === 'LONG' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}`}>
+                                                                {trade.direction || 'N/A'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="text-center">
+                                                            <span className={`badge badge-pill ${trade.status === 'OPEN' ? 'bg-emerald-500 text-white' : 'bg-amber-400 text-black'}`}>
+                                                                {trade.status || 'N/A'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="text-center whitespace-nowrap">
+                                                            {trade.entry_datetime ? new Date(trade.entry_datetime).toISOString().split('T')[0] : ''}
+                                                        </td>
+                                                        <td className="text-center">{formatCurrency(trade.entry_price)}</td>
+                                                        <td className={`text-center font-semibold ${trade.unrealized_pnl_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                            {trade.unrealized_pnl === 0 ? (
+                                                                <span className="text-white">-</span>
+                                                            ) : (
+                                                                <>
+                                                                    {trade.unrealized_pnl_percentage > 0 ? '+' : ''}
+                                                                    {safeToFixed(trade.unrealized_pnl_percentage)}%
+                                                                </>
+                                                            )}
+                                                        </td>
+                                                        <td className={`text-center font-semibold ${trade.unrealized_pnl > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                            {trade.unrealized_pnl === 0 ? (
+                                                                <span className="text-white">-</span>
+                                                            ) : (
+                                                                <>
+                                                                    {trade.unrealized_pnl > 0 ? '+' : ''}
+                                                                    {formatCurrency(trade.unrealized_pnl)}
+                                                                </>
+                                                            )}
+                                                        </td>
+                                                        <td className={`text-center font-semibold ${trade.realized_pnl_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                            {trade.realized_pnl_percentage > 0 ? '+' : ''}
+                                                            {safeToFixed(trade.realized_pnl_percentage)}%
+                                                        </td>
+                                                        <td className={`text-center font-semibold ${trade.realized_pnl > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                            {trade.realized_pnl > 0 ? '+' : ''}
+                                                            {formatCurrency(trade.realized_pnl)}
+                                                        </td>
+                                                        <td className={`text-center font-semibold ${trade.risk_reward_ratio > 1 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                            {safeToFixed(trade.risk_reward_ratio, 1)}
+                                                        </td>
+                                                        <td className="text-center font-medium">
+                                                            {formatCurrency(trade.last_price)}
+                                                        </td>
+                                                        <td className="text-center">
+                                                            {trade.strategy ? (
+                                                                <span className="badge badge-pill bg-purple-500 text-white">
+                                                                    {trade.strategy}
+                                                                </span>
+                                                            ) : 'N/A'}
+                                                        </td>
+                                                        <td className="text-center">
+                                                            {trade.setups ? (
+                                                                <div className="flex flex-nowrap gap-1 justify-center">
+                                                                    {trade.setups.map((setup, index) => (
+                                                                        <span key={index} className="badge badge-pill bg-indigo-500 text-white">
+                                                                            {setup}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            ) : 'N/A'}
+                                                        </td>
+                                                        <td className="text-center">{safeToFixed(trade.total_shares)}</td>
+                                                        <td className="text-center">{safeToFixed(trade.remaining_shares)}</td>
+                                                        <td className="text-center">{formatCurrency(trade.total_cost)}</td>
+                                                        <td className="text-center">{formatCurrency(trade.market_value)}</td>
+                                                        <td className="text-center">{safeToFixed(trade.portfolio_weight)}%</td>
+                                                        <td className="text-center">{safeToFixed(trade.trimmed_percentage)}%</td>
+                                                        <td className={`text-center font-semibold ${trade.open_risk > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                                            {trade.open_risk > 0 ? '-' : ''}{safeToFixed(trade.open_risk, 2)}%
+                                                        </td>
+                                                        <td className={`text-center font-semibold ${trade.position_risk > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                                            {trade.position_risk === 0 ? (
+                                                                <span className="text-white">-</span>
+                                                            ) : (
+                                                                <>
+                                                                    {trade.position_risk > 0 ? '-' : ''}
+                                                                    {safeToFixed(trade.position_risk)}%
+                                                                </>
+                                                            )}
+                                                        </td>
+                                                        <td className={`text-center font-semibold ${trade.portfolio_impact > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                            {trade.portfolio_impact > 0 ? '+' : ''}{safeToFixed(trade.portfolio_impact, 2)}%
+                                                        </td>
+                                                        <td className="text-center font-semibold text-rose-400">
+                                                            {trade.mae === 0 ? (
+                                                                <span className="text-white">-</span>
+                                                            ) : (
+                                                                `${safeToFixed(trade.mae, 1)}%`
+                                                            )}
+                                                        </td>
+                                                        <td className="text-center font-semibold text-emerald-400">
+                                                            {trade.mfe === 0 ? (
+                                                                <span className="text-white">-</span>
+                                                            ) : (
+                                                                `${safeToFixed(trade.mfe, 1)}%`
+                                                            )}
+                                                        </td>
+                                                        <td className="text-center font-semibold text-rose-400">
+                                                            {trade.mae_dollars === 0 ? (
+                                                                <span className="text-white">-</span>
+                                                            ) : (
+                                                                formatCurrency(trade.mae_dollars, 0)
+                                                            )}
+                                                        </td>
+                                                        <td className="text-center font-semibold text-emerald-400">
+                                                            {trade.mfe_dollars === 0 ? (
+                                                                <span className="text-white">-</span>
+                                                            ) : (
+                                                                formatCurrency(trade.mfe_dollars, 0)
+                                                            )}
+                                                        </td>
+                                                        <td className="text-center font-semibold text-rose-400">
+                                                            {trade.mae_r === 0 ? (
+                                                                <span className="text-white">-</span>
+                                                            ) : (
+                                                                `${safeToFixed(trade.mae_r, 2)}R`
+                                                            )}
+                                                        </td>
+                                                        <td className="text-center font-semibold text-emerald-400">
+                                                            {trade.mfe_r === 0 ? (
+                                                                <span className="text-white">-</span>
+                                                            ) : (
+                                                                `${safeToFixed(trade.mfe_r, 2)}R`
+                                                            )}
+                                                        </td>
+                                                        <td className="text-center whitespace-nowrap">
+                                                            {trade.exit_datetime ? new Date(trade.exit_datetime).toISOString().split('T')[0] : ''}
+                                                        </td>
+                                                        <td className="text-center">{formatCurrency(trade.exit_price)}</td>
+                                                        <td className={`text-center font-semibold ${trade.percent_from_entry > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                            {trade.unrealized_pnl === 0 ? (
+                                                                <span className="text-white">-</span>
+                                                            ) : (
+                                                                <>
+                                                                    {trade.percent_from_entry > 0 ? '+' : ''}
+                                                                    {safeToFixed(trade.percent_from_entry)}%
+                                                                </>
+                                                            )}
+                                                        </td>
+                                                        <td className="text-center">
+                                                            {trade.holding_period ? `${trade.holding_period} days` : 'N/A'}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* Top Header with Date and Time Filters */}
             <div className="flex justify-between items-center mb-6">
                 <div className="text-2xl font-bold">{currentDate}</div>
@@ -1075,11 +1407,16 @@ function PortfolioOverview() {
                 </div>
             </div>
             {/* Active Trades */}
-            <div className="mt-4 max-h-[800px]">
+            <div className="mt- max-h-[800px]">
                 <TitleCard
                     title={
                         <div className="w-full flex justify-between items-center">
-                            <h2 className="text-xl top-2 font-semibold gap-4 mb-1">Active Trades</h2>
+                            <div className="flex items-center gap-4">
+                                <h2 className="text-2xl top-2 font-semibold mb-1">Active Trades</h2>
+                                <div className="badge badge-primary badge-lg">
+                                    {metrics.portfolioAllocation.toFixed(1)}% Allocated
+                                </div>
+                            </div>
                             <div className="absolute top-6 right-5 flex items-center gap-4">
                                 <button
                                     onClick={() => setIsAutoRefresh(!isAutoRefresh)}
@@ -1094,9 +1431,6 @@ function PortfolioOverview() {
                                     Update Prices
                                 </button>
                                 {lastUpdate && <span className="text-sm text-gray-500">Last update: {lastUpdate}</span>}
-                                {/* <div className="badge badge-primary">
-                                    {metrics.portfolioAllocation?.toFixed(1)}% Allocated
-                                </div> */}
                             </div>
                         </div>
                     }
@@ -1199,8 +1533,7 @@ function PortfolioOverview() {
                                                         text-center font-semibold tabular-nums
                                                         ${trade.unrealized_pnl_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}
                                                     `}>
-                                                        {trade.unrealized_pnl_percentage > 0 ? '+' : ''}
-                                                        {safeToFixed(trade.unrealized_pnl_percentage)}%
+                                                        {trade.unrealized_pnl_percentage > 0 ? '+' : ''}{safeToFixed(trade.unrealized_pnl_percentage)}%
                                                     </td>
 
 
@@ -1208,8 +1541,7 @@ function PortfolioOverview() {
                                                         text-center font-semibold tabular-nums
                                                         ${trade.realized_pnl_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}
                                                     `}>
-                                                        {trade.realized_pnl_percentage > 0 ? '+' : ''}
-                                                        {safeToFixed(trade.realized_pnl_percentage)}%
+                                                        {trade.realized_pnl_percentage > 0 ? '+' : ''}{safeToFixed(trade.realized_pnl_percentage)}%
                                                     </td>
 
                                                     <td className={`
@@ -1281,10 +1613,13 @@ function PortfolioOverview() {
                     </div>
 
                     <TradeHistoryModal
-                        isOpen={isModalOpen}
-                        onClose={closeModal}
-                        onTradeAdded={fetchActiveTrades}
-                        existingTrade={selectedTradeDetails}  // Pass the details instead
+                        isOpen={!!selectedTrade}
+                        onClose={() => setSelectedTrade(null)}
+                        onTradeAdded={() => {
+                            setSelectedTrade(null);
+                            fetchTrades();
+                        }}
+                        existingTrade={selectedTrade}
                     />
                 </TitleCard>
             </div>
@@ -1302,13 +1637,7 @@ function PortfolioOverview() {
                     <TradeCalendar
                         trades={trades}
                         startingCapital={startingCapital}
-                        onDateClick={(date) => {
-                            console.log('Selected date:', date);
-                        }}
-                        onMonthChange={(start, end) => {
-                            console.log('Month changed:', { start, end });
-                            // You can fetch trades for the new month here
-                        }}
+                        onDateClick={handleCalendarDateClick}
                     />
                 </div>
 

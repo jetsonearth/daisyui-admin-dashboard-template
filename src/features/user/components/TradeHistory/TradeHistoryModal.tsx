@@ -1,5 +1,6 @@
 // src/components/TradeHistory/TradeHistoryModal.tsx
 import React, { useEffect, useState } from 'react';
+import { UTCTimestamp } from 'lightweight-charts';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import { supabase } from '../../../../config/supabaseClient';
@@ -9,6 +10,16 @@ import { metricsService } from '../../../../features/metrics/metricsService';
 import { capitalService } from '../../../../services/capitalService';
 import { L, p } from 'chart.js/dist/chunks/helpers.core';
 import dayjs from 'dayjs';
+import TradeChart from '../../../../components/TradeChart';
+import { historicalDataService } from '../../../../services/historicalDataService';
+import { marketDataService } from '../../../marketData/marketDataService';
+import { TradeReplayChart } from '../../../../components/TradeReplayChart';
+
+interface TradeMarker {
+    timestamp: number;
+    price: number;
+    type: 'entry' | 'exit';  
+}
 
 interface Action {
     type: 'BUY' | 'SELL';
@@ -57,7 +68,7 @@ const initializeTradeDetails = (existingTrade: Trade): TradeDetails => {
         type: type as 'BUY' | 'SELL',
         date: new Date(existingTrade.action_datetimes?.[index] || Date.now()),
         shares: existingTrade.action_shares?.[index]?.toString() || '',
-        price: existingTrade.action_prices?.[index]?.toString() || ''
+        price: existingTrade.action_shares?.[index]?.toString() || ''
     })) || [{
         type: 'BUY',
         date: new Date(),
@@ -97,6 +108,9 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
     const [notes, setNotes] = useState(existingTrade?.notes || '');
     const [mistakes, setMistakes] = useState(existingTrade?.mistakes || '');
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+    const [chartData, setChartData] = useState<any[]>([]);
+    const [isLoadingChart, setIsLoadingChart] = useState(false);
 
     const handleStrategyChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
         setSelectedStrategy(event.target.value as STRATEGIES);
@@ -169,33 +183,6 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
         }));
     };
 
-    const fetchHighLowPrices = async (ticker: string, entryDate: Date, exitDate: Date) => {
-        try {
-            const response = await fetch('https://script.google.com/macros/s/AKfycbwCnlStDT4DbWWXefhqX5aJ60IX9vsPRSE6Ai7YsO6f5Z8q5CwM62VzVgBzynqu_CpD/exec', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'text/plain;charset=utf-8',
-                },
-                body: JSON.stringify({
-                    ticker,
-                    entryDate: entryDate.toISOString(),
-                    exitDate: exitDate.toISOString()
-                }),
-                redirect: 'follow'
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
-            }
-
-            const data = await response.json();
-            return data;
-        } catch (error) {
-            console.error('Error fetching high and low prices:', error);
-        }
-    };
-    
-
     const handleSubmit = async () => { 
         setLoading(true); 
         try {
@@ -221,7 +208,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             let target2R = 0;
             let target3R = 0;
 
-            // let openRisk = 0;
+            let slDistance = 0;
             let initialRiskAmount = 0;
             let currentRiskAmount = 0;
             let rrr = 0;
@@ -274,6 +261,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                     const initialStopLoss = parseFloat(tradeDetails.stopLossPrice);
                     const initialStopDistance = Math.abs(firstEntryPrice - initialStopLoss);
                     initialRiskAmount = parseFloat(firstBuyAction.shares) * firstEntryPrice * (initialStopDistance / firstEntryPrice);
+                    slDistance = Math.abs(entryPrice - initialStopLoss) / entryPrice;
 
                     const currentStopLoss = tradeDetails.trailingStopLoss 
                         ? parseFloat(tradeDetails.trailingStopLoss)
@@ -283,119 +271,6 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
 
                     const status = remainingShares > 0 ? TRADE_STATUS.OPEN : TRADE_STATUS.CLOSED;
 
-                    // First trade record preparation (commenting out)
-                    /*
-                    const tradeRecord = {
-                        user_id: user.id,
-                        ticker: tradeDetails.ticker,
-                        direction: tradeDetails.direction,
-                        asset_type: tradeDetails.assetType,
-                        stop_loss_price: tradeDetails.stopLossPrice,
-                        trailing_stoploss: tradeDetails.trailingStopLoss || null,
-                        initial_risk_amount: initialRiskAmount,
-                        current_risk_amount: currentRiskAmount,
-                        status: status,
-                        created_at: new Date().toISOString(),
-                        entry_datetime: tradeDetails.actions[0].date.toISOString(),
-                        entry_price: entryPrice,
-                        total_shares: totalShares,
-                        remaining_shares: remainingShares,
-                        realized_pnl: realizedPnl,
-                        realized_pnl_percentage: realizedPnlPercentage,
-                        unrealized_pnl: unrealizedPnl,
-                        unrealized_pnl_percentage: unrealizedPnlPercentage,
-                        total_cost: totalCost,
-                        strategy: selectedStrategy || null,
-                        setups: selectedSetups.length > 0 ? selectedSetups : null,
-                        exit_price: exitPrice || null,
-                        exit_datetime: exitDate || null,
-                        trimmed_percentage: trimmedPercentage,
-                        risk_reward_ratio: rrr,
-                        // open_risk: openRisk,
-                        // stop_loss_33_percent: stop33,
-                        // stop_loss_66_percent: stop66,
-                        r_target_2: target2R,
-                        r_target_3: target3R,
-                        action_types,
-                        action_datetimes,
-                        action_prices,
-                        action_shares,
-                        notes,
-                        mistakes,
-                        mae: maePercent || 0,
-                        mfe: mfePercent || 0,
-                        mae_dollars: maeDollars || 0,
-                        mfe_dollars: mfeDollars || 0,
-                        mae_r: maeR || 0,
-                        mfe_r: mfeR || 0,
-                        holding_period: tempHoldingPeriod || 0,
-                        market_value: market_value,
-                        last_price: exitPrice || entryPrice,
-                        // position_heat: positionHeat,
-                        // position_risk: positionRisk,
-                        // portfolio_impact: portfolioImpact,
-                    };
-
-                    console.log('Trade Record to be upserted:', tradeRecord);
-
-                    let result;
-                    if (existingTrade) {
-                        const { data, error } = await supabase
-                            .from('trades')
-                            .update(tradeRecord)
-                            .eq('id', existingTrade.id)
-                            .eq('user_id', user.id)
-                            .select();
-
-                        if (error) throw error;
-                        result = data;
-                        toast.success('Trade updated successfully!');
-                    } else {
-                        const { data, error } = await supabase
-                            .from('trades')
-                            .insert([tradeRecord])
-                            .select();
-
-                        if (error) throw error;
-                        result = data;
-                        toast.success('Trade added successfully!');
-                    }
-
-                    onTradeAdded(); // Refresh the trade list
-
-                    if (remainingShares === 0) {
-                        console.log('----------- Computing metrics after trade closure! -----------');
-
-                        const { data: { user }, error: userError } = await supabase.auth.getUser();
-                        if (userError || !user) {
-                            throw new Error('User not authenticated');
-                        }
-
-                        const allTrades = await metricsService.fetchTrades();
-                        const closedTrades = allTrades.filter(t => t.status === TRADE_STATUS.CLOSED);
-
-                        if (closedTrades.length > 0) {
-                            const performanceMetrics = await metricsService.calculateTradePerformanceMetrics(closedTrades);
-                            console.log('Performance Metrics:', performanceMetrics);
-
-                            const streakMetrics = metricsService.calculateStreakMetrics(closedTrades);
-                            console.log('Streak Metrics:', streakMetrics);
-
-                            const combinedMetrics = {
-                                ...performanceMetrics,
-                                currentStreak: streakMetrics.currentStreak,
-                                longestWinStreak: streakMetrics.longestWinStreak,
-                                longestLossStreak: streakMetrics.longestLossStreak
-                            };
-                            console.log('Combined Metrics to be upserted:', combinedMetrics);
-
-                            await metricsService.upsertPerformanceMetrics(user.id, combinedMetrics);
-                            metricsService.invalidateMetricsCache(); // Invalidate cache after updating metrics
-                        }
-                    }
-
-                    onClose(); // Close the modal
-                    */
                 } else if (action.type === 'SELL') {
                     const sharesToSell = parseFloat(action.shares);
                     if (sharesToSell > remainingShares) {
@@ -416,7 +291,64 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                         const entryDate = new Date(tradeDetails.actions[0].date);
                         const exitDateObj = new Date(exitDate);
 
-                        const prices = await fetchHighLowPrices(tradeDetails.ticker, entryDate, exitDateObj);
+                        try {
+                            const prices = await marketDataService.getHighLowPrices(tradeDetails.ticker, entryDate, exitDateObj);
+                            if (prices && prices.status === 'success') {
+                                const { minPrice, maxPrice } = prices;
+
+                                if (tradeDetails.direction === DIRECTIONS.LONG) {
+                                    // For long trades:
+                                    // MAE is the worst drawdown (lowest price)
+                                    // MFE is the highest potential profit (highest price)
+                                    if (minPrice >= entryPrice) {
+                                        maeDollars = 0;
+                                        maePercent = 0;
+                                        maeR = 0;
+                                    } else {
+                                        maeDollars = (entryPrice - minPrice) * totalShares;
+                                        maePercent = ((entryPrice - minPrice) / entryPrice) * 100;
+                                        maeR = (entryPrice - minPrice) / (entryPrice - parseFloat(tradeDetails.stopLossPrice));
+                                    }
+
+                                    if (maxPrice <= entryPrice) {
+                                        mfeDollars = 0;
+                                        mfePercent = 0;
+                                        mfeR = 0;
+                                    } else {
+                                        mfeDollars = (maxPrice - entryPrice) * totalShares;
+                                        mfePercent = ((maxPrice - entryPrice) / entryPrice) * 100;
+                                        mfeR = (maxPrice - entryPrice) / (entryPrice - parseFloat(tradeDetails.stopLossPrice));
+                                    }
+                                } else {
+                                    // For short trades:
+                                    // MAE is when price goes against us (highest price)
+                                    // MFE is the best potential profit (lowest price)
+                                    if (maxPrice <= entryPrice) {
+                                        maeDollars = 0;
+                                        maePercent = 0;
+                                        maeR = 0;
+                                    } else {
+                                        maeDollars = (maxPrice - entryPrice) * totalShares;
+                                        maePercent = ((maxPrice - entryPrice) / entryPrice) * 100;
+                                        maeR = (maxPrice - entryPrice) / (parseFloat(tradeDetails.stopLossPrice) - entryPrice);
+                                    }
+
+                                    if (minPrice >= entryPrice) {
+                                        mfeDollars = 0;
+                                        mfePercent = 0;
+                                        mfeR = 0;
+                                    } else {
+                                        mfeDollars = (entryPrice - minPrice) * totalShares;
+                                        mfePercent = ((entryPrice - minPrice) / entryPrice) * 100;
+                                        mfeR = (entryPrice - minPrice) / (parseFloat(tradeDetails.stopLossPrice) - entryPrice);
+                                    }
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error fetching high/low prices:', error);
+                            toast.error('Failed to fetch high/low prices');
+                        }
+
                         tempHoldingPeriod = Math.ceil((exitDateObj.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
                         trimmedPercentage = ((totalShares - remainingShares) / totalShares) * 100;
                         unrealizedPnl = 0;
@@ -424,54 +356,6 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
 
                         rrr = realizedPnl / currentRiskAmount;
                         market_value = totalCost + realizedPnl;
-
-                        // positionHeat = 0;
-
-                        if (prices) {
-                            const { minPrice, maxPrice } = prices;
-
-                            if (tradeDetails.direction === DIRECTIONS.LONG) {
-                                if (minPrice >= entryPrice) {
-                                    maeDollars = 0;
-                                    maePercent = 0;
-                                    maeR = 0;
-                                } else {
-                                    maeDollars = (entryPrice - minPrice) * totalShares;
-                                    maePercent = ((entryPrice - minPrice) / entryPrice) * 100;
-                                    maeR = (entryPrice - minPrice) / (entryPrice - parseFloat(tradeDetails.stopLossPrice));
-                                }
-
-                                if (maxPrice <= entryPrice) {
-                                    mfeDollars = 0;
-                                    mfePercent = 0;
-                                    mfeR = 0;
-                                } else {
-                                    mfeDollars = (maxPrice - entryPrice) * totalShares;
-                                    mfePercent = ((maxPrice - entryPrice) / entryPrice) * 100;
-                                    mfeR = (maxPrice - entryPrice) / (entryPrice - parseFloat(tradeDetails.stopLossPrice));
-                                }
-                            } else {
-                                if (maxPrice <= entryPrice) {
-                                    maeDollars = 0;
-                                    maePercent = 0;
-                                    maeR = 0;
-                                } else {
-                                    maeDollars = (maxPrice - entryPrice) * totalShares;
-                                    maePercent = ((maxPrice - entryPrice) / entryPrice) * 100;
-                                    maeR = (maxPrice - entryPrice) / (parseFloat(tradeDetails.stopLossPrice) - entryPrice);
-                                }
-
-                                if (minPrice >= entryPrice) {
-                                    mfeDollars = 0;
-                                    mfePercent = 0;
-                                    mfeR = 0;
-                                } else {
-                                    mfeDollars = (entryPrice - minPrice) * totalShares;
-                                    mfePercent = ((entryPrice - minPrice) / entryPrice) * 100;
-                                    mfeR = (entryPrice - minPrice) / (parseFloat(tradeDetails.stopLossPrice) - entryPrice);
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -495,40 +379,41 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 created_at: new Date().toISOString(),
                 entry_datetime: tradeDetails.actions[0].date.toISOString(),
                 entry_price: entryPrice,
+                open_risk: slDistance,
                 total_shares: totalShares,
                 remaining_shares: remainingShares,
                 realized_pnl: realizedPnl,
                 realized_pnl_percentage: realizedPnlPercentage,
                 unrealized_pnl: unrealizedPnl,
                 unrealized_pnl_percentage: unrealizedPnlPercentage,
+                market_value: market_value,
                 total_cost: totalCost,
-                strategy: selectedStrategy || null,
-                setups: selectedSetups.length > 0 ? selectedSetups : null,
-                exit_price: exitPrice || null,
-                exit_datetime: exitDate || null,
                 trimmed_percentage: trimmedPercentage,
                 risk_reward_ratio: rrr,
-                // open_risk: openRisk,
-                // stop_loss_33_percent: stop33,
-                // stop_loss_66_percent: stop66,
-                r_target_2: target2R,
-                r_target_3: target3R,
+                strategy: selectedStrategy || null,
+                setups: selectedSetups.length > 0 ? selectedSetups : null,
                 action_types,
                 action_datetimes,
                 action_prices,
                 action_shares,
                 notes,
                 mistakes,
-                mae: maePercent || 0,
-                mfe: mfePercent || 0,
-                mae_dollars: maeDollars || 0,
-                mfe_dollars: mfeDollars || 0,
-                mae_r: maeR || 0,
-                mfe_r: mfeR || 0,
                 holding_period: tempHoldingPeriod || 0,
-                market_value: market_value,
-                last_price: exitPrice || entryPrice,
-                // portfolio_impact: portfolioImpact,
+                r_target_2: target2R,
+                r_target_3: target3R,
+                stop_loss_33_percent: stop33,
+                stop_loss_66_percent: stop66,
+                // Add MAE/MFE metrics only for closed trades
+                ...(status === TRADE_STATUS.CLOSED ? {
+                    mae: maePercent,
+                    mfe: mfePercent,
+                    mae_dollars: maeDollars,
+                    mfe_dollars: mfeDollars,
+                    mae_r: maeR,
+                    mfe_r: mfeR,
+                    exit_datetime: exitDate,
+                    exit_price: exitPrice,
+                } : {})
             };
 
             console.log('Trade Record to be upserted:', tradeRecord);
@@ -655,12 +540,84 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
     };
 
     useEffect(() => {
+        const fetchChartData = async () => {
+            if (!existingTrade || !existingTrade.ticker || !existingTrade.entry_datetime) {
+                console.log('❌ Missing required trade data for chart:', { 
+                    existingTrade: !!existingTrade,
+                    ticker: existingTrade?.ticker,
+                    entryDatetime: existingTrade?.entry_datetime
+                });
+                return;
+            }
+            
+            setIsLoadingChart(true);
+            try {
+                // Use exact entry and exit datetimes from the trade
+                const entryDate = new Date(existingTrade.entry_datetime);
+                const exitDate = existingTrade.exit_datetime 
+                    ? new Date(existingTrade.exit_datetime) 
+                    : new Date();
+    
+                console.log('🔍 Fetching OHLCV data:', {
+                    ticker: existingTrade.ticker,
+                    entryDatetime: entryDate.toISOString(),
+                    exitDatetime: exitDate.toISOString()
+                });
+                
+                const data = await marketDataService.getOHLCVData(existingTrade.ticker, entryDate, exitDate);
+                
+                console.log('📊 OHLCV data received:', {
+                    dataPoints: data.length,
+                    firstDataPoint: data.length > 0 ? {
+                        time: new Date(data[0].time * 1000).toISOString(),
+                        open: data[0].open,
+                        close: data[0].close
+                    } : null,
+                    lastDataPoint: data.length > 0 ? {
+                        time: new Date(data[data.length - 1].time * 1000).toISOString(),
+                        open: data[data.length - 1].open,
+                        close: data[data.length - 1].close
+                    } : null
+                });
+    
+                setChartData(data);
+                
+                // Log trade actions
+                const tradeActions = existingTrade.action_types?.map((type, index) => ({
+                    type: type as 'BUY' | 'SELL',
+                    price: Number(existingTrade.action_prices?.[index]) || 0,
+                    time: Math.floor(new Date(existingTrade.action_datetimes?.[index] || '').getTime() / 1000) as UTCTimestamp,
+                    shares: Number(existingTrade.action_shares?.[index]) || 0
+                })) || [];
+    
+                console.log('🎯 Trade actions prepared:', tradeActions.map(action => ({
+                    type: action.type,
+                    price: action.price,
+                    time: new Date(action.time * 1000).toISOString(),
+                    shares: action.shares
+                })));
+                
+            } catch (error) {
+                console.error('❌ Error fetching chart data:', {
+                    error,
+                    trade: existingTrade
+                });
+                setChartData([]);
+            } finally {
+                setIsLoadingChart(false);
+            }
+        };
+    
+        fetchChartData();
+    }, [existingTrade]);
+    
+    useEffect(() => {
         if (existingTrade) {
             const actions = existingTrade.action_types?.map((type, index) => ({
                 type: type as 'BUY' | 'SELL',
                 date: new Date(existingTrade.action_datetimes?.[index] || Date.now()),
                 shares: existingTrade.action_shares?.[index]?.toString() || '',
-                price: existingTrade.action_prices?.[index]?.toString() || ''
+                price: existingTrade.action_shares?.[index]?.toString() || ''
             })) || [{
                 type: 'BUY',
                 date: new Date(),
@@ -697,8 +654,8 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                             className={`tab ${activeTab === 'notes' ? 'tab-active' : ''}`}
                             onClick={() => setActiveTab('notes')}
                         >
-                            Notes & Mistakes
-                        </a>
+                            Trade Replay, Notes & Mistakes
+                        </a>  
                     </div>
 
                     {activeTab === 'general' ? (
@@ -879,6 +836,23 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                                     </tbody>
                                 </table>
                             </div>
+                            {/* <div className="flex justify-center mt-6 mb-6 gap-8">
+                                {isLoadingChart ? (
+                                    <div className="h-[400px] w-full flex items-center justify-center">
+                                        <span className="loading loading-spinner loading-lg"></span>
+                                        <span className="ml-2">Loading chart data...</span>
+                                    </div>
+                                ) : chartData ? (
+                                    <div className="w-full">
+                                        <h3 className="text-lg font-semibold mb-2">Price History</h3>
+                                        <TradeChart data={chartData.data} trades={chartData.trades} />
+                                    </div>
+                                ) : (
+                                    <div className="h-[400px] w-full flex items-center justify-center text-gray-500">
+                                        No chart data available
+                                    </div>
+                                )}
+                            </div> */}
 
                             <div className="flex justify-center mt-6 mb-6 gap-8">
                                 <button
@@ -894,6 +868,30 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                         </>
                     ) : (
                         <div className="space-y-4">
+                            <div>
+                                <label className="label">Trade Replay</label>
+                                <div className="h-[400px] w-full bg-base-200 rounded-lg overflow-hidden">
+                                    {isLoadingChart ? (
+                                        <div className="h-full w-full flex items-center justify-center">
+                                            <span className="loading loading-spinner loading-lg"></span>
+                                        </div>
+                                    ) : chartData.length > 0 ? (
+                                        <TradeReplayChart
+                                            data={chartData}
+                                            actions={tradeDetails.actions.map(action => ({
+                                                type: action.type as 'BUY' | 'SELL',
+                                                price: Number(action.price),
+                                                time: Math.floor(new Date(action.date).getTime() / 1000) as UTCTimestamp,
+                                                shares: Number(action.shares)
+                                            }))}
+                                        />
+                                    ) : (
+                                        <div className="h-full w-full flex items-center justify-center text-gray-500">
+                                            No chart data available
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                             <div>
                                 <label className="label">Trade Notes</label>
                                 <textarea

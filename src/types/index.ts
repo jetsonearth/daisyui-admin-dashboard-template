@@ -34,6 +34,13 @@ export interface Trade {
     initial_position_risk?: number;
     current_var?: number;                 
 
+    // Trade Metrics
+    mae?: number;
+    mfe?: number;
+    mae_dollars?: number;
+    mfe_dollars?: number;
+    mae_r?: number;
+    mfe_r?: number;
   
     // Performance Metrics
     realized_pnl: number;
@@ -50,12 +57,8 @@ export interface Trade {
     risk_reward_ratio?: number;
   
     // Additional Metrics
-    mae?: number;
-    mfe?: number;
-    mae_dollars?: number;
-    mfe_dollars?: number;
-    mae_r?: number;
-    mfe_r?: number;
+    r_target_2?: number;
+    r_target_3?: number;
     
     // Timestamps
     created_at?: string;
@@ -67,13 +70,10 @@ export interface Trade {
     action_prices?: number[];
     action_shares?: number[];
 
-    // Documenting notes
+    // Documenting notes and analysis
     notes?: string[];
-
-    // Documenting mistakes
     mistakes?: string[];
-
-    holding_period?: string;
+    holding_period?: number;
     percent_from_entry?: number;
   }
 

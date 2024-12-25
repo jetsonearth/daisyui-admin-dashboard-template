@@ -3,13 +3,41 @@ import { Trade } from '../../types';
 import { supabase } from '../../config/supabaseClient'
 import { TRADE_STATUS } from '../../types';
 
-interface Quote {
+export interface Quote {
     price: number;
     timestamp: number;
     lastUpdate: string;
 }
 
-interface CachedQuote {
+export interface HistoricalPrices {
+    minPrice: number;
+    maxPrice: number;
+    ticker: string;
+    entryDate: string;
+    exitDate: string;
+    status: string;
+}
+
+export interface OHLCVData {
+    time: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+}
+
+export interface OHLCVResponse {
+    ohlcv: OHLCVData[];
+    ticker: string;
+    startDate: string;
+    endDate: string;
+    status: string;
+    error?: string;  // Add this line
+    message?: string; // Add this line for error messages
+}
+
+export interface CachedQuote {
     data: Quote;
     timestamp: number;
 }
@@ -22,7 +50,8 @@ class MarketDataService {
     constructor() {
         this.cache = new Map();
         this.cacheTimeout = 300000; // 5 minutes cache
-        this.appScriptUrl = 'https://script.google.com/macros/s/AKfycbzI8SqpzF8YVYnAMSj5v0v0RKVUGS5we6omprT00IMxz2A_B-_8q65IWhq1pEl5MUgU/exec';
+        // this.appScriptUrl = 'https://script.google.com/macros/s/AKfycbzI8SqpzF8YVYnAMSj5v0v0RKVUGS5we6omprT00IMxz2A_B-_8q65IWhq1pEl5MUgU/exec';
+        this.appScriptUrl = 'https://script.google.com/macros/s/AKfycbyHjm0QSFahHAgtiGafOYQlQfRUyLhKvytpF0qLAVgJFaX_3V_8QCHuO97wEmg7rPLM/exec';
     }
 
     private async getUserId(): Promise<string> {
@@ -34,6 +63,48 @@ class MarketDataService {
         }
 
         return user.id;
+    }
+
+    async getHighLowPrices(ticker: string, entryDate: Date, exitDate: Date): Promise<HistoricalPrices> {
+        try {
+            const userId = await this.getUserId();
+            console.log(`🔄 Fetching historical high/low prices for ${ticker} from ${entryDate} to ${exitDate}`);
+
+            const response = await fetch(this.appScriptUrl, {
+                redirect: "follow",
+                method: 'POST',
+                headers: {
+                    'Content-Type': "text/plain;charset=utf-8"
+                },
+                body: JSON.stringify({
+                    type: 'historical',
+                    userId,
+                    ticker,
+                    entryDate: entryDate.toISOString(),
+                    exitDate: exitDate.toISOString()
+                })
+            });
+
+            const textResponse = await response.text();
+            
+            try {
+                const data = JSON.parse(textResponse);
+                
+                if (!data || data.error) {
+                    throw new Error(data?.error || 'Invalid response from server');
+                }
+
+                console.log('✅ Historical prices fetched successfully:', data);
+                return data as HistoricalPrices;
+
+            } catch (error: any) {
+                console.error('Error parsing historical data response:', textResponse);
+                throw new Error(`Failed to parse historical data: ${error.message}`);
+            }
+        } catch (error) {
+            console.error('❌ Error fetching historical prices:', error);
+            throw error;
+        }
     }
 
     async getBatchQuotes(symbols: string[]): Promise<Record<string, Quote>> {
@@ -127,46 +198,80 @@ class MarketDataService {
         }
     }
 
+    async getOHLCVData(ticker: string, entryDate: Date, exitDate: Date): Promise<OHLCVData[]> {
+        try {
+            const userId = await this.getUserId();
+            console.log(`🔄 Fetching OHLCV data for ${ticker} from ${entryDate} to ${exitDate}`);
+
+            const response = await fetch(this.appScriptUrl, {
+                redirect: "follow",
+                method: 'POST',
+                headers: {
+                    'Content-Type': "text/plain;charset=utf-8"
+                },
+                body: JSON.stringify({
+                    type: 'ohlcv',
+                    userId,
+                    ticker,
+                    entryDate: entryDate.toISOString(),
+                    exitDate: exitDate.toISOString()
+                })
+            });
+
+            const textResponse = await response.text();
+            
+            try {
+                const data = JSON.parse(textResponse) as (OHLCVResponse | { error: string; message: string });
+                
+                if ('error' in data) {
+                    throw new Error(data.message || data.error || 'Invalid response from server');
+                }
+            
+                console.log('✅ OHLCV data fetched successfully');
+                return data.ohlcv;
+            } catch (error: any) {
+                console.error('Error parsing OHLCV data response:', textResponse);
+                throw new Error(`Failed to parse OHLCV data: ${error.message}`);
+            }
+        } catch (error) {
+            console.error('❌ Error fetching OHLCV data:', error);
+            throw error;
+        }
+    }
+
     async updateTradesWithMarketData(trades: Trade[]): Promise<Trade[]> {
-        if (!trades || trades.length === 0) {
+        // Only fetch market data for open trades
+        const openTrades = trades.filter(trade => trade.status === TRADE_STATUS.OPEN);
+        if (openTrades.length === 0) {
             return trades;
         }
 
-        try {
-            // Only get market data for active trades
-            const activeTrades = trades.filter(trade => trade.status === TRADE_STATUS.OPEN);
-            const symbols = Array.from(new Set(activeTrades.map(trade => trade.ticker)));
-            
-            if (symbols.length === 0) {
-                console.warn('No active trades found');
-                return trades;
+        const symbols = [...new Set(openTrades.map(trade => trade.ticker))];
+        const quotes = await this.getBatchQuotes(symbols);
+
+        return trades.map(trade => {
+            // For closed trades, return as is
+            if (trade.status === TRADE_STATUS.CLOSED) {
+                return trade;
             }
 
-            console.log(`🔄 Updating market data for ${symbols.length} active trades`);
-            const quotes = await this.getBatchQuotes(symbols);
-            
-            return trades.map(trade => {
-                // Skip closed trades
-                if (trade.status !== TRADE_STATUS.OPEN) {
-                    return trade;
-                }
-                
-                const quote = quotes[trade.ticker];
-                if (!quote) {
-                    console.warn(`No quote data found for ticker: ${trade.ticker}`);
-                    return trade;
-                }
-                
-                return {
-                    ...trade,
-                    currentPrice: quote.price,
-                    lastUpdate: quote.lastUpdate
-                };
-            });
-        } catch (error) {
-            console.error('❌ Error updating trades with market data:', error);
-            return trades;
-        }
+            const quote = quotes[trade.ticker];
+            if (!quote) {
+                return trade;
+            }
+
+            const currentPrice = quote.price;
+            const unrealizedPnL = (currentPrice - trade.entry_price) * trade.remaining_shares;
+            const unrealizedPnLPercentage = (unrealizedPnL / (trade.entry_price * trade.remaining_shares)) * 100;
+
+            return {
+                ...trade,
+                last_price: currentPrice,
+                unrealized_pnl: unrealizedPnL,
+                unrealized_pnl_percentage: unrealizedPnLPercentage,
+                market_value: trade.remaining_shares * currentPrice
+            };
+        });
     }
 
     async clearCacheForClosedTrades(trades: Trade[]) {
@@ -182,6 +287,54 @@ class MarketDataService {
     clearCache() {
         this.cache.clear();
         console.log('🧹 Market data cache cleared');
+    }
+
+    async testOHLCV() {
+        const entryDate = new Date('2023-12-10');
+        const exitDate = new Date('2023-12-15');
+        const ticker = 'AAPL';
+
+        console.log('🔄 Testing OHLCV data fetch...');
+        console.log(`Ticker: ${ticker}`);
+        console.log(`Entry Date: ${entryDate.toISOString()}`);
+        console.log(`Exit Date: ${exitDate.toISOString()}`);
+
+        try {
+            const data = await this.getOHLCVData(ticker, entryDate, exitDate);
+            
+            console.log('\n✅ Successfully fetched OHLCV data:');
+            console.log(`Number of candles: ${data.length}`);
+            
+            if (data.length > 0) {
+                console.log('\nFirst 3 candles:');
+                data.slice(0, 3).forEach(candle => {
+                    console.log({
+                        date: new Date(candle.time * 1000).toISOString(),
+                        open: candle.open,
+                        high: candle.high,
+                        low: candle.low,
+                        close: candle.close,
+                        volume: candle.volume
+                    });
+                });
+
+                console.log('\nLast 3 candles:');
+                data.slice(-3).forEach(candle => {
+                    console.log({
+                        date: new Date(candle.time * 1000).toISOString(),
+                        open: candle.open,
+                        high: candle.high,
+                        low: candle.low,
+                        close: candle.close,
+                        volume: candle.volume
+                    });
+                });
+            }
+            return data;
+        } catch (error) {
+            console.error('❌ Test failed:', error);
+            throw error;
+        }
     }
 }
 

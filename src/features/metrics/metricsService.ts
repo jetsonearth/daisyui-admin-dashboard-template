@@ -212,7 +212,7 @@ export class MetricsService {
         initial_position_risk: number;
         current_var: number;
     }> {
-        // For closed trades, use exit price and skip market data
+        // For closed trades, use stored values and skip market data
         if (trade.status === TRADE_STATUS.CLOSED) {
             return {
                 lastPrice: trade.exit_price || 0,

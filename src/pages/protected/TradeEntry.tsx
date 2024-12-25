@@ -381,12 +381,21 @@ const TradePlanner: React.FC = () => {
         }
 
         try {
-            const { data: { user } } = await supabase.auth.getUser();
+            const { data: { user }, error: authError } = await supabase.auth.getUser();
+            if (authError) {
+                console.error("🚨 Auth error:", authError);
+                toast.error('Authentication error. Please log in again.');
+                navigate('/login');
+                setIsSubmitting(false);
+                return;
+            }
+                
             if (!user) {
                 console.error("🚨 No authenticated user found");
                 toast.error('Please log in to submit a trade')
+                navigate('/login');
                 setIsSubmitting(false);
-                return
+                return;
             }
 
             console.log("📝 In Trade Planner, Preparing Trade Object");
@@ -448,7 +457,13 @@ const TradePlanner: React.FC = () => {
 
             if (error) {
                 console.error("🚫 Error saving trade:", error);
-                throw error
+                if (error.code === 'PGRST301' || error.message?.includes('JWT')) {
+                    toast.error('Session expired. Please log in again.');
+                    navigate('/login');
+                } else {
+                    toast.error('Failed to save trade.');
+                }
+                throw error;
             }
 
             toast.success('Trade saved successfully!');
