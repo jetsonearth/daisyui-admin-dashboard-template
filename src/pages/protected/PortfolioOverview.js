@@ -798,14 +798,31 @@ function PortfolioOverview() {
 
     useEffect(() => {
         if (!capitalHistory.length || !capitalChartRef.current) return;
-
-        // Destroy existing chart if it exists
+    
         if (capitalChartInstance.current) {
             capitalChartInstance.current.destroy();
         }
-
+    
         const ctx = capitalChartRef.current.getContext('2d');
-
+    
+        // Calculate percentage changes and determine colors
+        const percentageChanges = capitalHistory.map((item, index) => {
+            if (index === 0) return 0;
+            const prevCapital = capitalHistory[index - 1].capital_amount;
+            const currentCapital = item.capital_amount;
+            return ((currentCapital - prevCapital) / prevCapital) * 100;
+        });
+    
+        // Generate color array based on price movement
+        const lineColors = capitalHistory.map((item, index) => {
+            if (index === 0) return '#34d399'; // emerald-400 default for first point
+            return item.capital_amount >= capitalHistory[index - 1].capital_amount ? '#34d399' : '#fb7185'; // emerald-400 : rose-400
+        });
+    
+        // Find highest and lowest points
+        const maxCapital = Math.max(...capitalHistory.map(item => item.capital_amount));
+        const minCapital = Math.min(...capitalHistory.map(item => item.capital_amount));
+    
         capitalChartInstance.current = new Chart(ctx, {
             type: 'line',
             data: {
@@ -813,17 +830,34 @@ function PortfolioOverview() {
                 datasets: [{
                     label: 'Capital',
                     data: capitalHistory.map(item => item.capital_amount),
-                    borderColor: '#10b981', // emerald-500
+                    segment: {
+                        borderColor: (ctx) => {
+                            if (!ctx.p0.parsed) return '#34d399'; // emerald-400
+                            return ctx.p0.parsed.y <= ctx.p1.parsed.y ? '#34d399' : '#fb7185'; // emerald-400 : rose-400
+                        }
+                    },
+                    pointBackgroundColor: lineColors,
                     tension: 0.4,
-                    pointRadius: 2,
-                    pointHoverRadius: 5,
-                    borderWidth: 2,
+                    pointRadius: 3,
+                    pointHoverRadius: 6,
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    borderWidth: 2.5,
                     fill: true,
                     backgroundColor: (context) => {
                         const ctx = context.chart.ctx;
-                        const gradient = ctx.createLinearGradient(0, 0, 0, 100);
-                        gradient.addColorStop(0, 'rgba(16, 185, 129, 0.2)');
-                        gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
+                        const gradient = ctx.createLinearGradient(0, 0, 0, 200);
+                        const lastValue = capitalHistory[capitalHistory.length - 1].capital_amount;
+                        const firstValue = capitalHistory[0].capital_amount;
+                        const isOverallPositive = lastValue >= firstValue;
+                        
+                        if (isOverallPositive) {
+                            gradient.addColorStop(0, 'rgba(52, 211, 153, 0.25)'); // emerald-400
+                            gradient.addColorStop(1, 'rgba(52, 211, 153, 0)');
+                        } else {
+                            gradient.addColorStop(0, 'rgba(251, 113, 133, 0.25)'); // rose-400
+                            gradient.addColorStop(1, 'rgba(251, 113, 133, 0)');
+                        }
                         return gradient;
                     }
                 }]
@@ -840,18 +874,26 @@ function PortfolioOverview() {
                         display: false
                     },
                     tooltip: {
-                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                        padding: 12,
+                        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                        padding: {
+                            top: 10,
+                            right: 15,
+                            bottom: 10,
+                            left: 15
+                        },
                         titleColor: '#fff',
                         titleFont: {
-                            size: 12,
-                            weight: 'normal'
+                            size: 13,
+                            weight: '500',
+                            family: 'Inter, sans-serif'
                         },
                         bodyColor: '#fff',
                         bodyFont: {
-                            size: 14,
-                            weight: 'bold'
+                            size: 15,
+                            weight: '600',
+                            family: 'Inter, sans-serif'
                         },
+                        bodySpacing: 8,
                         displayColors: false,
                         callbacks: {
                             title: (tooltipItems) => {
@@ -860,10 +902,49 @@ function PortfolioOverview() {
                                 return dayjs(date).format('MMM D, YYYY');
                             },
                             label: (context) => {
-                                return `$${context.raw.toLocaleString(undefined, {
-                                    minimumFractionDigits: 0,
-                                    maximumFractionDigits: 0
-                                })}`;
+                                const lines = [
+                                    `$${context.raw.toLocaleString(undefined, {
+                                        minimumFractionDigits: 0,
+                                        maximumFractionDigits: 0
+                                    })}`
+                                ];
+    
+                                // Add percentage change with color-coded arrows
+                                if (context.dataIndex > 0) {
+                                    const change = percentageChanges[context.dataIndex];
+                                    const changeText = `${change >= 0 ? '▲' : '▼'} ${Math.abs(change).toFixed(2)}%`;
+                                    const changeColor = change >= 0 ? '#34d399' : '#fb7185'; // emerald-400 : rose-400
+                                    lines.push(`${changeText} from previous`);
+                                    // lines.push(`color: ${changeColor}`);
+                                }
+    
+                                // Add all-time high/low indicator
+                                // if (context.raw === maxCapital) {
+                                //     lines.push('All-Time High 🔥');
+                                // } else if (context.raw === minCapital) {
+                                //     lines.push('All-Time Low');
+                                // }
+    
+                                return lines;
+                            }
+                        }
+                    },
+                    annotation: {
+                        annotations: {
+                            latestValue: {
+                                type: 'line',
+                                yMin: capitalHistory[capitalHistory.length - 1].capital_amount,
+                                yMax: capitalHistory[capitalHistory.length - 1].capital_amount,
+                                borderColor: capitalHistory[capitalHistory.length - 1].capital_amount >= 
+                                           capitalHistory[capitalHistory.length - 2].capital_amount ? 
+                                           'rgba(52, 211, 153, 0.5)' : 'rgba(251, 113, 133, 0.5)', // emerald-400 : rose-400
+                                borderWidth: 1,
+                                borderDash: [5, 5],
+                                label: {
+                                    display: true,
+                                    content: 'Current',
+                                    position: 'end'
+                                }
                             }
                         }
                     }
@@ -884,14 +965,14 @@ function PortfolioOverview() {
                 }
             }
         });
-
+    
         return () => {
             if (capitalChartInstance.current) {
                 capitalChartInstance.current.destroy();
             }
         };
     }, [capitalHistory]);
-
+    
     useEffect(() => {
         if (lastUpdate) {
             const fetchCapitalHistory = async () => {
