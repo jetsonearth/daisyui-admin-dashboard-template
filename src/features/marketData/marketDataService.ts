@@ -51,7 +51,7 @@ class MarketDataService {
         this.cache = new Map();
         this.cacheTimeout = 300000; // 5 minutes cache
         // this.appScriptUrl = 'https://script.google.com/macros/s/AKfycbzI8SqpzF8YVYnAMSj5v0v0RKVUGS5we6omprT00IMxz2A_B-_8q65IWhq1pEl5MUgU/exec';
-        this.appScriptUrl = 'https://script.google.com/macros/s/AKfycbyHjm0QSFahHAgtiGafOYQlQfRUyLhKvytpF0qLAVgJFaX_3V_8QCHuO97wEmg7rPLM/exec';
+        this.appScriptUrl = 'https://script.google.com/macros/s/AKfycbz8ZJ2OFoBF92ZyOQL7YKoEY90C_CKOd_FWpUe7oErBmSldpTy2vv_RbbWD96yBRj__/exec';
     }
 
     private async getUserId(): Promise<string> {
