@@ -8,10 +8,7 @@ import { toast } from 'react-toastify';
 import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from '../../../../types'; 
 import { metricsService } from '../../../../features/metrics/metricsService';
 import { capitalService } from '../../../../services/capitalService';
-import { L, p } from 'chart.js/dist/chunks/helpers.core';
 import dayjs from 'dayjs';
-import TradeChart from '../../../../components/TradeChart';
-import { historicalDataService } from '../../../../services/historicalDataService';
 import { marketDataService } from '../../../marketData/marketDataService';
 import { TradeReplayChart } from '../../../../components/TradeReplayChart';
 
@@ -68,7 +65,7 @@ const initializeTradeDetails = (existingTrade: Trade): TradeDetails => {
         type: type as 'BUY' | 'SELL',
         date: new Date(existingTrade.action_datetimes?.[index] || Date.now()),
         shares: existingTrade.action_shares?.[index]?.toString() || '',
-        price: existingTrade.action_shares?.[index]?.toString() || ''
+        price: existingTrade.action_prices?.[index]?.toString() || ''
     })) || [{
         type: 'BUY',
         date: new Date(),
@@ -611,13 +608,14 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
         fetchChartData();
     }, [existingTrade]);
     
+    
     useEffect(() => {
         if (existingTrade) {
             const actions = existingTrade.action_types?.map((type, index) => ({
                 type: type as 'BUY' | 'SELL',
                 date: new Date(existingTrade.action_datetimes?.[index] || Date.now()),
                 shares: existingTrade.action_shares?.[index]?.toString() || '',
-                price: existingTrade.action_shares?.[index]?.toString() || ''
+                price: existingTrade.action_prices?.[index]?.toString() || ''
             })) || [{
                 type: 'BUY',
                 date: new Date(),
@@ -635,6 +633,11 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 strategy: existingTrade.strategy || '',
                 setups: existingTrade.setups || [],
             });
+
+            const strategy = existingTrade.strategy as STRATEGIES; // Ensure it's of type STRATEGIES
+            // Set the selected strategy and setups
+            setSelectedStrategy(strategy || undefined);
+            setSelectedSetups(existingTrade.setups || []);
         }
     }, [existingTrade]);
 
@@ -725,11 +728,14 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                                     <label className="label">Strategy:</label>
                                     <div className="dropdown w-full">
                                         <div tabIndex={0} role="button" className="btn select select-bordered w-full" onClick={() => {}}>
-                                            {selectedStrategy || "Select Strategy"}
+                                            {tradeDetails.strategy || "Select Strategy"}
                                         </div>
                                         <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[1] w-full p-2 shadow">
                                             {Object.values(STRATEGIES).map(strategy => (
-                                                <li key={strategy} onClick={() => setSelectedStrategy(strategy)}>
+                                                <li key={strategy} onClick={() => {
+                                                    setSelectedStrategy(strategy);
+                                                    setTradeDetails(prev => ({ ...prev, strategy }));
+                                                }}>
                                                     <a>{strategy}</a>
                                                 </li>
                                             ))}
@@ -741,7 +747,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                                     <label className="label">Setups:</label>
                                     <div className="dropdown w-full" id="dropdown-id">
                                         <div tabIndex={0} role="button" className="btn select select-bordered w-full" onClick={() => setIsDropdownOpen(prev => !prev)}>
-                                            {selectedSetups.length > 0 ? selectedSetups.join(', ') : "Select Setups"}
+                                            {tradeDetails.setups.length > 0 ? tradeDetails.setups.join(', ') : "Select Setups"}
                                         </div>
                                         {isDropdownOpen && (
                                             <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[1] w-full p-3 shadow grid grid-cols-5 gap-3">
@@ -752,14 +758,16 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                                                                 <input
                                                                     type="checkbox"
                                                                     value={setup}
-                                                                    checked={selectedSetups.includes(setup)}
+                                                                    checked={tradeDetails.setups.includes(setup)}
                                                                     onChange={(e) => {
                                                                         const value = e.target.value;
-                                                                        setSelectedSetups(prev => 
-                                                                            prev.includes(value) ? prev.filter(s => s !== value) : [...prev, value]
-                                                                        );
+                                                                        const newSetups = tradeDetails.setups.includes(value) 
+                                                                            ? tradeDetails.setups.filter(s => s !== value) 
+                                                                            : [...tradeDetails.setups, value];
+                                                                        setSelectedSetups(newSetups);
+                                                                        setTradeDetails(prev => ({ ...prev, setups: newSetups }));
                                                                     }}
-                                                                    className="checkbox checkbox-primary mr-2" // Added margin-right for spacing
+                                                                    className="checkbox checkbox-primary mr-2"
                                                                 />
                                                                 <span className="label-text">{setup}</span>
                                                             </label>
@@ -870,12 +878,13 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                         <div className="space-y-4">
                             <div>
                                 <label className="label">Trade Replay</label>
-                                <div className="h-[400px] w-full bg-base-200 rounded-lg overflow-hidden">
+                                <div className="h-[550px] w-full bg-base-200 rounded-lg overflow-hidden">
                                     {isLoadingChart ? (
                                         <div className="h-full w-full flex items-center justify-center">
                                             <span className="loading loading-spinner loading-lg"></span>
                                         </div>
                                     ) : chartData.length > 0 ? (
+                                        console.log('Trade Details:', tradeDetails),
                                         <TradeReplayChart
                                             data={chartData}
                                             actions={tradeDetails.actions.map(action => ({
@@ -884,6 +893,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                                                 time: Math.floor(new Date(action.date).getTime() / 1000) as UTCTimestamp,
                                                 shares: Number(action.shares)
                                             }))}
+                                            stopLossPrice={tradeDetails.stopLossPrice ? Number(tradeDetails.stopLossPrice) : undefined}
                                         />
                                     ) : (
                                         <div className="h-full w-full flex items-center justify-center text-gray-500">
