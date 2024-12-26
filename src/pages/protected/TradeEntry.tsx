@@ -74,11 +74,11 @@ const SystemAccordion = ({
                             <div>
                                 <div className="text-base-content mb-1">Dollar Exposure</div>
                                 <div className="text-2xl font-bold">{formatCurrency(metrics.dollarExposure)}</div>
-                                <div className="text-base-content/60 text-sm">total exposure</div>
+                                {/* <div className="text-base-content/60 text-sm">total exposure</div> */}
                             </div>
                             <div>
                                 <div className="text-base-content mb-1">Portfolio Weight</div>
-                                <div className="text-2xl font-bold text-warning">{formatPercent(metrics.portfolioWeight)}</div>
+                                <div className="text-2xl font-bold">{formatPercent(metrics.portfolioWeight)}</div>
                                 <div className="text-base-content/60 text-sm">of capital</div>
                             </div>
                         </div>
@@ -87,7 +87,7 @@ const SystemAccordion = ({
                         <div className="space-y-3 pt-2 border-t border-base-300">
                             <div>
                                 <div className="text-base-content mb-1">Risk</div>
-                                <div className="text-2xl font-bold text-error">{formatPercent(metrics.openRisk)}</div>
+                                <div className="text-2xl font-bold text-rose-400">{formatPercent(metrics.openRisk)}</div>
                                 <div className="text-base-content/60 text-sm">from entry to stop</div>
                             </div>
                             {/* <div>
@@ -109,17 +109,17 @@ const SystemAccordion = ({
                                         <>
                                             <div>
                                                 <div className="text-base-content/60 text-sm">33%</div>
-                                                <div className="font-bold text-error">{formatCurrency(metrics.stop33)}</div>
+                                                <div className="font-bold text-2xl text-rose-400">{formatCurrency(metrics.stop33)}</div>
                                             </div>
                                             <div>
                                                 <div className="text-base-content/60 text-sm">66%</div>
-                                                <div className="font-bold text-error">{formatCurrency(metrics.stop66)}</div>
+                                                <div className="font-bold text-2xl text-rose-400">{formatCurrency(metrics.stop66)}</div>
                                             </div>
                                         </>
                                     ) : null}
                                     <div>
                                         <div className="text-base-content/60 text-sm">Full</div>
-                                        <div className="font-bold text-error">{formatCurrency(metrics.fullStopPrice)}</div>
+                                        <div className="font-bold text-2xl text-rose-400">{formatCurrency(metrics.fullStopPrice)}</div>
                                     </div>
                                 </div>
                                 <div className="text-base-content/60 text-sm mt-1">Using {stopMethod}</div>
@@ -131,11 +131,11 @@ const SystemAccordion = ({
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <div className="text-base-content/60 text-sm">2R</div>
-                                        <div className="font-bold text-success">{formatCurrency(metrics.target2R)}</div>
+                                        <div className="font-bold text-2xl text-emerald-400">{formatCurrency(metrics.target2R)}</div>
                                     </div>
                                     <div>
                                         <div className="text-base-content/60 text-sm">3R</div>
-                                        <div className="font-bold text-success">{formatCurrency(metrics.target3R)}</div>
+                                        <div className="font-bold text-2xl text-emerald-400">{formatCurrency(metrics.target3R)}</div>
                                     </div>
                                 </div>
                             </div>
