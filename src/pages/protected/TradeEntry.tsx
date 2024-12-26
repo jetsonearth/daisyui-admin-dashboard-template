@@ -843,7 +843,7 @@ const TradePlanner: React.FC = () => {
 
     // Add watchlist drawer component
     const WatchlistDrawer = () => (
-        <div className="drawer drawer-end">
+        <div className="drawer drawer-end z-50">
             <input 
                 id="watchlist-drawer" 
                 type="checkbox" 
@@ -856,29 +856,60 @@ const TradePlanner: React.FC = () => {
             </div>
             <div className="drawer-side">
                 <label htmlFor="watchlist-drawer" className="drawer-overlay"></label>
-                <div className="bg-base-100 min-h-full w-96 p-4">
-                    <div className="flex justify-between items-center mb-6">
-                        <div className="flex items-center gap-2">
-                            <h2 className="text-2xl font-bold">Trade Plans</h2>
-                            <div className="badge badge-primary">{watchlistTrades.length}</div>
+                <div className="bg-base-100 min-h-full w-[500px] flex flex-col">
+                    {/* Header */}
+                    <div className="sticky top-0 bg-base-100 border-b border-base-200 p-4 z-30">
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <h2 className="text-2xl font-bold text-primary">Trade Plans</h2>
+                                <div className="badge badge-primary badge-lg">{watchlistTrades.length}</div>
+                            </div>
+                            <label 
+                                htmlFor="watchlist-drawer" 
+                                className="btn btn-circle btn-ghost btn-sm hover:bg-base-200"
+                                onClick={() => setShowWatchlist(false)}
+                            >
+                                ✕
+                            </label>
                         </div>
-                        <label htmlFor="watchlist-drawer" className="btn btn-ghost">×</label>
                     </div>
 
-                    <div className="space-y-4">
-                        {watchlistTrades.map(trade => (
-                            <div key={trade.id} className="card bg-base-200 shadow-sm">
-                                <div className="card-body p-4">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <div>
-                                            <h3 className="text-xl font-bold">{trade.ticker}</h3>
-                                            <div className="text-sm text-base-content/60">
-                                                Added {new Date(trade.addedAt).toLocaleDateString()}
+                    {/* Content */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        {watchlistTrades.length === 0 ? (
+                            <div className="text-center text-base-content/60 py-8">
+                                <div className="text-4xl mb-2">📋</div>
+                                <p>No trades planned yet</p>
+                                <p className="text-sm">Add trades to your watchlist to track them here</p>
+                            </div>
+                        ) : (
+                            watchlistTrades.map(trade => (
+                                <div key={trade.id} className="collapse collapse-arrow bg-base-200 shadow-sm hover:shadow-md transition-shadow">
+                                    <input type="checkbox" className="peer" /> 
+                                    <div className="collapse-title p-4 flex items-center justify-between gap-4">
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="text-xl font-bold">{trade.ticker}</h3>
+                                                <div className={`badge ${trade.setup.direction === 'LONG' ? 'badge-success' : 'badge-error'} badge-sm`}>
+                                                    {trade.setup.direction}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-4 mt-1 text-sm">
+                                                <div className="text-base-content/60">
+                                                    Added {new Date(trade.addedAt).toLocaleDateString()}
+                                                </div>
+                                                <div className="badge badge-ghost badge-sm">{trade.setup.strategy || 'No Strategy'}</div>
                                             </div>
                                         </div>
                                         <select 
-                                            className="select select-sm"
+                                            className={`select select-sm min-w-[120px] ${
+                                                trade.status === 'watching' ? 'select-primary' :
+                                                trade.status === 'ready' ? 'select-success' :
+                                                trade.status === 'executed' ? 'select-info' :
+                                                'select-error'
+                                            }`}
                                             value={trade.status}
+                                            onClick={(e) => e.stopPropagation()}
                                             onChange={(e) => {
                                                 setWatchlistTrades(prev =>
                                                     prev.map(t =>
@@ -889,72 +920,126 @@ const TradePlanner: React.FC = () => {
                                                 );
                                             }}
                                         >
-                                            <option value="watching">Watching</option>
-                                            <option value="ready">Ready</option>
-                                            <option value="executed">Executed</option>
-                                            <option value="abandoned">Abandoned</option>
+                                            <option value="watching">👀 Watching</option>
+                                            <option value="ready">✅ Ready</option>
+                                            <option value="executed">🎯 Executed</option>
+                                            <option value="abandoned">❌ Abandoned</option>
                                         </select>
                                     </div>
-
-                                    <div className="grid grid-cols-2 gap-2 text-sm mb-2">
-                                        <div>
-                                            <div className="text-base-content/60">Entry</div>
-                                            <div className="font-medium">${trade.setup.entryPrice}</div>
-                                        </div>
-                                        <div>
-                                            <div className="text-base-content/60">Stop</div>
-                                            <div className="font-medium text-rose-400">${trade.setup.stopPrice}</div>
-                                        </div>
-                                        <div>
-                                            <div className="text-base-content/60">Size</div>
-                                            <div className="font-medium">{trade.setup.positionSize} shares</div>
-                                        </div>
-                                        <div>
-                                            <div className="text-base-content/60">Risk</div>
-                                            <div className="font-medium">{trade.setup.risk.toFixed(2)}%</div>
-                                        </div>
-                                    </div>
-
-                                    <div className="text-sm mb-4">
-                                        <div className="text-base-content/60">Targets</div>
-                                        <div className="flex gap-2">
-                                            {trade.setup.targets.map((target, i) => (
-                                                <div key={i} className="font-medium text-emerald-400">
-                                                    ${target.toFixed(2)}
+                                    
+                                    <div className="collapse-content px-4 pb-4">
+                                        <div className="grid grid-cols-2 gap-3 mt-2">
+                                            <div className="card bg-base-300 p-3 rounded-lg">
+                                                <div className="text-sm font-medium mb-2 text-primary">Entry Setup</div>
+                                                <div className="grid grid-cols-2 gap-2 text-sm">
+                                                    <div>
+                                                        <div className="text-base-content/60">Entry</div>
+                                                        <div className="font-medium">${trade.setup.entryPrice.toFixed(2)}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-base-content/60">Stop</div>
+                                                        <div className="font-medium text-error">${trade.setup.stopPrice.toFixed(2)}</div>
+                                                    </div>
                                                 </div>
-                                            ))}
-                                        </div>
-                                    </div>
+                                            </div>
 
-                                    {trade.notes && (
-                                        <div className="text-sm mb-4">
-                                            <div className="text-base-content/60">Notes</div>
-                                            <div className="text-sm mt-1">{trade.notes}</div>
-                                        </div>
-                                    )}
+                                            <div className="card bg-base-300 p-3 rounded-lg">
+                                                <div className="text-sm font-medium mb-2 text-primary">Position</div>
+                                                <div className="grid grid-cols-2 gap-2 text-sm">
+                                                    <div>
+                                                        <div className="text-base-content/60">Size</div>
+                                                        <div className="font-medium">{trade.setup.positionSize} shares</div>
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-base-content/60">Stop Distance</div>
+                                                        <div className="font-medium text-error">{trade.setup.risk.toFixed(2)}%</div>
+                                                    </div>
+                                                </div>
+                                                <div className="mt-2 text-sm">
+                                                    <div className="text-base-content/60">Portfolio Risk</div>
+                                                    <div className="font-medium text-warning">{trade.setup.portfolioWeight.toFixed(2)}%</div>
+                                                </div>
+                                            </div>
 
-                                    <div className="card-actions justify-end">
-                                        <button
-                                            className="btn btn-error btn-sm"
-                                            onClick={() => {
-                                                setWatchlistTrades(prev =>
-                                                    prev.filter(t => t.id !== trade.id)
-                                                );
-                                            }}
-                                        >
-                                            Remove
-                                        </button>
-                                        <button
-                                            className="btn btn-primary btn-sm"
-                                            onClick={() => executeWatchlistTrade(trade)}
-                                            disabled={trade.status === 'executed' || trade.status === 'abandoned'}
-                                        >
-                                            Load Trade
-                                        </button>
+                                            <div className="card bg-base-300 p-3 rounded-lg">
+                                                <div className="text-sm font-medium mb-2 text-primary">Targets</div>
+                                                <div className="flex gap-4 text-sm">
+                                                    {trade.setup.targets.map((target, i) => (
+                                                        <div key={i}>
+                                                            <div className="text-base-content/60">T{i + 1}</div>
+                                                            <div className="font-medium text-success">${target.toFixed(2)}</div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="card bg-base-300 p-3 rounded-lg">
+                                                <div className="text-sm font-medium mb-2 text-primary">Strategy & Setups</div>
+                                                <div className="space-y-2">
+                                                    <div>
+                                                        <div className="text-xs text-base-content/60 mb-1">Strategy</div>
+                                                        {trade.setup.strategy ? (
+                                                            <div className="badge badge-ghost">{trade.setup.strategy}</div>
+                                                        ) : (
+                                                            <span className="text-base-content/40 text-sm">No strategy</span>
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-xs text-base-content/60 mb-1">Setups</div>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {trade.setup.setups?.map((setup, i) => (
+                                                                <div key={i} className="badge badge-sm badge-ghost">{setup}</div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Notes */}
+                                        {trade.notes && (
+                                            <div className="mt-3">
+                                                <div className="text-sm font-medium mb-1 text-primary">Notes</div>
+                                                <div className="text-sm bg-base-300 p-3 rounded-lg">
+                                                    {trade.notes}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Actions */}
+                                        <div className="flex justify-end gap-2 mt-4">
+                                            <button
+                                                className="btn btn-error btn-sm"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setWatchlistTrades(prev =>
+                                                        prev.filter(t => t.id !== trade.id)
+                                                    );
+                                                }}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                                    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                                                </svg>
+                                                Remove
+                                            </button>
+                                            <button
+                                                className="btn btn-primary btn-sm"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    executeWatchlistTrade(trade);
+                                                }}
+                                                disabled={trade.status === 'executed' || trade.status === 'abandoned'}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                                                </svg>
+                                                Load Trade
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            ))
+                        )}
                     </div>
                 </div>
             </div>
@@ -975,20 +1060,20 @@ const TradePlanner: React.FC = () => {
 
     return (
         <div className="grid grid-cols-11 gap-6">
-            {/* Add watchlist button in header */}
+            {/* Header with improved Trade Plans button */}
             <div className="col-span-11 mb-4">
                 <div className="flex justify-between items-center">
-                    <h2 className="text-xl font-bold"> </h2>
+                    {/* <h2 className="text-xl font-bold">Trade Entry</h2> */}
                     <button 
-                        className="btn btn-ghost btn-sm"
+                        className="btn btn-primary btn-sm gap-2 hover:shadow-lg transition-shadow"
                         onClick={() => setShowWatchlist(true)}
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                             <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
                         </svg>
-                        <span className="ml-2">Trade Plans</span>
+                        Trade Plans
                         {watchlistTrades.length > 0 && (
-                            <div className="badge badge-primary ml-2">{watchlistTrades.length}</div>
+                            <div className="badge badge-sm">{watchlistTrades.length}</div>
                         )}
                     </button>
                 </div>
