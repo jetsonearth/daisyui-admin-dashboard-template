@@ -15,7 +15,7 @@ function TradingViewWidget({ symbol = 'NASDAQ:AAPL' }) { // Add default value
 
         // Only create widget if we have a valid symbol and it's not empty
         if (symbol && symbol.trim() !== '') {
-            const formattedSymbol = symbol.includes(':') ? symbol : `NASDAQ:${symbol}`;
+            const formattedSymbol = symbol.includes(':') ? symbol : `${symbol}`;
             
             const script = document.createElement("script");
             script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";

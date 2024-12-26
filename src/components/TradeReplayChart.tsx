@@ -119,8 +119,8 @@ export const TradeReplayChart: React.FC<TradeReplayChartProps> = ({
         if (stopLossPrice) {
             candlestickSeries.createPriceLine({
                 price: stopLossPrice,
-                color: '#ffd700',
-                lineWidth: 2,
+                color: 'red',
+                lineWidth: 1,
                 lineStyle: 2, // Dotted line
                 axisLabelVisible: true,
                 title: 'Stop Loss',
@@ -278,17 +278,19 @@ export const TradeReplayChart: React.FC<TradeReplayChartProps> = ({
 
             candlestickSeries.setMarkers(markers);
 
-            // // Add price lines for each action
-            // actions.forEach((action, index) => {
-            //     candlestickSeries.createPriceLine({
-            //         price: action.price,
-            //         color: action.type === 'BUY' ? '#2196F3' : '#FF9800',
-            //         lineWidth: 2,
-            //         lineStyle: 2,
-            //         axisLabelVisible: true,
-            //         title: `${action.type} ${index + 1}`,
-            //     });
-            // });
+            // Find the first buy action
+            const firstBuyAction = actions.find(action => action.type === 'BUY');
+
+            if (firstBuyAction) {
+                candlestickSeries.createPriceLine({
+                    price: firstBuyAction.price,
+                    color: '#2196F3', // Color for buy action
+                    lineWidth: 1,
+                    lineStyle: 2, // Dotted line
+                    axisLabelVisible: true,
+                    title: 'First Entry',
+                });
+            }
         }
 
         // Fit content
