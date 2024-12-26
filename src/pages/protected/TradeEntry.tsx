@@ -19,7 +19,9 @@ const SystemAccordion = ({
     metrics,
     stopMethod,
     onPlaceTrade,
-    exposureForecast
+    exposureForecast,
+    canPlaceTrade,
+    addToWatchlist
 }: {
     system: 'tiered' | 'single';
     metrics: TieredRiskPositionMetrics | SingleRiskPositionMetrics;
@@ -30,6 +32,8 @@ const SystemAccordion = ({
         forecastedExposurePercent: number;
         additionalExposurePercent: number;
     };
+    canPlaceTrade: boolean;
+    addToWatchlist: () => void;
 }) => {
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('en-US', {
@@ -104,22 +108,22 @@ const SystemAccordion = ({
                         <div className="space-y-3">
                             <div>
                                 <div className="text-base-content mb-1">Stop Levels</div>
-                                <div className="grid grid-cols-3 gap-2">
+                                <div className="grid grid-cols-3 gap-5">
                                     {'stop33' in metrics ? (
                                         <>
                                             <div>
                                                 <div className="text-base-content/60 text-sm">33%</div>
-                                                <div className="font-bold text-2xl text-rose-400">{formatCurrency(metrics.stop33)}</div>
+                                                <div className="font-bold text-xl text-rose-400">{formatCurrency(metrics.stop33)}</div>
                                             </div>
                                             <div>
                                                 <div className="text-base-content/60 text-sm">66%</div>
-                                                <div className="font-bold text-2xl text-rose-400">{formatCurrency(metrics.stop66)}</div>
+                                                <div className="font-bold text-xl text-rose-400">{formatCurrency(metrics.stop66)}</div>
                                             </div>
                                         </>
                                     ) : null}
                                     <div>
                                         <div className="text-base-content/60 text-sm">Full</div>
-                                        <div className="font-bold text-2xl text-rose-400">{formatCurrency(metrics.fullStopPrice)}</div>
+                                        <div className="font-bold text-xl text-rose-400">{formatCurrency(metrics.fullStopPrice)}</div>
                                     </div>
                                 </div>
                                 <div className="text-base-content/60 text-sm mt-1">Using {stopMethod}</div>
@@ -131,11 +135,11 @@ const SystemAccordion = ({
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <div className="text-base-content/60 text-sm">2R</div>
-                                        <div className="font-bold text-2xl text-emerald-400">{formatCurrency(metrics.target2R)}</div>
+                                        <div className="font-bold text-xl text-emerald-400">{formatCurrency(metrics.target2R)}</div>
                                     </div>
                                     <div>
                                         <div className="text-base-content/60 text-sm">3R</div>
-                                        <div className="font-bold text-2xl text-emerald-400">{formatCurrency(metrics.target3R)}</div>
+                                        <div className="font-bold text-xl text-emerald-400">{formatCurrency(metrics.target3R)}</div>
                                     </div>
                                 </div>
                             </div>
@@ -147,15 +151,15 @@ const SystemAccordion = ({
                             <div className="space-y-1">
                                 <div className="flex justify-between text-sm">
                                     <span>Current</span>
-                                    <span className="text-warning">{formatPercent(exposureForecast.currentExposurePercent)}</span>
+                                    <span className="text-warning text-lg">{formatPercent(exposureForecast.currentExposurePercent)}</span>
                                 </div>
                                 <div className="flex justify-between text-sm">
                                     <span>+ This Trade</span>
-                                    <span className="text-warning">+{formatPercent(exposureForecast.additionalExposurePercent)}</span>
+                                    <span className="text-warning text-lg">+{formatPercent(exposureForecast.additionalExposurePercent)}</span>
                                 </div>
                                 <div className="flex justify-between font-medium border-t border-base-300 pt-1 mt-1">
-                                    <span>Forecasted</span>
-                                    <span className="text-warning">{formatPercent(exposureForecast.forecastedExposurePercent)}</span>
+                                    <span>Total Exposure if Placed</span>
+                                    <span className="text-warning text-xl">{formatPercent(exposureForecast.forecastedExposurePercent)}</span>
                                 </div>
                             </div>
                         </div>
@@ -163,12 +167,22 @@ const SystemAccordion = ({
                 </div>
 
                 {/* Place Trade Button */}
-                <button
-                    onClick={onPlaceTrade}
-                    className="w-full mt-4 btn btn-primary"
-                >
-                    Place Trade with {system === 'tiered' ? '3-Tiered' : 'Single'} System
-                </button>
+                <div className="flex gap-2 mt-4">
+                    <button
+                        className="btn btn-primary flex-1"
+                        onClick={onPlaceTrade}
+                        disabled={!canPlaceTrade}
+                    >
+                        Place Trade Now
+                    </button>
+                    <button
+                        className="btn btn-outline btn-primary flex-1"
+                        onClick={addToWatchlist}
+                        disabled={!canPlaceTrade}
+                    >
+                        Add to Watchlist
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -231,6 +245,28 @@ interface ActiveTrade {
     exposure: number;
 }
 
+interface WatchlistTrade {
+    id: string;
+    ticker: string;
+    setup: {
+        entryPrice: number;
+        stopPrice: number;
+        targets: number[];
+        positionSize: number;
+        risk: number;
+        portfolioWeight: number;
+        direction: 'LONG' | 'SHORT';
+        strategy?: string;
+        setups?: string[];
+        atr: number;
+        lowOfDay: number;
+        positionRisk: number;
+    };
+    notes: string;
+    addedAt: Date;
+    status: 'watching' | 'ready' | 'executed' | 'abandoned';
+}
+
 const TradePlanner: React.FC = () => {
     const navigate = useNavigate();
     const dispatch = useDispatch();
@@ -242,6 +278,10 @@ const TradePlanner: React.FC = () => {
     // Add state for active trades
     const [activeTrades, setActiveTrades] = useState<Trade[]>([]);
     const [isLoadingTrades, setIsLoadingTrades] = useState(true);
+
+    // Add watchlist state
+    const [watchlistTrades, setWatchlistTrades] = useState<WatchlistTrade[]>([]);
+    const [showWatchlist, setShowWatchlist] = useState(false);
 
     // Fetch active trades
     const fetchActiveTrades = async () => {
@@ -551,7 +591,7 @@ const TradePlanner: React.FC = () => {
         const tieredRiskPerShare = entryPrice * (tieredOpenRisk / 100);
         const tieredPositionSize = Math.max(1, Math.floor(initialRiskAmount / tieredRiskPerShare));
         const tieredDollarExposure = tieredPositionSize * entryPrice;
-        const tieredPortfolioWeight = tieredDollarExposure / currentCapital;
+        const tieredPortfolioWeight = tieredDollarExposure / currentCapital * 100;
         const tieredTarget2R = entryPrice * (1 + 2 * (tieredOpenRisk / 100));
         const tieredTarget3R = entryPrice * (1 + 3 * (tieredOpenRisk / 100));
 
@@ -559,7 +599,7 @@ const TradePlanner: React.FC = () => {
         const singleRiskPerShare = entryPrice * (singleOpenRisk / 100);
         const singlePositionSize = Math.max(1, Math.floor(initialRiskAmount / singleRiskPerShare));
         const singleDollarExposure = singlePositionSize * entryPrice;
-        const singlePortfolioWeight = singleDollarExposure / currentCapital;
+        const singlePortfolioWeight = singleDollarExposure / currentCapital * 100;
         const singleTarget2R = entryPrice * (1 + 2 * (singleOpenRisk / 100));
         const singleTarget3R = entryPrice * (1 + 3 * (singleOpenRisk / 100));
 
@@ -744,8 +784,216 @@ const TradePlanner: React.FC = () => {
         }
     };
 
+    // Add function to handle adding to watchlist
+    const addToWatchlist = () => {
+        const newTrade: WatchlistTrade = {
+            id: Date.now().toString(),
+            ticker: inputs.ticker,
+            setup: {
+                entryPrice: parseFloat(inputs.entryPrice),
+                stopPrice: getStopMethod(parseFloat(inputs.entryPrice), parseFloat(inputs.atr), parseFloat(inputs.lowOfDay)) === 'LoD' ? parseFloat(inputs.lowOfDay) : positionMetrics.tiered.fullStopPrice,
+                targets: [positionMetrics.tiered.target2R, positionMetrics.tiered.target3R],
+                positionSize: positionMetrics.tiered.positionSize,
+                risk: positionMetrics.tiered.openRisk,
+                portfolioWeight: positionMetrics.tiered.portfolioWeight,
+                direction: inputs.direction as 'LONG' | 'SHORT',
+                strategy: inputs.strategy,
+                setups: inputs.setups,
+                atr: parseFloat(inputs.atr),
+                lowOfDay: parseFloat(inputs.lowOfDay),
+                positionRisk: parseFloat(inputs.positionRisk)
+            },
+            notes: inputs.notes,
+            addedAt: new Date(),
+            status: 'watching'
+        };
+
+        setWatchlistTrades(prev => [...prev, newTrade]);
+        toast.success(`Added ${inputs.ticker} to watchlist`);
+    };
+
+    // Add function to execute watchlist trade
+    const executeWatchlistTrade = (trade: WatchlistTrade) => {
+        setInputs({
+            ticker: trade.ticker,
+            entryPrice: trade.setup.entryPrice.toString(),
+            atr: trade.setup.atr.toString(),
+            lowOfDay: trade.setup.lowOfDay.toString(),
+            positionRisk: trade.setup.positionRisk.toString(),
+            direction: trade.setup.direction,
+            strategy: trade.setup.strategy || '',
+            setups: trade.setup.setups || [],
+            notes: trade.notes,
+            commission: '0',  
+            assetType: 'Stock',  
+            currentCapital: '0'  
+        });
+
+        // Update trade status
+        setWatchlistTrades(prev =>
+            prev.map(t =>
+                t.id === trade.id
+                    ? { ...t, status: 'executed' }
+                    : t
+            )
+        );
+
+        setShowWatchlist(false);
+    };
+
+    // Add watchlist drawer component
+    const WatchlistDrawer = () => (
+        <div className="drawer drawer-end">
+            <input 
+                id="watchlist-drawer" 
+                type="checkbox" 
+                className="drawer-toggle" 
+                checked={showWatchlist}
+                onChange={(e) => setShowWatchlist(e.target.checked)}
+            />
+            <div className="drawer-content">
+                {/* Main content */}
+            </div>
+            <div className="drawer-side">
+                <label htmlFor="watchlist-drawer" className="drawer-overlay"></label>
+                <div className="bg-base-100 min-h-full w-96 p-4">
+                    <div className="flex justify-between items-center mb-6">
+                        <div className="flex items-center gap-2">
+                            <h2 className="text-2xl font-bold">Trade Plans</h2>
+                            <div className="badge badge-primary">{watchlistTrades.length}</div>
+                        </div>
+                        <label htmlFor="watchlist-drawer" className="btn btn-ghost">×</label>
+                    </div>
+
+                    <div className="space-y-4">
+                        {watchlistTrades.map(trade => (
+                            <div key={trade.id} className="card bg-base-200 shadow-sm">
+                                <div className="card-body p-4">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div>
+                                            <h3 className="text-xl font-bold">{trade.ticker}</h3>
+                                            <div className="text-sm text-base-content/60">
+                                                Added {new Date(trade.addedAt).toLocaleDateString()}
+                                            </div>
+                                        </div>
+                                        <select 
+                                            className="select select-sm"
+                                            value={trade.status}
+                                            onChange={(e) => {
+                                                setWatchlistTrades(prev =>
+                                                    prev.map(t =>
+                                                        t.id === trade.id
+                                                            ? { ...t, status: e.target.value as WatchlistTrade['status'] }
+                                                            : t
+                                                    )
+                                                );
+                                            }}
+                                        >
+                                            <option value="watching">Watching</option>
+                                            <option value="ready">Ready</option>
+                                            <option value="executed">Executed</option>
+                                            <option value="abandoned">Abandoned</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 text-sm mb-2">
+                                        <div>
+                                            <div className="text-base-content/60">Entry</div>
+                                            <div className="font-medium">${trade.setup.entryPrice}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-base-content/60">Stop</div>
+                                            <div className="font-medium text-rose-400">${trade.setup.stopPrice}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-base-content/60">Size</div>
+                                            <div className="font-medium">{trade.setup.positionSize} shares</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-base-content/60">Risk</div>
+                                            <div className="font-medium">{trade.setup.risk.toFixed(2)}%</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="text-sm mb-4">
+                                        <div className="text-base-content/60">Targets</div>
+                                        <div className="flex gap-2">
+                                            {trade.setup.targets.map((target, i) => (
+                                                <div key={i} className="font-medium text-emerald-400">
+                                                    ${target.toFixed(2)}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {trade.notes && (
+                                        <div className="text-sm mb-4">
+                                            <div className="text-base-content/60">Notes</div>
+                                            <div className="text-sm mt-1">{trade.notes}</div>
+                                        </div>
+                                    )}
+
+                                    <div className="card-actions justify-end">
+                                        <button
+                                            className="btn btn-error btn-sm"
+                                            onClick={() => {
+                                                setWatchlistTrades(prev =>
+                                                    prev.filter(t => t.id !== trade.id)
+                                                );
+                                            }}
+                                        >
+                                            Remove
+                                        </button>
+                                        <button
+                                            className="btn btn-primary btn-sm"
+                                            onClick={() => executeWatchlistTrade(trade)}
+                                            disabled={trade.status === 'executed' || trade.status === 'abandoned'}
+                                        >
+                                            Load Trade
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+
+    // Add validation function
+    const canPlaceTrade = (): boolean => {
+        return (
+            Boolean(inputs.ticker) &&
+            Boolean(inputs.entryPrice) &&
+            Boolean(inputs.direction) &&
+            (Boolean(inputs.lowOfDay) || Boolean(inputs.atr)) &&
+            parseFloat(inputs.positionRisk) > 0 &&
+            parseFloat(inputs.currentCapital) > 0
+        );
+    };
+
     return (
         <div className="grid grid-cols-11 gap-6">
+            {/* Add watchlist button in header */}
+            <div className="col-span-11 mb-4">
+                <div className="flex justify-between items-center">
+                    <h2 className="text-xl font-bold"> </h2>
+                    <button 
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setShowWatchlist(true)}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
+                        </svg>
+                        <span className="ml-2">Trade Plans</span>
+                        {watchlistTrades.length > 0 && (
+                            <div className="badge badge-primary ml-2">{watchlistTrades.length}</div>
+                        )}
+                    </button>
+                </div>
+            </div>
+
             <div className="col-span-6">
                 <div className="card bg-base-100 shadow-xl ounded-lg hover:shadow-lg hover:shadow-primary/10">
                     <div className="card-body p-4">
@@ -753,7 +1001,7 @@ const TradePlanner: React.FC = () => {
                         <div className="flex justify-between items-center border-b border-base-200 pb-4">
                             <div className="flex items-center gap-3">
                                 <h2 className="text-2xl font-bold text-white-300">
-                                    Trade Entry
+                                    Trade Details
                                 </h2>
                                 <div className="badge badge-primary badge-lg bg-opacity-20 text-primary font-semibold">
                                     New Trade
@@ -1082,6 +1330,8 @@ const TradePlanner: React.FC = () => {
                             stopMethod={getStopMethod(parseFloat(inputs.entryPrice), parseFloat(inputs.atr), parseFloat(inputs.lowOfDay))}
                             onPlaceTrade={() => handleSubmitTrade('tiered')}
                             exposureForecast={tieredExposureForecast}
+                            canPlaceTrade={canPlaceTrade()}
+                            addToWatchlist={addToWatchlist}
                         />
                         <SystemAccordion
                             system="single"
@@ -1089,12 +1339,17 @@ const TradePlanner: React.FC = () => {
                             stopMethod={getStopMethod(parseFloat(inputs.entryPrice), parseFloat(inputs.atr), parseFloat(inputs.lowOfDay))}
                             onPlaceTrade={() => handleSubmitTrade('single')}
                             exposureForecast={singleExposureForecast}
+                            canPlaceTrade={canPlaceTrade()}
+                            addToWatchlist={addToWatchlist}
                         />
                     </div>
                 </div>
             </div>
+
+            {/* Add watchlist drawer */}
+            <WatchlistDrawer />
         </div>
-    )
-}
+    );
+};
 
 export default TradePlanner;
