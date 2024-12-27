@@ -173,6 +173,7 @@ export class MetricsService {
     private calculateCurrentRiskAmount(trade: Trade, currentPrice: number): number {
         if (trade.status === TRADE_STATUS.CLOSED) return 0;
         
+        // Use remaining shares from trade, which is now required
         const remainingShares = trade.remaining_shares;
         
         // If trailing stop is set
@@ -236,26 +237,36 @@ export class MetricsService {
         if (!quote) {
             const currentRiskAmount = this.calculateCurrentRiskAmount(trade, trade.entry_price);
             const initialPositionRisk = ((trade.initial_risk_amount || 0) / currentCapital) * 100;
+            
+            // Calculate metrics using existing values
+            const marketValue = trade.remaining_shares * trade.entry_price;
+            const trimmedPercentage = ((trade.total_shares - trade.remaining_shares) / trade.total_shares) * 100;
+            const portfolioWeight = (marketValue / currentCapital) * 100;
+            const portfolioImpact = (trade.realized_pnl / startingCapital) * 100;
+            const currentVar = (currentRiskAmount / currentCapital) * 100;
+            
             return {
                 lastPrice: trade.entry_price,
-                marketValue: trade.remaining_shares * trade.entry_price,
-                unrealizedPnL: 0,
-                unrealizedPnLPercentage: 0,
-                realizedPnL: trade.realized_pnl || 0,
-                realizedPnLPercentage: (trade.realized_pnl || 0) / (trade.entry_price * trade.total_shares) * 100,
-                trimmedPercentage: ((trade.total_shares - trade.remaining_shares) / trade.total_shares) * 100,
-                portfolioWeight: (trade.remaining_shares * trade.entry_price / currentCapital) * 100,
-                portfolioImpact: ((trade.realized_pnl || 0) / startingCapital) * 100,
+                marketValue,
+                unrealizedPnL: trade.unrealized_pnl,
+                unrealizedPnLPercentage: trade.unrealized_pnl_percentage,
+                realizedPnL: trade.realized_pnl,
+                realizedPnLPercentage: trade.realized_pnl_percentage,
+                trimmedPercentage,
+                portfolioWeight,
+                portfolioImpact,
                 current_risk_amount: currentRiskAmount,
                 initial_position_risk: initialPositionRisk,
-                current_var: (currentRiskAmount / currentCapital) * 100,
-                riskRewardRatio: (trade.unrealized_pnl + trade.realized_pnl) / (currentRiskAmount || 1)
+                current_var: currentVar,
+                riskRewardRatio: ((trade.unrealized_pnl + trade.realized_pnl) / (currentRiskAmount || 1))
             };
         }
 
         const currentPrice = quote.price;
-        // Calculate metrics
+        
+        // Calculate metrics with current market price
         const marketValue = trade.remaining_shares * currentPrice;
+        // Only calculate unrealized PnL based on current price
         const unrealizedPnL = (currentPrice - trade.entry_price) * trade.remaining_shares;
         const unrealizedPnLPercentage = (unrealizedPnL / (trade.entry_price * trade.remaining_shares)) * 100;
         const realizedPnL = trade.realized_pnl || 0;

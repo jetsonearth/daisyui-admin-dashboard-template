@@ -28,6 +28,10 @@ const routes = [
     element: <TradePlanner />
   },
   {
+    path: '/trade-entry',
+    element: <TradePlanner />
+  },
+  {
     path: '/trades',
     element: <TradeLog />
   },

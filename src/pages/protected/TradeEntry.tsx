@@ -1,9 +1,17 @@
 // TradeEntry.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import TitleCard from '../../components/Cards/TitleCard';
-import { TRADE_STATUS, Trade, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from '../../types/index';
+import { 
+    Trade, 
+    TRADE_STATUS, 
+    ASSET_TYPES,
+    DIRECTIONS,
+    STRATEGIES,
+    SETUPS
+} from '../../types';
+import { tradeService, TradeCreateData } from '../../services/tradeService';
 import PriceLadder from '../../components/PriceLadder';
 import { supabase } from '../../config/supabaseClient';
 import { toast } from 'react-toastify';
@@ -270,6 +278,7 @@ interface WatchlistTrade {
 const TradePlanner: React.FC = () => {
     const navigate = useNavigate();
     const dispatch = useDispatch();
+    const location = useLocation();
 
     // State for account size and stop loss system
     const [accountSize, setAccountSize] = useState<number>(0);
@@ -282,6 +291,96 @@ const TradePlanner: React.FC = () => {
     // Add watchlist state
     const [watchlistTrades, setWatchlistTrades] = useState<WatchlistTrade[]>([]);
     const [showWatchlist, setShowWatchlist] = useState(false);
+
+    // Input states
+    const [inputs, setInputs] = useState<TradeInputs>({
+        ticker: '',
+        entryPrice: '',
+        atr: '',
+        lowOfDay: '',
+        positionRisk: '0.5',
+        commission: '0',
+        strategy: '',
+        setups: [],
+        direction: DIRECTIONS.LONG,
+        assetType: ASSET_TYPES.STOCK,
+        notes: '',
+        currentCapital: accountSize.toString()
+    });
+
+    // Ref for tracking latest input values
+    const latestInputs = useRef<TradeInputs>({
+        ticker: '',
+        entryPrice: '',
+        atr: '',
+        lowOfDay: '',
+        positionRisk: '',
+        commission: '',
+        strategy: '',
+        setups: [],
+        direction: '',
+        assetType: '',
+        notes: '',
+        currentCapital: ''
+    });
+
+    // Initialize inputs from location state if available
+    useEffect(() => {
+        if (location.state) {
+            const {
+                ticker,
+                entryPrice,
+                atr,
+                lowOfDay,
+                positionRisk,
+                strategy,
+                setups,
+                direction,
+                notes
+            } = location.state;
+
+            setInputs(prev => ({
+                ...prev,
+                ticker: ticker || '',
+                entryPrice: entryPrice || '',
+                atr: atr || '',
+                lowOfDay: lowOfDay || '',
+                positionRisk: positionRisk || '0.5',
+                strategy: strategy || '',
+                setups: setups || [],
+                direction: direction || DIRECTIONS.LONG,
+                notes: notes || ''
+            }));
+
+            // Update latest inputs ref
+            latestInputs.current = {
+                ...latestInputs.current,
+                ticker,
+                entryPrice,
+                atr,
+                lowOfDay,
+                positionRisk,
+                strategy,
+                setups,
+                direction,
+                notes
+            };
+
+            // Trigger metrics calculation with the new values
+            calculateMetricsWithValue({
+                ...inputs,
+                ticker,
+                entryPrice,
+                atr,
+                lowOfDay,
+                positionRisk,
+                strategy,
+                setups,
+                direction,
+                notes
+            });
+        }
+    }, [location.state]);
 
     // Fetch active trades
     const fetchActiveTrades = async () => {
@@ -372,38 +471,6 @@ const TradePlanner: React.FC = () => {
             additionalExposurePercent: (newTradeExposure / accountSize) * 100
         };
     };
-
-    // Input states
-    const [inputs, setInputs] = useState<TradeInputs>({
-        ticker: '',
-        entryPrice: '',
-        atr: '',
-        lowOfDay: '',
-        positionRisk: '0.5',
-        commission: '0',
-        strategy: '',
-        setups: [],
-        direction: DIRECTIONS.LONG,
-        assetType: ASSET_TYPES.STOCK,
-        notes: '',
-        currentCapital: accountSize.toString()
-    });
-
-    // Ref for tracking latest input values
-    const latestInputs = useRef<TradeInputs>({
-        ticker: '',
-        entryPrice: '',
-        atr: '',
-        lowOfDay: '',
-        positionRisk: '',
-        commission: '',
-        strategy: '',
-        setups: [],
-        direction: '',
-        assetType: '',
-        notes: '',
-        currentCapital: ''
-    });
 
     // Position sizing and risk calculations state
     const [positionMetrics, setPositionMetrics] = useState<SystemMetrics>({
@@ -640,7 +707,11 @@ const TradePlanner: React.FC = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Handle trade submission
-    const handleSubmitTrade = async (system: 'tiered' | 'single') => {
+    const handleSubmitTrade = async (system: 'tiered' | 'single', status: TRADE_STATUS = TRADE_STATUS.OPEN) => {
+        if (!canPlaceTrade()) {
+            toast.error('Please fill in all required fields');
+            return;
+        }
 
         setIsSubmitting(true);
 
@@ -691,6 +762,7 @@ const TradePlanner: React.FC = () => {
         }
 
         try {
+            // Get authenticated user
             const { data: { user }, error: authError } = await supabase.auth.getUser();
             if (authError) {
                 console.error("🚨 Auth error:", authError);
@@ -708,343 +780,165 @@ const TradePlanner: React.FC = () => {
                 return;
             }
 
-            console.log("📝 In Trade Planner, Preparing Trade Object");
+            console.log("📝 Preparing Trade Object");
 
             // Base trade data common to both systems
-            const tradeData = {
-                user_id: user.id,
+            const tradeData: TradeCreateData = {
                 ticker: inputs.ticker,
-                direction: inputs.direction,
-                asset_type: inputs.assetType || 'STOCK', // Default if not specified
+                direction: inputs.direction as DIRECTIONS,
+                asset_type: ASSET_TYPES.STOCK,
+                entry_price: Number(inputs.entryPrice),
+                total_shares: metrics.positionSize,
+                total_cost: metrics.dollarExposure,
+                stop_loss_price: metrics.fullStopPrice,
                 strategy: inputs.strategy || 'None',
                 setups: inputs.setups || [],
-                total_shares: metrics.positionSize,
+                atr: inputs.atr ? Number(inputs.atr) : undefined,
+                lod: inputs.lowOfDay ? Number(inputs.lowOfDay) : undefined
+            };
+
+            await tradeService.createPlannedTrade({
+                ...tradeData,
+                status,
+                user_id: user.id,
                 portfolio_weight: metrics.portfolioWeight,
-                total_cost: metrics.dollarExposure,
                 remaining_shares: metrics.positionSize,
-                entry_price: parseFloat(inputs.entryPrice),
-                last_price: parseFloat(inputs.entryPrice),
+                open_risk: metrics.openRisk,
+                last_price: Number(inputs.entryPrice),
                 portfolio_impact: 0,
                 trimmed_percentage: 0,
-                initial_position_risk: inputs.positionRisk,
-                market_value: metrics.positionSize * parseFloat(inputs.entryPrice),
-                status: "Open",
+                initial_position_risk: Number(inputs.positionRisk),
+                market_value: metrics.positionSize * Number(inputs.entryPrice),
                 entry_datetime: new Date().toISOString(),
                 unrealized_pnl: 0,
                 unrealized_pnl_percentage: 0,
-                stop_loss_price: metrics.fullStopPrice,
                 r_target_2: metrics.target2R,
                 r_target_3: metrics.target3R,
-                open_risk: metrics.openRisk,
                 risk_reward_ratio: 0,
                 initial_risk_amount: metrics.initialRiskAmount,
+                notes: inputs.notes ? [inputs.notes] : undefined, // Only add notes array if there are notes
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
-                hsm_fomo_ratio: positionMetrics.hsmFomoRatio,
-                action_types: ['BUY'],
+                realized_pnl: 0,
+                realized_pnl_percentage: 0,
+                action_types: status === TRADE_STATUS.OPEN ? ['BUY'] : ['PLAN'],
                 action_datetimes: [new Date().toISOString()],
                 action_shares: [metrics.positionSize],
-                action_prices: [parseFloat(inputs.entryPrice)]
-            };
-
-            // Add system-specific data
-            const systemTradeData = system === 'tiered'
-                ? {
-                    ...tradeData,
+                action_prices: [Number(inputs.entryPrice)],
+                ...(system === 'tiered' ? {
                     stop_loss_33_percent: (metrics as TieredRiskPositionMetrics).stop33,
                     stop_loss_66_percent: (metrics as TieredRiskPositionMetrics).stop66,
-                }
-                : {
-                    ...tradeData,
-                    stop_loss_33_percent: null,  // Set to null for single system
-                    stop_loss_66_percent: null   // Set to null for single system
-                };
+                } : {})
+            });
 
-            const { error } = await supabase
-                .from('trades')
-                .insert([systemTradeData])
-                .select();
-
-            if (error) {
-                console.error("🚫 Error saving trade:", error);
-                if (error.code === 'PGRST301' || error.message?.includes('JWT')) {
-                    toast.error('Session expired. Please log in again.');
-                    navigate('/login');
-                } else {
-                    toast.error('Failed to save trade.');
-                }
-                throw error;
-            }
-
-            toast.success('Trade saved successfully!');
-            navigate('/trades');
+            toast.success(status === TRADE_STATUS.OPEN ? 'Trade opened successfully' : 'Trade planned successfully');
+            clearForm();
+            await loadPlannedTrades();
         } catch (error) {
-            console.error('Error saving trade:', error);
-            toast.error('Failed to save trade.');
+            console.error('Error submitting trade:', error);
+            toast.error('Failed to submit trade');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
-    // Add function to handle adding to watchlist
-    const addToWatchlist = () => {
-        const newTrade: WatchlistTrade = {
-            id: Date.now().toString(),
-            ticker: inputs.ticker,
-            setup: {
-                entryPrice: parseFloat(inputs.entryPrice),
-                stopPrice: getStopMethod(parseFloat(inputs.entryPrice), parseFloat(inputs.atr), parseFloat(inputs.lowOfDay)) === 'LoD' ? parseFloat(inputs.lowOfDay) : positionMetrics.tiered.fullStopPrice,
-                targets: [positionMetrics.tiered.target2R, positionMetrics.tiered.target3R],
-                positionSize: positionMetrics.tiered.positionSize,
-                risk: positionMetrics.tiered.openRisk,
-                portfolioWeight: positionMetrics.tiered.portfolioWeight,
-                direction: inputs.direction as 'LONG' | 'SHORT',
-                strategy: inputs.strategy,
-                setups: inputs.setups,
-                atr: parseFloat(inputs.atr),
-                lowOfDay: parseFloat(inputs.lowOfDay),
-                positionRisk: parseFloat(inputs.positionRisk)
-            },
-            notes: inputs.notes,
-            addedAt: new Date(),
-            status: 'watching'
-        };
-
-        setWatchlistTrades(prev => [...prev, newTrade]);
-        toast.success(`Added ${inputs.ticker} to watchlist`);
-    };
-
-    // Add function to execute watchlist trade
-    const executeWatchlistTrade = (trade: WatchlistTrade) => {
+    const clearForm = () => {
         setInputs({
-            ticker: trade.ticker,
-            entryPrice: trade.setup.entryPrice.toString(),
-            atr: trade.setup.atr.toString(),
-            lowOfDay: trade.setup.lowOfDay.toString(),
-            positionRisk: trade.setup.positionRisk.toString(),
-            direction: trade.setup.direction,
-            strategy: trade.setup.strategy || '',
-            setups: trade.setup.setups || [],
-            notes: trade.notes,
-            commission: '0',  
-            assetType: 'Stock',  
-            currentCapital: '0'  
+            ticker: '',
+            entryPrice: '',
+            atr: '',
+            lowOfDay: '',
+            positionRisk: '',
+            direction: '',
+            strategy: '',
+            setups: [],
+            assetType: '',
+            notes: '',
+            currentCapital: '',
+            commission: '0'
         });
-
-        // Update trade status
-        setWatchlistTrades(prev =>
-            prev.map(t =>
-                t.id === trade.id
-                    ? { ...t, status: 'executed' }
-                    : t
-            )
-        );
-
-        setShowWatchlist(false);
     };
 
-    // Add watchlist drawer component
-    const WatchlistDrawer = () => (
-        <div className="drawer drawer-end z-50">
-            <input 
-                id="watchlist-drawer" 
-                type="checkbox" 
-                className="drawer-toggle" 
-                checked={showWatchlist}
-                onChange={(e) => setShowWatchlist(e.target.checked)}
-            />
-            <div className="drawer-content">
-                {/* Main content */}
-            </div>
-            <div className="drawer-side">
-                <label htmlFor="watchlist-drawer" className="drawer-overlay"></label>
-                <div className="bg-base-100 min-h-full w-[500px] flex flex-col">
-                    {/* Header */}
-                    <div className="sticky top-0 bg-base-100 border-b border-base-200 p-4 z-30">
-                        <div className="flex justify-between items-center">
-                            <div className="flex items-center gap-3">
-                                <h2 className="text-2xl font-bold text-primary">Trade Plans</h2>
-                                <div className="badge badge-primary badge-lg">{watchlistTrades.length}</div>
-                            </div>
-                            <label 
-                                htmlFor="watchlist-drawer" 
-                                className="btn btn-circle btn-ghost btn-sm hover:bg-base-200"
-                                onClick={() => setShowWatchlist(false)}
-                            >
-                                ✕
-                            </label>
-                        </div>
-                    </div>
+    const handlePlanTrade = () => {
+        const currentSystem = slSystem === 'three-tiered' ? 'tiered' : 'single';
+        handleSubmitTrade(currentSystem, TRADE_STATUS.PLANNED);
+    };
 
-                    {/* Content */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                        {watchlistTrades.length === 0 ? (
-                            <div className="text-center text-base-content/60 py-8">
-                                <div className="text-4xl mb-2">📋</div>
-                                <p>No trades planned yet</p>
-                                <p className="text-sm">Add trades to your watchlist to track them here</p>
-                            </div>
-                        ) : (
-                            watchlistTrades.map(trade => (
-                                <div key={trade.id} className="collapse collapse-arrow bg-base-200 shadow-sm hover:shadow-md transition-shadow">
-                                    <input type="checkbox" className="peer" /> 
-                                    <div className="collapse-title p-4 flex items-center justify-between gap-4">
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-2">
-                                                <h3 className="text-xl font-bold">{trade.ticker}</h3>
-                                                <div className={`badge ${trade.setup.direction === 'LONG' ? 'badge-success' : 'badge-error'} badge-sm`}>
-                                                    {trade.setup.direction}
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-4 mt-1 text-sm">
-                                                <div className="text-base-content/60">
-                                                    Added {new Date(trade.addedAt).toLocaleDateString()}
-                                                </div>
-                                                <div className="badge badge-ghost badge-sm">{trade.setup.strategy || 'No Strategy'}</div>
-                                            </div>
-                                        </div>
-                                        <select 
-                                            className={`select select-sm min-w-[120px] ${
-                                                trade.status === 'watching' ? 'select-primary' :
-                                                trade.status === 'ready' ? 'select-success' :
-                                                trade.status === 'executed' ? 'select-info' :
-                                                'select-error'
-                                            }`}
-                                            value={trade.status}
-                                            onClick={(e) => e.stopPropagation()}
-                                            onChange={(e) => {
-                                                setWatchlistTrades(prev =>
-                                                    prev.map(t =>
-                                                        t.id === trade.id
-                                                            ? { ...t, status: e.target.value as WatchlistTrade['status'] }
-                                                            : t
-                                                    )
-                                                );
-                                            }}
-                                        >
-                                            <option value="watching">👀 Watching</option>
-                                            <option value="ready">✅ Ready</option>
-                                            <option value="executed">🎯 Executed</option>
-                                            <option value="abandoned">❌ Abandoned</option>
-                                        </select>
-                                    </div>
-                                    
-                                    <div className="collapse-content px-4 pb-4">
-                                        <div className="grid grid-cols-2 gap-3 mt-2">
-                                            <div className="card bg-base-300 p-3 rounded-lg">
-                                                <div className="text-sm font-medium mb-2 text-primary">Entry Setup</div>
-                                                <div className="grid grid-cols-2 gap-2 text-sm">
-                                                    <div>
-                                                        <div className="text-base-content/60">Entry</div>
-                                                        <div className="font-medium">${trade.setup.entryPrice.toFixed(2)}</div>
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-base-content/60">Stop</div>
-                                                        <div className="font-medium text-error">${trade.setup.stopPrice.toFixed(2)}</div>
-                                                    </div>
-                                                </div>
-                                            </div>
+    const handleExecutePlannedTrade = async (trade: Trade) => {
+        try {
+            await tradeService.updateTrade(trade.id!, { 
+                status: TRADE_STATUS.OPEN,
+                entry_datetime: new Date().toISOString(),
+                action_types: [...(trade.action_types || []), 'BUY'],
+                action_datetimes: [...(trade.action_datetimes || []), new Date().toISOString()],
+                action_shares: [...(trade.action_shares || []), trade.total_shares],
+                action_prices: [...(trade.action_prices || []), trade.entry_price]
+            });
+            toast.success('Trade executed successfully');
+            await loadPlannedTrades();
+        } catch (error) {
+            console.error('Error executing planned trade:', error);
+            toast.error('Failed to execute trade');
+        }
+    };
 
-                                            <div className="card bg-base-300 p-3 rounded-lg">
-                                                <div className="text-sm font-medium mb-2 text-primary">Position</div>
-                                                <div className="grid grid-cols-2 gap-2 text-sm">
-                                                    <div>
-                                                        <div className="text-base-content/60">Size</div>
-                                                        <div className="font-medium">{trade.setup.positionSize} shares</div>
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-base-content/60">Stop Distance</div>
-                                                        <div className="font-medium text-error">{trade.setup.risk.toFixed(2)}%</div>
-                                                    </div>
-                                                </div>
-                                                <div className="mt-2 text-sm">
-                                                    <div className="text-base-content/60">Portfolio Risk</div>
-                                                    <div className="font-medium text-warning">{trade.setup.portfolioWeight.toFixed(2)}%</div>
-                                                </div>
-                                            </div>
+    const [plannedTrades, setPlannedTrades] = useState<Trade[]>([]);
 
-                                            <div className="card bg-base-300 p-3 rounded-lg">
-                                                <div className="text-sm font-medium mb-2 text-primary">Targets</div>
-                                                <div className="flex gap-4 text-sm">
-                                                    {trade.setup.targets.map((target, i) => (
-                                                        <div key={i}>
-                                                            <div className="text-base-content/60">T{i + 1}</div>
-                                                            <div className="font-medium text-success">${target.toFixed(2)}</div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
+    const loadPlannedTrades = async () => {
+        try {
+            const trades = await tradeService.getPlannedTrades();
+            setPlannedTrades(trades);
+        } catch (error) {
+            console.error('Error loading planned trades:', error);
+            toast.error('Failed to load planned trades');
+        }
+    };
 
-                                            <div className="card bg-base-300 p-3 rounded-lg">
-                                                <div className="text-sm font-medium mb-2 text-primary">Strategy & Setups</div>
-                                                <div className="space-y-2">
-                                                    <div>
-                                                        <div className="text-xs text-base-content/60 mb-1">Strategy</div>
-                                                        {trade.setup.strategy ? (
-                                                            <div className="badge badge-ghost">{trade.setup.strategy}</div>
-                                                        ) : (
-                                                            <span className="text-base-content/40 text-sm">No strategy</span>
-                                                        )}
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-xs text-base-content/60 mb-1">Setups</div>
-                                                        <div className="flex flex-wrap gap-1">
-                                                            {trade.setup.setups?.map((setup, i) => (
-                                                                <div key={i} className="badge badge-sm badge-ghost">{setup}</div>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
+    // Fetch planned trades on mount and when drawer opens
+    useEffect(() => {
+        loadPlannedTrades();
+    }, []);
 
-                                        {/* Notes */}
-                                        {trade.notes && (
-                                            <div className="mt-3">
-                                                <div className="text-sm font-medium mb-1 text-primary">Notes</div>
-                                                <div className="text-sm bg-base-300 p-3 rounded-lg">
-                                                    {trade.notes}
-                                                </div>
-                                            </div>
-                                        )}
+    useEffect(() => {
+        if (showWatchlist) {
+            loadPlannedTrades();
+        }
+    }, [showWatchlist]);
 
-                                        {/* Actions */}
-                                        <div className="flex justify-end gap-2 mt-4">
-                                            <button
-                                                className="btn btn-error btn-sm"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setWatchlistTrades(prev =>
-                                                        prev.filter(t => t.id !== trade.id)
-                                                    );
-                                                }}
-                                            >
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                                    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                                                </svg>
-                                                Remove
-                                            </button>
-                                            <button
-                                                className="btn btn-primary btn-sm"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    executeWatchlistTrade(trade);
-                                                }}
-                                                disabled={trade.status === 'executed' || trade.status === 'abandoned'}
-                                            >
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                                                </svg>
-                                                Load Trade
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
+    // const handleLoadTrade = (trade: WatchlistTrade) => {
+    //     navigate('/planner', {
+    //         state: {
+    //             ticker: trade.ticker,
+    //             direction: trade.direction,
+    //             entryPrice: trade.entry_price.toString(),
+    //             atr: trade.atr.toString(),
+    //             lowOfDay: trade.low_of_day.toString(),
+    //             positionRisk: trade.position_risk.toString(),
+    //             strategy: trade.strategy || '',
+    //             setups: trade.setups || [],
+    //             notes: trade.notes || ''
+    //         }
+    //     });
+    //     setShowWatchlist(false); // Close the drawer after loading
+    // };
+
+    // const handleDeleteTrade = async (tradeId: string) => {
+    //     try {
+    //         await tradeService.deleteTrade(tradeId);
+    //         toast.success('Trade deleted successfully');
+    //         await loadPlannedTrades();
+    //     } catch (error) {
+    //         console.error('Error deleting trade:', error);
+    //         toast.error('Failed to delete trade');
+    //     }
+    // };
+
+    // const formatDate = (dateString: string) => {
+    //     return new Date(dateString).toLocaleDateString('en-US', {
+    //         month: 'short',
+    //         day: 'numeric'
+    //     });
+    // };
 
     // Add validation function
     const canPlaceTrade = (): boolean => {
@@ -1061,23 +955,6 @@ const TradePlanner: React.FC = () => {
     return (
         <div className="grid grid-cols-11 gap-6">
             {/* Header with improved Trade Plans button */}
-            <div className="col-span-11 mb-4">
-                <div className="flex justify-between items-center">
-                    {/* <h2 className="text-xl font-bold">Trade Entry</h2> */}
-                    <button 
-                        className="btn btn-primary btn-sm gap-2 hover:shadow-lg transition-shadow"
-                        onClick={() => setShowWatchlist(true)}
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
-                        </svg>
-                        Trade Plans
-                        {watchlistTrades.length > 0 && (
-                            <div className="badge badge-sm">{watchlistTrades.length}</div>
-                        )}
-                    </button>
-                </div>
-            </div>
 
             <div className="col-span-6">
                 <div className="card bg-base-100 shadow-xl ounded-lg hover:shadow-lg hover:shadow-primary/10">
@@ -1094,7 +971,7 @@ const TradePlanner: React.FC = () => {
                             </div>
                             <div className="text-sm text-base-content/70 italic flex items-center gap-2">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                                 All fields are required
                             </div>
@@ -1236,7 +1113,7 @@ const TradePlanner: React.FC = () => {
                                     <label className="label">
                                         <span className="label-text font-medium flex items-center gap-2">
                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0v8m0-8l-8 8-4-4-6 6" />
                                             </svg>
                                             Direction
                                         </span>
@@ -1373,7 +1250,7 @@ const TradePlanner: React.FC = () => {
                                 <label className="label py-1"> {/* Reduced label padding */}
                                     <span className="label-text font-medium flex items-center gap-2">
                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                            <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                         </svg>
                                         Notes
                                     </span>
@@ -1416,7 +1293,7 @@ const TradePlanner: React.FC = () => {
                             onPlaceTrade={() => handleSubmitTrade('tiered')}
                             exposureForecast={tieredExposureForecast}
                             canPlaceTrade={canPlaceTrade()}
-                            addToWatchlist={addToWatchlist}
+                            addToWatchlist={handlePlanTrade}
                         />
                         <SystemAccordion
                             system="single"
@@ -1425,14 +1302,11 @@ const TradePlanner: React.FC = () => {
                             onPlaceTrade={() => handleSubmitTrade('single')}
                             exposureForecast={singleExposureForecast}
                             canPlaceTrade={canPlaceTrade()}
-                            addToWatchlist={addToWatchlist}
+                            addToWatchlist={handlePlanTrade}
                         />
                     </div>
                 </div>
             </div>
-
-            {/* Add watchlist drawer */}
-            <WatchlistDrawer />
         </div>
     );
 };

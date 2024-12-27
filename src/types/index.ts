@@ -1,87 +1,9 @@
-export interface Trade {
-    // Identifiers
-    id: string;
-    user_id: string;
-    
-    // Basic Trade Info
-    ticker: string;
-    asset_type: string;
-    direction: string;
-    status: string;
-    strategy?: string;
-    setups?: string[];
-  
-    // Entry Details
-    entry_date: string;
-    entry_datetime?: string;
-    entry_price: number;
-    total_shares: number;
-    total_cost: number;
-    remaining_shares: number;
-  
-    // Exit Details
-    exit_datetime?: string;
-    exit_price?: number;
-  
-    // Risk Management
-    stop_loss_price: number;
-    stop_loss_33_percent?: number;
-    stop_loss_66_percent?: number;
-    open_risk: number;
-    initial_risk_amount?: number;
-    current_risk_amount?: number;
-    trailing_stoploss?: number;
-    initial_position_risk?: number;
-    current_var?: number;                 
-
-    // Trade Metrics
-    mae?: number;
-    mfe?: number;
-    mae_dollars?: number;
-    mfe_dollars?: number;
-    mae_r?: number;
-    mfe_r?: number;
-  
-    // Performance Metrics
-    realized_pnl: number;
-    realized_pnl_percentage: number;
-    unrealized_pnl: number;
-    unrealized_pnl_percentage: number;
-    last_price: number;
-    market_value: number;
-  
-    // Portfolio Metrics
-    portfolio_weight?: number;
-    portfolio_impact?: number;
-    trimmed_percentage?: number;
-    risk_reward_ratio?: number;
-  
-    // Additional Metrics
-    r_target_2?: number;
-    r_target_3?: number;
-    
-    // Timestamps
-    created_at?: string;
-    updated_at?: string;
-
-    // Documenting actions
-    action_types?: string[];
-    action_datetimes?: string[];
-    action_prices?: number[];
-    action_shares?: number[];
-
-    // Documenting notes and analysis
-    notes?: string[];
-    mistakes?: string[];
-    holding_period?: number;
-    percent_from_entry?: number;
-  }
-
-
 // Enums
 export enum TRADE_STATUS {
+    PLANNED = 'Planned',
     OPEN = 'Open',
-    CLOSED = 'Closed'
+    CLOSED = 'Closed',
+    MISSED = 'Missed'
 }
 
 export enum ASSET_TYPES {
@@ -116,4 +38,117 @@ export function formatDateForUI(datetime?: string): string | null {
     if (!datetime) return null;
     const date = new Date(datetime);
     return date.toISOString().split('T')[0];
+}
+
+export interface Trade {
+    // Identifiers (Required)
+    id: string;
+    user_id: string;
+    
+    // Basic Trade Info (Required)
+    ticker: string;
+    asset_type: string;
+    direction: string;
+    status: string;
+    entry_price: number;
+    stop_loss_price: number;
+    total_shares: number;
+    total_cost: number;
+    remaining_shares: number;
+    open_risk: number;
+    realized_pnl: number;
+    realized_pnl_percentage: number;
+    unrealized_pnl: number;
+    unrealized_pnl_percentage: number;
+    last_price: number;
+    market_value: number;
+    entry_date: string;
+  
+    // Optional Trade Info
+    strategy?: string;
+    setups?: string[];
+    targets?: number[];
+    risk_percentage?: number;
+    portfolio_risk?: number;
+    position_size?: number;
+  
+    // Entry/Exit Details
+    entry_datetime?: string;
+    exit_datetime?: string;
+    exit_price?: number;
+  
+    // Risk Management
+    stop_loss_33_percent?: number;
+    stop_loss_66_percent?: number;
+    initial_risk_amount?: number;
+    current_risk_amount?: number;
+    trailing_stoploss?: number;
+    initial_position_risk?: number;
+    current_var?: number;                 
+
+    // Trade Metrics
+    mae?: number;
+    mfe?: number;
+    mae_dollars?: number;
+    mfe_dollars?: number;
+    mae_r?: number;
+    mfe_r?: number;
+  
+    // Portfolio Metrics
+    portfolio_weight?: number;
+    portfolio_impact?: number;
+    trimmed_percentage?: number;
+    risk_reward_ratio?: number;
+  
+    // Additional Metrics
+    r_target_1?: number;
+    r_target_2?: number;
+    r_target_3?: number;
+    pnl?: number;
+    r_multiple?: number;
+    commission?: number;
+    
+    // Trade Planning
+    watching?: boolean;
+    ready?: boolean;
+    atr?: number;
+    lod?: number;
+    
+    // Timestamps
+    created_at?: string;
+    updated_at?: string;
+    closed_at?: string;
+
+    // Documenting actions
+    action_types?: string[];
+    action_datetimes?: string[];
+    action_prices?: number[];
+    action_shares?: number[];
+
+    // Documenting notes and analysis
+    notes?: string[];
+    tags?: string[];
+    mistakes?: string[];
+    holding_period?: number;
+    percent_from_entry?: number;
+}
+
+export interface WatchlistTrade {
+    id: string;
+    ticker: string;
+    entry_price: number;
+    stop_loss_price: number;
+    total_shares: number;
+    initial_risk_amount: number;
+    portfolio_weight: number;
+    direction: 'LONG' | 'SHORT';
+    strategy?: string;
+    setups?: string[];
+    atr: number;
+    lod: number;
+    position_risk: number;
+    notes?: string;
+    created_at: string;
+    status: string;
+    r_target_2?: number;
 }

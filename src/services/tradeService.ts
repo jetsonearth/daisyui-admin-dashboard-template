@@ -2,7 +2,7 @@
 import { supabase } from '../config/supabaseClient';
 import { TRADE_STATUS, ASSET_TYPES, DIRECTIONS, Trade } from '../types';
 
-interface TradeCreateData {
+export interface TradeCreateData {
     ticker: string;
     asset_type: ASSET_TYPES;
     direction: DIRECTIONS;
@@ -12,6 +12,8 @@ interface TradeCreateData {
     stop_loss_price: number;
     strategy?: string;
     setups?: string[];
+    atr?: number;
+    lod?: number;
 }
 
 interface TradeUpdateData {
@@ -21,6 +23,11 @@ interface TradeUpdateData {
     status?: TRADE_STATUS;
     exit_price?: number;
     exit_date?: string;
+    entry_datetime?: string;
+    action_types?: string[];
+    action_datetimes?: string[];
+    action_shares?: number[];
+    action_prices?: number[];
     
     // Add all potential update fields from the Trade interface
     trimmed_percentage?: number;
@@ -49,7 +56,9 @@ export const tradeService = {
                 total_cost,
                 stop_loss_price,
                 strategy,
-                setups
+                setups,
+                atr,
+                lod
             } = tradeData;
     
             // Calculate risk amount
@@ -75,9 +84,11 @@ export const tradeService = {
                 stop_loss_price,
                 strategy,
                 setups,
+                atr,
+                lod,
                 
                 // Add risk amount
-                risk_amount: riskAmount,
+                initial_risk_amount: riskAmount,
                 
                 // Additional default values
                 unrealized_pnl: 0,
@@ -182,6 +193,87 @@ export const tradeService = {
             market_value: trade.remaining_shares * currentPrice,
             // Add more metric calculations as needed
         };
+    },
+
+    async createPlannedTrade(trade: Partial<Trade>) {
+        const { data, error } = await supabase
+            .from('trades')
+            .insert([trade])
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
+    async updatePlannedTrade(id: string, updates: Partial<Trade>) {
+        const { data, error } = await supabase
+            .from('trades')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
+    async getPlannedTrades() {
+        const { data, error } = await supabase
+            .from('trades')
+            .select('*')
+            .eq('status', TRADE_STATUS.PLANNED)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data;
+    },
+
+    async getOpenTrades() {
+        const { data, error } = await supabase
+            .from('trades')
+            .select('*')
+            .eq('status', TRADE_STATUS.OPEN)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data;
+    },
+
+    async getClosedTrades() {
+        const { data, error } = await supabase
+            .from('trades')
+            .select('*')
+            .eq('status', TRADE_STATUS.CLOSED)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data;
+    },
+
+    async executePlannedTrade(id: string, executionDetails: Partial<Trade>) {
+        const { data, error } = await supabase
+            .from('trades')
+            .update({
+                ...executionDetails,
+                status: TRADE_STATUS.OPEN,
+                entry_datetime: new Date().toISOString()
+            })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
+    async deleteTrade(id: string) {
+        const { error } = await supabase
+            .from('trades')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
     }
 };
 
