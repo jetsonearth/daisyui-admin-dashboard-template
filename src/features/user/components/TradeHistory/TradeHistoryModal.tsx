@@ -41,6 +41,8 @@ interface TradeDetails {
     actions: Action[];
     strategy: string;
     setups: string[];
+    mae_price?: number;
+    mfe_price?: number;
 }
 
 const defaultTradeDetails: TradeDetails = {
@@ -82,6 +84,8 @@ const initializeTradeDetails = (existingTrade: Trade): TradeDetails => {
         actions,
         strategy: existingTrade.strategy || '',
         setups: existingTrade.setups || [],
+        mae_price: existingTrade.mae_price,
+        mfe_price: existingTrade.mfe_price
     };
 };
 
@@ -220,17 +224,15 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
             let stopLoss66Percent = 0;
             let fullStopLoss = 0;
 
-            let maePercent = 0;
-            let mfePercent = 0;
-            let maeDollars = 0;
-            let mfeDollars = 0;
-            let maeR = 0;
-            let mfeR = 0;
-
             let tempHoldingPeriod = 0;
             let lastSellAction = null;
 
             let tradeId: string | undefined;
+
+            let maeDollars = 0, maePercent = 0, maeR = 0;
+            let mfeDollars = 0, mfePercent = 0, mfeR = 0;
+            let minPrice = entryPrice;  // Default to entry price if we can't get high/low
+            let maxPrice = entryPrice;
 
             const action_types = tradeDetails.actions.map(a => a.type);
             const action_datetimes = tradeDetails.actions.map(a => a.date.toISOString());
@@ -291,53 +293,61 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                         try {
                             const prices = await marketDataService.getHighLowPrices(tradeDetails.ticker, entryDate, exitDateObj);
                             if (prices && prices.status === 'success') {
-                                const { minPrice, maxPrice } = prices;
+                                // Initialize MAE/MFE variables
+                                if (prices.minPrice && prices.maxPrice) {
+                                    minPrice = prices.minPrice;
+                                    maxPrice = prices.maxPrice;
 
-                                if (tradeDetails.direction === DIRECTIONS.LONG) {
-                                    // For long trades:
-                                    // MAE is the worst drawdown (lowest price)
-                                    // MFE is the highest potential profit (highest price)
-                                    if (minPrice >= entryPrice) {
-                                        maeDollars = 0;
-                                        maePercent = 0;
-                                        maeR = 0;
-                                    } else {
-                                        maeDollars = (entryPrice - minPrice) * totalShares;
-                                        maePercent = ((entryPrice - minPrice) / entryPrice) * 100;
-                                        maeR = (entryPrice - minPrice) / (entryPrice - parseFloat(tradeDetails.stopLossPrice));
-                                    }
+                                    const isLongTrade = tradeDetails.direction === DIRECTIONS.LONG;
 
-                                    if (maxPrice <= entryPrice) {
-                                        mfeDollars = 0;
-                                        mfePercent = 0;
-                                        mfeR = 0;
-                                    } else {
-                                        mfeDollars = (maxPrice - entryPrice) * totalShares;
-                                        mfePercent = ((maxPrice - entryPrice) / entryPrice) * 100;
-                                        mfeR = (maxPrice - entryPrice) / (entryPrice - parseFloat(tradeDetails.stopLossPrice));
-                                    }
-                                } else {
-                                    // For short trades:
-                                    // MAE is when price goes against us (highest price)
-                                    // MFE is the best potential profit (lowest price)
-                                    if (maxPrice <= entryPrice) {
-                                        maeDollars = 0;
-                                        maePercent = 0;
-                                        maeR = 0;
-                                    } else {
-                                        maeDollars = (maxPrice - entryPrice) * totalShares;
-                                        maePercent = ((maxPrice - entryPrice) / entryPrice) * 100;
-                                        maeR = (maxPrice - entryPrice) / (parseFloat(tradeDetails.stopLossPrice) - entryPrice);
-                                    }
+                                    if (isLongTrade) {
+                                        // For long trades:
+                                        // MAE is when price goes against us (lowest price)
+                                        // MFE is the best potential profit (highest price)
+                                        console.log(`[${tradeDetails.ticker}] Long Trade - Entry: ${entryPrice}, Min: ${minPrice}, Max: ${maxPrice}`);
+                                        if (minPrice >= entryPrice) {
+                                            maeDollars = 0;
+                                            maePercent = 0;
+                                            maeR = 0;
+                                        } else {
+                                            maeDollars = (entryPrice - minPrice) * totalShares;
+                                            maePercent = ((entryPrice - minPrice) / entryPrice) * 100;
+                                            maeR = (entryPrice - minPrice) / (entryPrice - parseFloat(tradeDetails.stopLossPrice));
+                                        }
 
-                                    if (minPrice >= entryPrice) {
-                                        mfeDollars = 0;
-                                        mfePercent = 0;
-                                        mfeR = 0;
+                                        if (maxPrice <= entryPrice) {
+                                            mfeDollars = 0;
+                                            mfePercent = 0;
+                                            mfeR = 0;
+                                        } else {
+                                            mfeDollars = (maxPrice - entryPrice) * totalShares;
+                                            mfePercent = ((maxPrice - entryPrice) / entryPrice) * 100;
+                                            mfeR = (maxPrice - entryPrice) / (entryPrice - parseFloat(tradeDetails.stopLossPrice));
+                                        }
                                     } else {
-                                        mfeDollars = (entryPrice - minPrice) * totalShares;
-                                        mfePercent = ((entryPrice - minPrice) / entryPrice) * 100;
-                                        mfeR = (entryPrice - minPrice) / (parseFloat(tradeDetails.stopLossPrice) - entryPrice);
+                                        // For short trades:
+                                        // MAE is when price goes against us (highest price)
+                                        // MFE is the best potential profit (lowest price)
+                                        console.log(`[${tradeDetails.ticker}] Short Trade - Entry: ${entryPrice}, Min: ${minPrice}, Max: ${maxPrice}`);
+                                        if (maxPrice <= entryPrice) {
+                                            maeDollars = 0;
+                                            maePercent = 0;
+                                            maeR = 0;
+                                        } else {
+                                            maeDollars = (maxPrice - entryPrice) * totalShares;
+                                            maePercent = ((maxPrice - entryPrice) / entryPrice) * 100;
+                                            maeR = (maxPrice - entryPrice) / (parseFloat(tradeDetails.stopLossPrice) - entryPrice);
+                                        }
+
+                                        if (minPrice >= entryPrice) {
+                                            mfeDollars = 0;
+                                            mfePercent = 0;
+                                            mfeR = 0;
+                                        } else {
+                                            mfeDollars = (entryPrice - minPrice) * totalShares;
+                                            mfePercent = ((entryPrice - minPrice) / entryPrice) * 100;
+                                            mfeR = (entryPrice - minPrice) / (parseFloat(tradeDetails.stopLossPrice) - entryPrice);
+                                        }
                                     }
                                 }
                             }
@@ -408,6 +418,8 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                     mfe_dollars: mfeDollars,
                     mae_r: maeR,
                     mfe_r: mfeR,
+                    mae_price: tradeDetails.direction === DIRECTIONS.LONG ? minPrice : maxPrice,
+                    mfe_price: tradeDetails.direction === DIRECTIONS.LONG ? maxPrice : minPrice,
                     exit_datetime: exitDate,
                     exit_price: exitPrice,
                 } : {})
@@ -632,6 +644,8 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 actions,
                 strategy: existingTrade.strategy || '',
                 setups: existingTrade.setups || [],
+                mae_price: existingTrade.mae_price,
+                mfe_price: existingTrade.mfe_price
             });
 
             const strategy = existingTrade.strategy as STRATEGIES; // Ensure it's of type STRATEGIES
@@ -645,7 +659,16 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
         isOpen ? (
             <div className="modal modal-open">
                 {loading && <div className="spinner">Loading...</div>}
-                <div className="modal-box max-w-4xl">
+                <div className="modal-box max-w-[70vw] w-[1600px]">
+                    <button
+                        onClick={onClose}
+                        className="absolute top-4 right-4 text-gray-400 hover:text-white"
+                    >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+
                     <div className="tabs tabs-boxed mb-4">
                         <a 
                             className={`tab ${activeTab === 'general' ? 'tab-active' : ''}`}
@@ -884,16 +907,17 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                                             <span className="loading loading-spinner loading-lg"></span>
                                         </div>
                                     ) : chartData.length > 0 ? (
-                                        console.log('Trade Details:', tradeDetails),
                                         <TradeReplayChart
                                             data={chartData}
                                             actions={tradeDetails.actions.map(action => ({
-                                                type: action.type as 'BUY' | 'SELL',
-                                                price: Number(action.price),
-                                                time: Math.floor(new Date(action.date).getTime() / 1000) as UTCTimestamp,
-                                                shares: Number(action.shares)
+                                                type: action.type,
+                                                time: action.date.getTime() / 1000 as UTCTimestamp,
+                                                price: parseFloat(action.price),
+                                                shares: parseFloat(action.shares)
                                             }))}
-                                            stopLossPrice={tradeDetails.stopLossPrice ? Number(tradeDetails.stopLossPrice) : undefined}
+                                            stopLossPrice={parseFloat(tradeDetails.stopLossPrice)}
+                                            maePrice={existingTrade?.mae_price}
+                                            mfePrice={existingTrade?.mfe_price}
                                         />
                                     ) : (
                                         <div className="h-full w-full flex items-center justify-center text-gray-500">

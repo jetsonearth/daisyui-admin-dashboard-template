@@ -3,7 +3,7 @@ import { userSettingsService } from './userSettingsService';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
-import { TRADE_STATUS } from '../features/trades/tradeModel';
+import { TRADE_STATUS } from '../types';
 import { marketDataService } from '../features/marketData/marketDataService';
 import { CapitalSnapshot, DrawdownPeriod, EquityPoint, CapitalMetrics, DailyCapitalStats } from '../types/capital';
 
@@ -223,7 +223,7 @@ export const capitalService = {
     },
     
     // Full recalculation with latest market data
-    async calculateCurrentCapital(): Promise<number> {
+    async calculateCurrentCapital(existingQuotes?: Record<string, any>): Promise<number> {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             
@@ -245,32 +245,40 @@ export const capitalService = {
             const startingCapital = await this.retrieveStartingCapital();
 
             // Get current market data for active trades
-            const activeTrades = trades.filter(trade => trade.status !== 'CLOSED');
+            const activeTrades = trades.filter(trade => trade.status === TRADE_STATUS.OPEN);
+            const closedTrades = trades.filter(trade => trade.status === TRADE_STATUS.CLOSED);
+            
+            // Calculate realized PnL from closed trades
+            const realizedPnL = closedTrades.reduce((sum, trade) => sum + (trade.realized_pnl || 0), 0);
             
             if (activeTrades.length === 0) {
-                return startingCapital;
+                return startingCapital + realizedPnL;
             }
 
             try {
-                const quotes = await marketDataService.getBatchQuotes(activeTrades.map(trade => trade.ticker));
+                // Use existing quotes if provided, otherwise fetch new ones
+                const quotes = existingQuotes || await marketDataService.getBatchQuotes(activeTrades.map(trade => trade.ticker));
                 
-                // Calculate total P&L
-                const totalPnL = activeTrades.reduce((sum, trade) => {
+                // Calculate unrealized PnL from active trades
+                const unrealizedPnL = activeTrades.reduce((sum, trade) => {
                     const quote = quotes[trade.ticker];
                     if (!quote) {
                         console.warn(`No market data available for ${trade.ticker}`);
-                        return sum;
+                        return sum + (trade.unrealized_pnl || 0); // Use last known unrealized PnL as fallback
                     }
 
                     const unrealizedPnL = (quote.price - trade.entry_price) * trade.remaining_shares;
-                    return sum + (trade.realized_pnl || 0) + unrealizedPnL;
+                    return sum + unrealizedPnL;
                 }, 0);
 
-                return startingCapital + totalPnL;
+                // Add up starting capital + realized PnL from closed trades + unrealized PnL from active trades
+                return startingCapital + realizedPnL + unrealizedPnL;
             } catch (error) {
                 console.error('Error fetching market data:', error);
-                // Fall back to using last known prices
-                return startingCapital + trades.reduce((sum, trade) => sum + (trade.realized_pnl || 0), 0);
+                // Fall back to using last known prices for active trades
+                const lastKnownUnrealizedPnL = activeTrades.reduce((sum, trade) => 
+                    sum + (trade.unrealized_pnl || 0), 0);
+                return startingCapital + realizedPnL + lastKnownUnrealizedPnL;
             }
         } catch (error) {
             console.error('Error calculating current capital:', error);

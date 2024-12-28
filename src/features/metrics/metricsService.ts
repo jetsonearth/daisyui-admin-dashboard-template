@@ -750,16 +750,21 @@ export class MetricsService {
     }
 
     async updateTradesWithDetailedMetrics(quotes: Record<string, Quote>, trades: Trade[]): Promise<Trade[]> {
-        log('info', 'Updating trades with detailed metrics');
+        log('info', '[MetricsService] Updating trades with detailed metrics');
     
         // Get starting capital
         const startingCapital = await this.retrieveStartingCapital();
 
-        // Calculate current capital to get total capital for metrics
-        const currentCapital = await capitalService.calculateCurrentCapital();
+        // Calculate current capital using the quotes we already have
+        const currentCapital = await capitalService.calculateCurrentCapital(quotes);
 
-        // Process trades with detailed metrics
+        // Process trades with detailed metrics - only update open trades
         const updatedTrades = await Promise.all(trades.map(async (trade) => {
+            // Skip closed trades - return as is
+            if (trade.status === TRADE_STATUS.CLOSED) {
+                return trade;
+            }
+
             // Calculate trade-specific metrics
             const tradeMetrics = await this.calculateTradeMetrics(
                 trade, 
@@ -794,35 +799,9 @@ export class MetricsService {
                 log('error', `Failed to update trade ${trade.id} metrics`, error);
             }
     
-            return {
-                ...trade,
-                ...tradeUpdate
-            };
+            return { ...trade, ...tradeUpdate };
         }));
-    
-        // Update capital service with total metrics
-        // try {
-        //     await capitalService.updateCurrentCapital(currentCapital, {
-        //         tradeCount: trades.length,
-        //         marketDataUpdateTime: new Date().toISOString(),
-        //         updatedTradesCount: updatedTrades.length,
-        //         realizedPnL: totalRealizedPnL,
-        //         unrealizedPnL: totalUnrealizedPnL
-        //     });
-        // } catch (error) {
-        //     log('error', 'Failed to update capital service', error);
-        // }
-    
-        // Update user settings with current capital
-        try {
-            await userSettingsService.updateUserSettings({
-                current_capital: currentCapital
-            });
-            log('info', `Updated current capital to ${currentCapital}`);
-        } catch (error) {
-            log('error', 'Failed to update user settings', error);
-        }
-    
+
         return updatedTrades;
     }
     

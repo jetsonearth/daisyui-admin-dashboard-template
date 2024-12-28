@@ -5,10 +5,12 @@ import { Navigate } from 'react-router-dom'
 import PortfolioOverview from '../pages/protected/PortfolioOverview'
 import TradeLog from '../pages/protected/TradeLog'
 import TradePlanner from '../pages/protected/TradeEntry'
+import TradeJournal from '../pages/protected/TradeJournal'
 
 // Protected pages
 const Profile = lazy(() => import('../pages/protected/Profile'))
 const Page404 = lazy(() => import('../pages/protected/404'))
+const Analytics = lazy(() => import('../pages/protected/Analytics')) // Added Analytics import
 
 const Login = lazy(() => import('../pages/Login'))
 const Register = lazy(() => import('../pages/Register'))
@@ -34,6 +36,14 @@ const routes = [
   {
     path: '/trades',
     element: <TradeLog />
+  },
+  {
+    path: '/journal',
+    element: <TradeJournal />
+  },
+  {
+    path: '/analytics', // Added Analytics route
+    element: <Analytics />
   },
   {
     path: '/profile',

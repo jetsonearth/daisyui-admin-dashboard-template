@@ -38,40 +38,27 @@ const routes = [
     icon: <CurrencyDollarIcon className={iconClasses}/>,
     name: 'Trade Log',
   },
-
-  {
-    path: '/app/analytics/performance',
-    icon: <TableCellsIcon className={submenuIconClasses}/>,
-    name: 'Performance Metrics',
-  },
-
-  {
-    path: '/app/analytics/risk',
-    icon: <ChartBarIcon className={submenuIconClasses}/>,
-    name: 'Risk Analysis',
-  },
-
-  // {
-  //   path: '/app/analytics',
-  //   icon: <ChartBarIcon className={iconClasses}/>,
-  //   name: 'Analytics',
-  //   submenu: [
-  //     {
-  //       path: '/app/analytics/performance',
-  //       icon: <TableCellsIcon className={submenuIconClasses}/>,
-  //       name: 'Performance Metrics',
-  //     },
-  //     {
-  //       path: '/app/analytics/risk',
-  //       icon: <ChartBarIcon className={submenuIconClasses}/>,
-  //       name: 'Risk Analysis',
-  //     }
-  //   ]
-  // },
   {
     path: '/app/journal',
-    icon: <DocumentTextIcon className={iconClasses}/>,
+    icon: <DocumentDuplicateIcon className={iconClasses}/>,
     name: 'Trading Journal',
+  },
+  {
+    path: '/app/analytics',
+    icon: <ChartBarIcon className={iconClasses}/>,
+    name: 'Analytics',
+    routes: [
+      {
+        path: '/app/analytics/performance',
+        icon: <TableCellsIcon className={submenuIconClasses}/>,
+        name: 'Performance Metrics',
+      },
+      {
+        path: '/app/analytics/risk',
+        icon: <ChartBarIcon className={submenuIconClasses}/>,
+        name: 'Risk Analysis',
+      }
+    ]
   },
   {
     path: '/app/settings',

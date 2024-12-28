@@ -91,11 +91,23 @@ const TradePlansDrawer: React.FC<TradePlansDrawerProps> = ({
                             <div className="flex flex-col items-center justify-center py-12 text-base-content/60">
                                 <div className="w-16 h-16 mb-4 rounded-xl bg-base-200 flex items-center justify-center">
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path d="M12 6v6m0 0v6m0-6h6m-6 0H6a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                                     </svg>
                                 </div>
-                                <p className="text-lg font-medium">No trades planned</p>
-                                <p className="text-sm opacity-75">Add your first trade plan</p>
+                                <p className="text-lg font-medium">No trade ideas yet</p>
+                                <p className="text-sm opacity-75 mb-4">Start planning your next trade</p>
+                                <button 
+                                    onClick={() => {
+                                        navigate('/app/planner');
+                                        setShowWatchlist(false);
+                                    }}
+                                    className="btn btn-primary btn-sm gap-2"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                                    </svg>
+                                    Plan New Trade
+                                </button>
                             </div>
                         ) : (
                             plannedTrades.map((trade) => (

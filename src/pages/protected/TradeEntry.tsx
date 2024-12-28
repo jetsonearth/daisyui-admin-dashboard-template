@@ -3,9 +3,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import TitleCard from '../../components/Cards/TitleCard';
-import { 
-    Trade, 
-    TRADE_STATUS, 
+import {
+    Trade,
+    TRADE_STATUS,
     ASSET_TYPES,
     DIRECTIONS,
     STRATEGIES,
@@ -153,12 +153,16 @@ const SystemAccordion = ({
                             </div>
                         </div>
 
+                        <div className="flex w-full flex-col border-opacity-50">
+                        <div className="divider divider-primary"></div>
+                        </div>
+                        
                         {/* Portfolio Exposure Group */}
-                        <div className="pt-2 border-t border-base-300">
-                            <div className="text-base-content mb-1">Portfolio Exposure</div>
+                        <div className="border-t border-base-300">
+                            {/* <div className="text-base-content mb-1">Portfolio Exposure</div> */}
                             <div className="space-y-1">
                                 <div className="flex justify-between text-sm">
-                                    <span>Current</span>
+                                    <span>Current Exposure</span>
                                     <span className="text-warning text-lg">{formatPercent(exposureForecast.currentExposurePercent)}</span>
                                 </div>
                                 <div className="flex justify-between text-sm">
@@ -305,7 +309,7 @@ const TradePlanner: React.FC = () => {
         direction: DIRECTIONS.LONG,
         assetType: ASSET_TYPES.STOCK,
         notes: '',
-        currentCapital: accountSize.toString()
+        currentCapital: accountSize.toFixed(2),
     });
 
     // Ref for tracking latest input values
@@ -425,19 +429,19 @@ const TradePlanner: React.FC = () => {
     const calculateCurrentExposure = async () => {
         try {
             if (!activeTrades.length) return 0;
-            
+
             const quotes = await marketDataService.getBatchQuotes(activeTrades.map(trade => trade.ticker));
-            
+
             return activeTrades.reduce((total, trade) => {
                 const quote = quotes[trade.ticker];
                 if (!quote) return total + (trade.remaining_shares * trade.entry_price); // Fallback to entry price
-                
+
                 return total + (trade.remaining_shares * quote.price);
             }, 0);
         } catch (error) {
             console.error('Error getting current prices:', error);
             // Fallback to entry prices if market data fetch fails
-            return activeTrades.reduce((total, trade) => 
+            return activeTrades.reduce((total, trade) =>
                 total + (trade.remaining_shares * trade.entry_price), 0
             );
         }
@@ -537,7 +541,7 @@ const TradePlanner: React.FC = () => {
                     setAccountSize(parsedCapital);
                     setInputs(prev => ({
                         ...prev,
-                        currentCapital: parsedCapital.toString()
+                        currentCapital: parsedCapital.toFixed(2)
                     }));
                 }
             } catch (error) {
@@ -866,7 +870,7 @@ const TradePlanner: React.FC = () => {
 
     const handleExecutePlannedTrade = async (trade: Trade) => {
         try {
-            await tradeService.updateTrade(trade.id!, { 
+            await tradeService.updateTrade(trade.id!, {
                 status: TRADE_STATUS.OPEN,
                 entry_datetime: new Date().toISOString(),
                 action_types: [...(trade.action_types || []), 'BUY'],
@@ -1179,6 +1183,7 @@ const TradePlanner: React.FC = () => {
                                     />
                                 </div>
 
+
                                 {/* Strategy */}
                                 <div className="form-control w-full">
                                     <label className="label">
@@ -1256,7 +1261,7 @@ const TradePlanner: React.FC = () => {
                                     </span>
                                 </label>
                                 <textarea
-                                    className="textarea textarea-bordered h-20 focus:textarea-primary {/* Reduced height */}
+                                    className="textarea textarea-bordered h-48 focus:textarea-primary {/* Reduced height */}
                                             transition-all duration-200 ease-in-out
                                             hover:shadow-md hover:border-primary/50
                                             focus:shadow-lg focus:shadow-primary/20
@@ -1270,7 +1275,13 @@ const TradePlanner: React.FC = () => {
                             <div className="card bg-base-100 shadow-xl ounded-lg hover:shadow-lg hover:shadow-primary/10">
                                 <div className="card-body p-0 rounded-xl mt-5 overflow-hidden" style={{ height: '500px' }}>
                                     {inputs.ticker ? (
-                                        <TradingViewWidget symbol={`${inputs.ticker}`} />
+                                        <TradingViewWidget 
+                                            symbol={`${inputs.ticker}`} 
+                                            studies={[
+                                                "STD;Average_True_Range",
+                                                "STD;EMA"
+                                            ]}
+                                        />
                                     ) : (
                                         <div className="flex items-center justify-center h-full text-base-content/50">
                                             <p className="text-lg font-semibold text-center">Enter a ticker on the left to view chart</p>

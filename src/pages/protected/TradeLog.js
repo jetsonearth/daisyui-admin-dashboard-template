@@ -121,7 +121,8 @@ function TradeLog(){
 
     const updateMarketData = async () => {
         const activeTrades = trades.filter(trade => trade.status === TRADE_STATUS.OPEN);
-        const closedTrades = trades.filter(trade => trade.status !== TRADE_STATUS.OPEN);
+        const closedTrades = trades.filter(trade => trade.status === TRADE_STATUS.CLOSED);
+        console.log("Update Market Data in Tradelog ---------------- Open Trades: ", activeTrades);
         
         if (!activeTrades || activeTrades.length === 0) {
             return trades;

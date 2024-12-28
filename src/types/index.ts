@@ -93,6 +93,8 @@ export interface Trade {
     mfe_dollars?: number;
     mae_r?: number;
     mfe_r?: number;
+    mae_price?: number;
+    mfe_price?: number;
   
     // Portfolio Metrics
     portfolio_weight?: number;
@@ -146,7 +148,7 @@ export interface WatchlistTrade {
     setups?: string[];
     atr: number;
     lod: number;
-    position_risk: number;
+    initial_position_risk: number;
     notes?: string;
     created_at: string;
     status: string;

@@ -114,6 +114,8 @@ class MarketDataService {
         }
 
         try {
+            console.log('🔍 getBatchQuotes called from:', new Error().stack);
+            
             const userId = await this.getUserId();
             const now = Date.now();
             const result: Record<string, Quote> = {};
@@ -246,8 +248,13 @@ class MarketDataService {
             return trades;
         }
 
-        const symbols = [...new Set(openTrades.map(trade => trade.ticker))];
-        const quotes = await this.getBatchQuotes(symbols);
+        console.log('In marketDataService -------------------- Updating market data for open trades...', openTrades);
+        // Get unique symbols from OPEN trades only
+        const uniqueOpenSymbols = new Set(openTrades.map(trade => trade.ticker));
+        const quotes = await this.getBatchQuotes(Array.from(uniqueOpenSymbols));
+
+        // Clear cache for closed trades
+        await this.clearCacheForClosedTrades(trades);
 
         return trades.map(trade => {
             // For closed trades, return as is

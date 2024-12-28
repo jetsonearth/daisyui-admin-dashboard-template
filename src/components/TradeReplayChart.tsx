@@ -25,13 +25,17 @@ interface TradeReplayChartProps {
     actions: TradeAction[];
     containerClassName?: string;
     stopLossPrice?: number;
+    maePrice?: number;  // Maximum Adverse Excursion price
+    mfePrice?: number;  // Maximum Favorable Excursion price
 }
 
 export const TradeReplayChart: React.FC<TradeReplayChartProps> = ({
     data,
     actions,
     containerClassName = 'w-full h-[800px]',
-    stopLossPrice
+    stopLossPrice,
+    maePrice,
+    mfePrice
 }) => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
@@ -115,17 +119,117 @@ export const TradeReplayChart: React.FC<TradeReplayChartProps> = ({
             wickDownColor: '#ef5350',
         });
 
+        // Create a price line group for trade metrics
+        const tradeMetricsGroup = {
+            title: 'Trade Metrics',
+            toolTipVisible: true,
+            lines: [] as any[]
+        };
+
         // Add stop loss line if provided
         if (stopLossPrice) {
-            candlestickSeries.createPriceLine({
+            tradeMetricsGroup.lines.push({
                 price: stopLossPrice,
-                color: 'red',
+                color: '#ff4444',
                 lineWidth: 1,
                 lineStyle: 2, // Dotted line
                 axisLabelVisible: true,
                 title: 'Stop Loss',
             });
         }
+
+        // Add MAE line if provided
+        if (maePrice) {
+            tradeMetricsGroup.lines.push({
+                price: maePrice,
+                color: '#ef5350', // Red
+                lineWidth: 1,
+                lineStyle: 1, // Solid line
+                axisLabelVisible: true,
+                title: 'MAE',
+            });
+        }
+
+        // Add MFE line if provided
+        if (mfePrice) {
+            tradeMetricsGroup.lines.push({
+                price: mfePrice,
+                color: '#26a69a', // Green
+                lineWidth: 1,
+                lineStyle: 1, // Solid line
+                axisLabelVisible: true,
+                title: 'MFE',
+            });
+        }
+
+        // Add all lines with proper spacing
+        tradeMetricsGroup.lines.forEach((line, index) => {
+            const priceLine = candlestickSeries.createPriceLine({
+                ...line,
+                axisLabelVisible: true,
+                title: `${line.title} ${line.price.toFixed(2)}`,
+            });
+        });
+
+        // Add markers for trade actions
+        const markers = actions.map(action => ({
+            time: action.time,
+            position: (action.type === 'BUY' ? 'belowBar' : 'aboveBar') as SeriesMarkerPosition,
+            color: action.type === 'BUY' ? '#26a69a' : '#ef5350',
+            shape: (action.type === 'BUY' ? 'arrowUp' : 'arrowDown') as SeriesMarkerShape,
+            text: `${action.type} ${action.shares} @ ${action.price}`,
+            size: 2,
+        }));
+        candlestickSeries.setMarkers(markers);
+
+        // Add legend with trade metrics
+        const legend = document.createElement('div');
+        legend.style.position = 'absolute';
+        legend.style.left = '12px';
+        legend.style.top = '12px';
+        legend.style.zIndex = '1';
+        legend.style.background = 'rgba(27, 27, 27, 0.8)';
+        legend.style.padding = '8px';
+        legend.style.borderRadius = '4px';
+        legend.style.display = 'flex';
+        legend.style.flexDirection = 'column';
+        legend.style.gap = '8px';
+        
+        // Add trade metrics to legend
+        const metrics = [
+            { title: 'Stop Loss', price: stopLossPrice, color: '#ff4444' },
+            { title: 'MAE', price: maePrice, color: '#ef5350' },
+            { title: 'MFE', price: mfePrice, color: '#26a69a' },
+        ].filter(m => m.price);
+
+        legend.innerHTML = `
+            <div style="font-weight: bold; margin-bottom: 4px;">Trade Metrics</div>
+            ${metrics.map(m => `
+                <div style="color: ${m.color}; display: flex; align-items: center; justify-content: space-between; min-width: 150px;">
+                    <span style="display: flex; align-items: center;">
+                        <span style="width: 12px; height: 2px; background: ${m.color}; display: inline-block; margin-right: 4px;"></span>
+                        ${m.title}
+                    </span>
+                    <span>${m.price.toFixed(2)}</span>
+                </div>
+            `).join('')}
+            <div style="margin-top: 8px; font-weight: bold;">EMAs</div>
+            <div style="color: #f48fb1; display: flex; align-items: center;">
+                <span style="width: 12px; height: 2px; background: #f48fb1; display: inline-block; margin-right: 4px;"></span>
+                EMA 8
+            </div>
+            <div style="color: #90caf9; display: flex; align-items: center;">
+                <span style="width: 12px; height: 2px; background: #90caf9; display: inline-block; margin-right: 4px;"></span>
+                EMA 21
+            </div>
+            <div style="color: #ef5350; display: flex; align-items: center;">
+                <span style="width: 12px; height: 2px; background: #ef5350; display: inline-block; margin-right: 4px;"></span>
+                EMA 50
+            </div>
+        `;
+
+        chartContainerRef.current.style.position = 'relative';
+        chartContainerRef.current.appendChild(legend);
 
         // Create EMA series with updated colors and no price line
         const ema8Series = chart.addLineSeries({
@@ -152,36 +256,8 @@ export const TradeReplayChart: React.FC<TradeReplayChartProps> = ({
             lastValueVisible: false,
         });
 
-        // Add legend
-        const legend = document.createElement('div');
-        legend.style.position = 'absolute';
-        legend.style.left = '12px';
-        legend.style.top = '12px';
-        legend.style.zIndex = '1';
-        legend.style.background = 'rgba(27, 27, 27, 0.8)';
-        legend.style.padding = '8px';
-        legend.style.borderRadius = '4px';
-        legend.style.display = 'flex';
-        legend.style.gap = '12px';
-        legend.innerHTML = `
-            <div style="color: #f48fb1; display: flex; align-items: center;">
-                <span style="width: 12px; height: 2px; background: #f48fb1; display: inline-block; margin-right: 4px;"></span>
-                EMA 8
-            </div>
-            <div style="color: #90caf9; display: flex; align-items: center;">
-                <span style="width: 12px; height: 2px; background: #90caf9; display: inline-block; margin-right: 4px;"></span>
-                EMA 21
-            </div>
-            <div style="color: #ef5350; display: flex; align-items: center;">
-                <span style="width: 12px; height: 2px; background: #ef5350; display: inline-block; margin-right: 4px;"></span>
-                EMA 50
-            </div>
-        `;
-        chartContainerRef.current.style.position = 'relative';
-        chartContainerRef.current.appendChild(legend);
-
         // Add volume series to volume chart
-        const volumeSeries = chart.addHistogramSeries({
+        const volumeSeries = volumeChart.addHistogramSeries({
             color: '#26a69a',
             priceFormat: {
                 type: 'volume',
@@ -192,7 +268,7 @@ export const TradeReplayChart: React.FC<TradeReplayChartProps> = ({
             lastValueVisible: false,  // Hide the last value label
         });
 
-        chart.priceScale('volume').applyOptions({
+        volumeChart.priceScale('volume').applyOptions({
             scaleMargins: {
                 top: 0.75,  // Push volume further down
                 bottom: 0,
@@ -262,36 +338,6 @@ export const TradeReplayChart: React.FC<TradeReplayChartProps> = ({
         ema8Series.setData(ema8Data);
         ema21Series.setData(ema21Data);
         ema50Series.setData(ema50Data);
-
-        // Add markers for all actions
-        if (actions.length > 0) {
-            console.log('🎯 Adding trade markers:', actions.length);
-            
-            const markers = actions.map(action => ({
-                time: action.time as UTCTimestamp,
-                position: action.type === 'BUY' ? 'aboveBar' as SeriesMarkerPosition : 'aboveBar' as SeriesMarkerPosition,
-                color: action.type === 'BUY' ? '#2196F3' : '#FF9800',
-                shape: action.type === 'BUY' ? 'arrowDown' as SeriesMarkerShape : 'arrowDown' as SeriesMarkerShape,
-                text: `${action.type} ${action.shares} shares`,
-                yOffset: action.type === 'BUY' ? 35 : -35, // Adjust these values to move the markers as needed
-            }));
-
-            candlestickSeries.setMarkers(markers);
-
-            // Find the first buy action
-            const firstBuyAction = actions.find(action => action.type === 'BUY');
-
-            if (firstBuyAction) {
-                candlestickSeries.createPriceLine({
-                    price: firstBuyAction.price,
-                    color: '#2196F3', // Color for buy action
-                    lineWidth: 1,
-                    lineStyle: 2, // Dotted line
-                    axisLabelVisible: true,
-                    title: 'First Entry',
-                });
-            }
-        }
 
         // Fit content
         chart.timeScale().fitContent();

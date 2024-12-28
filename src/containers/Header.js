@@ -7,7 +7,7 @@ import MoonIcon from '@heroicons/react/24/outline/MoonIcon'
 import SunIcon from '@heroicons/react/24/outline/SunIcon'
 import { openRightDrawer } from '../features/common/rightDrawerSlice';
 import { RIGHT_DRAWER_TYPES } from '../utils/globalConstantUtil'
-import { NavLink, Routes, Link, useLocation } from 'react-router-dom'
+import { NavLink, Routes, Link, useLocation, useNavigate } from 'react-router-dom'
 import TradePlansDrawer from '../components/TradePlans/TradePlansDrawer'
 import { fetchTradePlans } from '../features/tradePlans/tradePlansSlice'
 import { supabase } from '../config/supabaseClient';
@@ -21,6 +21,7 @@ function Header() {
     const [currentTheme, setCurrentTheme] = useState(localStorage.getItem("theme"))
     const [showWatchlist, setShowWatchlist] = useState(false)
     const [plannedTrades, setPlannedTrades] = useState([])
+    const navigate = useNavigate()
 
     useEffect(() => {
         themeChange(false)
@@ -96,21 +97,40 @@ function Header() {
                 </div>
 
                 <div className="flex-none gap-2">
-                    {/* Trade Plans Button */}
-                    <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => setShowWatchlist(!showWatchlist)}
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
-                        </svg>
-                        <span className="ml-2">Trade Plans</span>
-                        {plannedTrades.length > 0 && (
-                            <span className="ml-2 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none bg-primary text-primary-content rounded-full">
-                                {plannedTrades.length}
-                            </span>
-                        )}
-                    </button>
+                    {/* Trade Ideas and Plan Trade Buttons */}
+                    <div className="flex items-center gap-3 mr-4">
+                        <button
+                            className="btn bg-emerald-400 hover:bg-emerald-500 border-none text-emerald-950 gap-2 normal-case font-medium"
+                            onClick={() => navigate('/app/planner')}
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                            </svg>
+                            Plan Trade
+                        </button>
+                        <button
+                            className="relative group flex items-center btn btn-ghost hover:bg-base-200 px-4 rounded-xl"
+                            onClick={() => setShowWatchlist(!showWatchlist)}
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 flex items-center justify-center bg-emerald-400/10 rounded-lg">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-emerald-400" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
+                                    </svg>
+                                </div>
+                                <div className="flex flex-col items-start">
+                                    <span className="text-sm font-medium text-base-content">Current Trade Ideas</span>
+                                    <span className="text-xs text-base-content/60">Plan before you trade</span>
+                                </div>
+                            </div>
+                            {plannedTrades.length > 0 && (
+                                <span className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center text-xs font-bold bg-emerald-400 text-emerald-950 rounded-full">
+                                    {plannedTrades.length}
+                                </span>
+                            )}
+                        </button>
+
+                    </div>
 
                     <select className="select select-sm mr-4" data-choose-theme>
                         <option disabled selected>Theme</option>
@@ -122,12 +142,10 @@ function Header() {
                         <option value="corporate">Corporate</option>
                         <option value="synthwave">Synthwave</option>
                         <option value="retro">Retro</option>
-                        <option value="cyberpunk">Cyberpunk</option>
                         <option value="valentine">Valentine</option>
                         <option value="halloween">Halloween</option>
                         <option value="garden">Garden</option>
                         <option value="forest">Forest</option>
-                        <option value="aqua">Aqua</option>
                         <option value="lofi">Lofi</option>
                         <option value="pastel">Pastel</option>
                         <option value="fantasy">Fantasy</option>
