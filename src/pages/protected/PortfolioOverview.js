@@ -613,7 +613,8 @@ function PortfolioOverview() {
 
                 const latestMetrics = await metricsService.fetchLatestPortfolioMetrics(user.id, true);
 
-                console.log('---------------- 🚀🚀 Latest Metrics:', exposureMetrics);
+                console.log('---------------- 🚀🚀 Latest Metrics ------------------ DEBUGGING :', latestMetrics);
+
                 if (latestMetrics) {
                     const newMetrics = {
                         ...metrics,

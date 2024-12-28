@@ -127,20 +127,34 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
     const handleDeleteTrade = async () => {
         if (!existingTrade) return;
 
-        const { error } = await supabase
-            .from('trades')
-            .delete()
-            .eq('id', existingTrade.id);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                toast.error('User not authenticated');
+                return;
+            }
 
-        if (error) {
+            const { error } = await supabase
+                .from('trades')
+                .delete()
+                .eq('id', existingTrade.id);
+
+            if (error) {
+                toast.error('Failed to delete trade');
+                console.error("Error deleting trade:", error);
+                return;
+            }
+
+            // Recalculate metrics after deletion
+            await metricsService.handleTradeModification(user.id);
+
+            toast.success('Trade deleted successfully');
+            onTradeAdded(); // Refresh the trade list
+            onClose(); // Close the modal
+        } catch (error) {
+            console.error('Error in handleDeleteTrade:', error);
             toast.error('Failed to delete trade');
-            console.error("Error deleting trade:", error);
-            return;
         }
-
-        toast.success('Trade deleted successfully');
-        onTradeAdded(); // Refresh the trade list
-        onClose(); // Close the modal
     };
 
     const [loading, setLoading] = useState(false);
@@ -447,6 +461,10 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                     throw error;
                 }
                 result = data;
+                
+                // Recalculate metrics after modifying an existing trade
+                await metricsService.handleTradeModification(user.id);
+                
                 toast.success('Trade updated successfully!');
             } else {
                 console.log('Creating new trade record...');

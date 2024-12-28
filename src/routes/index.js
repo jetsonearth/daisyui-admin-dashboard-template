@@ -13,6 +13,7 @@ const Page404 = lazy(() => import('../pages/protected/404'))
 
 // Analytics pages
 const RiskAnalysis = lazy(() => import('../pages/protected/RiskAnalysis'))
+const SetupAnalysis = lazy(() => import('../pages/protected/SetupAnalysis'))
 const StrategyAnalysis = lazy(() => import('../pages/protected/StrategyAnalysis'))
 const TimeAnalysis = lazy(() => import('../pages/protected/TimeAnalysis'))
 const PsychologyAnalysis = lazy(() => import('../pages/protected/PsychologyAnalysis'))
@@ -57,13 +58,10 @@ const routes = [
     element: <StrategyAnalysis />
   },
   {
-    path: '/analytics/time',
-    element: <TimeAnalysis />
+    path: '/analytics/setup',
+    element: <SetupAnalysis />
   },
-  {
-    path: '/analytics/psychology',
-    element: <PsychologyAnalysis />
-  },
+
   {
     path: '/analytics/market',
     element: <MarketContextAnalysis />

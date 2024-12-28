@@ -53,26 +53,19 @@ const routes = [
     icon: <BoltIcon className={iconClasses}/>,
     name: 'Strategy Analysis',
   },
+  
   {
-    path: '/app/analytics/time',
-    icon: <CalendarDaysIcon className={iconClasses}/>,
-    name: 'Time Analysis',
+    path: '/app/analytics/setup',
+    icon: <BoltIcon className={iconClasses}/>,
+    name: 'Setup Analysis',
   },
-  {
-    path: '/app/analytics/psychology',
-    icon: <UserIcon className={iconClasses}/>,
-    name: 'Psychology',
-  },
+
   {
     path: '/app/analytics/market',
     icon: <ChartBarIcon className={iconClasses}/>,
     name: 'Market Context',
   },
-  {
-    path: '/app/analytics/loss',
-    icon: <DocumentTextIcon className={iconClasses}/>,
-    name: 'Loss Analysis',
-  },
+
   {
     path: '/app/settings',
     icon: <Cog6ToothIcon className={iconClasses}/>,

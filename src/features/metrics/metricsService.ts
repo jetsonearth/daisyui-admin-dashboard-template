@@ -925,6 +925,47 @@ export class MetricsService {
         console.log('🔴 Metrics cache invalidated');
     }
 
+    // Handle trade modifications (edit/delete)
+    async handleTradeModification(userId: string): Promise<void> {
+
+        try {
+            // Get all trades and recalculate metrics
+            const allTrades = await this.fetchTrades();
+            const closedTrades = allTrades.filter(t => t.status === TRADE_STATUS.CLOSED);
+            
+            // Calculate fresh metrics
+            const performanceMetrics = await this.calculateTradePerformanceMetrics(closedTrades);
+            const streakMetrics = this.calculateStreakMetrics(closedTrades);
+            
+            // Update database
+            const combinedMetrics = {
+                ...performanceMetrics,
+                currentStreak: streakMetrics.currentStreak,
+                longestWinStreak: streakMetrics.longestWinStreak,
+                longestLossStreak: streakMetrics.longestLossStreak
+            };
+            
+            await this.upsertPerformanceMetrics(userId, combinedMetrics);
+            this.invalidateMetricsCache();
+
+            // Calculate fresh capital
+            const freshCapital = await capitalService.calculateCurrentCapital();
+            await capitalService.recordCapitalChange(freshCapital, {});
+
+            // Process historical trades to ensure capital metrics are correct
+            await capitalService.processHistoricalTrades(userId);
+
+            log('info', 'Trade metrics and capital recalculated after modification', { 
+                closedTradesCount: closedTrades.length,
+                metrics: combinedMetrics,
+                capital: freshCapital
+            });
+        } catch (error) {
+            log('error', 'Failed to handle trade modification', error);
+            throw error;
+        }
+    }
+
     // // Add this function to fetch historical trades
     // async fetchHistoricalTrades(userId: string, start?: Date, end?: Date) {
     //     try {
