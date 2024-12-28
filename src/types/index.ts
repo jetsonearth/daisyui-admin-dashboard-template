@@ -55,12 +55,12 @@ export interface Trade {
     total_shares: number;
     total_cost: number;
     remaining_shares: number;
-    open_risk: number;
+    open_risk: number; // This is actually the SL distance in % from entry to stop loss
     realized_pnl: number;
     realized_pnl_percentage: number;
     unrealized_pnl: number;
     unrealized_pnl_percentage: number;
-    last_price: number;
+    last_price: number; 
     market_value: number;
     entry_date: string;
   
@@ -80,15 +80,15 @@ export interface Trade {
     // Risk Management
     stop_loss_33_percent?: number;
     stop_loss_66_percent?: number;
-    initial_risk_amount?: number;
-    current_risk_amount?: number;
+    initial_risk_amount?: number; // this is a fixed dollar value, its the amount of $ risked when placed the trade
+    current_risk_amount?: number; // the amount of risk in dollar value from current price to trailin stop, if traling stop not set then use initial stop
     trailing_stoploss?: number;
     initial_position_risk?: number;
     current_var?: number;                 
 
     // Trade Metrics
-    mae?: number;
-    mfe?: number;
+    mae?: number; // mae in percentage
+    mfe?: number; // mfe in percentage
     mae_dollars?: number;
     mfe_dollars?: number;
     mae_r?: number;
@@ -97,13 +97,12 @@ export interface Trade {
     mfe_price?: number;
   
     // Portfolio Metrics
-    portfolio_weight?: number;
+    portfolio_weight?: number; // the weight of the trade in the portfolio
     portfolio_impact?: number;
     trimmed_percentage?: number;
     risk_reward_ratio?: number;
   
     // Additional Metrics
-    r_target_1?: number;
     r_target_2?: number;
     r_target_3?: number;
     pnl?: number;

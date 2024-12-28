@@ -44,21 +44,34 @@ const routes = [
     name: 'Trading Journal',
   },
   {
-    path: '/app/analytics',
+    path: '/app/analytics/risk',
+    icon: <ExclamationTriangleIcon className={iconClasses}/>,
+    name: 'Risk Analysis',
+  },
+  {
+    path: '/app/analytics/strategy',
+    icon: <BoltIcon className={iconClasses}/>,
+    name: 'Strategy Analysis',
+  },
+  {
+    path: '/app/analytics/time',
+    icon: <CalendarDaysIcon className={iconClasses}/>,
+    name: 'Time Analysis',
+  },
+  {
+    path: '/app/analytics/psychology',
+    icon: <UserIcon className={iconClasses}/>,
+    name: 'Psychology',
+  },
+  {
+    path: '/app/analytics/market',
     icon: <ChartBarIcon className={iconClasses}/>,
-    name: 'Analytics',
-    routes: [
-      {
-        path: '/app/analytics/performance',
-        icon: <TableCellsIcon className={submenuIconClasses}/>,
-        name: 'Performance Metrics',
-      },
-      {
-        path: '/app/analytics/risk',
-        icon: <ChartBarIcon className={submenuIconClasses}/>,
-        name: 'Risk Analysis',
-      }
-    ]
+    name: 'Market Context',
+  },
+  {
+    path: '/app/analytics/loss',
+    icon: <DocumentTextIcon className={iconClasses}/>,
+    name: 'Loss Analysis',
   },
   {
     path: '/app/settings',

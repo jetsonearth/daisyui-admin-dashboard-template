@@ -10,7 +10,14 @@ import TradeJournal from '../pages/protected/TradeJournal'
 // Protected pages
 const Profile = lazy(() => import('../pages/protected/Profile'))
 const Page404 = lazy(() => import('../pages/protected/404'))
-const Analytics = lazy(() => import('../pages/protected/Analytics')) // Added Analytics import
+
+// Analytics pages
+const RiskAnalysis = lazy(() => import('../pages/protected/RiskAnalysis'))
+const StrategyAnalysis = lazy(() => import('../pages/protected/StrategyAnalysis'))
+const TimeAnalysis = lazy(() => import('../pages/protected/TimeAnalysis'))
+const PsychologyAnalysis = lazy(() => import('../pages/protected/PsychologyAnalysis'))
+const MarketContextAnalysis = lazy(() => import('../pages/protected/MarketContextAnalysis'))
+const LossAnalysis = lazy(() => import('../pages/protected/LossAnalysis'))
 
 const Login = lazy(() => import('../pages/Login'))
 const Register = lazy(() => import('../pages/Register'))
@@ -42,8 +49,28 @@ const routes = [
     element: <TradeJournal />
   },
   {
-    path: '/analytics', // Added Analytics route
-    element: <Analytics />
+    path: '/analytics/risk',
+    element: <RiskAnalysis />
+  },
+  {
+    path: '/analytics/strategy',
+    element: <StrategyAnalysis />
+  },
+  {
+    path: '/analytics/time',
+    element: <TimeAnalysis />
+  },
+  {
+    path: '/analytics/psychology',
+    element: <PsychologyAnalysis />
+  },
+  {
+    path: '/analytics/market',
+    element: <MarketContextAnalysis />
+  },
+  {
+    path: '/analytics/loss',
+    element: <LossAnalysis />
   },
   {
     path: '/profile',
