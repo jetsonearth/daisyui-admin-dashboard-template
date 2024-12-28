@@ -1009,10 +1009,12 @@ function PortfolioOverview() {
 
         // Calculate gradient colors based on win rate
         const getColor = (rate) => {
-            if (rate >= 60) return '#10b981'; // emerald-500 for great
-            if (rate >= 50) return '#22c55e'; // green-500 for good
-            if (rate >= 40) return '#eab308'; // yellow-500 for okay
-            return '#ef4444'; // red-500 for needs improvement
+            return '#10b981'; // emerald-500 for great
+
+            // if (rate >= 60) return '#10b981'; // emerald-500 for great
+            // if (rate >= 50) return '#22c55e'; // green-500 for good
+            // if (rate >= 40) return '#eab308'; // yellow-500 for okay
+            // return '#ef4444'; // red-500 for needs improvement
         };
 
         winRateChartInstance.current = new Chart(ctx, {
@@ -1429,7 +1431,7 @@ function PortfolioOverview() {
                                 : '0.00'
                             }
                         </div>
-                        <div className="stat-desc flex justify-between mt-2">
+                        <div className="stat-desc flex gap-14 items-center justify-center mt-2">
                             <span className="text-emerald-500 text-sm font-medium">
                                 Win: {metrics.avgWinR?.toFixed(2) || '0.00'}R
                             </span>
@@ -1463,7 +1465,7 @@ function PortfolioOverview() {
                                     </div>
                                 </div>
                             </div>
-                            <div className="w-28 h-14 flex items-center">
+                            <div className="w-20 h-10 flex items-center">
                                 <canvas ref={winRateChartRef} className={metricsLoading ? 'opacity' : ''} />
                             </div>
                         </div>
@@ -1933,11 +1935,11 @@ function PortfolioOverview() {
 
                         <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
                             <div className="text-primary text-sm font-semibold">Profit Factor</div>
-                            <div className="flex-1 flex flex-col justify-center">
-                                <div className="stat-value text-4xl text-gray-300 font-bold mb-6 mt-auto">
+                            <div className="flex-1 flex flex-col items-center justify-center">
+                                <div className="stat-value text-4xl text-gray-300 font-bold mt-auto">
                                     {(metrics.totalProfits / Math.abs(metrics.totalLosses || 1)).toFixed(2)}
                                 </div>
-                                <div className="flex flex-col mt-autogap-2">
+                                <div className="flex flex-col mt-auto gap-2">
                                     <div className="flex items-center justify-between">
                                         <span className="text-gray-400 text-xs">Total Profits:</span>
                                         <span className="text-emerald-400 font-xs">

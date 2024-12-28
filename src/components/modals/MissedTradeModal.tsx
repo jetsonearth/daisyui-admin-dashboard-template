@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import { UTCTimestamp } from 'lightweight-charts';
 import { marketDataService } from '../../features/marketData/marketDataService';
 import { TradeReplayChart } from '../TradeReplayChart';
+import {SETUPS} from "../../types";
 
 interface MissedTrade {
     id?: string;
@@ -25,19 +26,6 @@ interface MissedTradeModalProps {
     selectedTrade?: MissedTrade;
     onSave: () => void;
 }
-
-const SETUP_TYPES = [
-    'Bull Flag',
-    'Bear Flag',
-    'ABCD Pattern',
-    'Breakout',
-    'Breakdown',
-    'Support Bounce',
-    'Resistance Rejection',
-    'VWAP Reversal',
-    'Opening Range',
-    'Other'
-];
 
 const MissedTradeModal: React.FC<MissedTradeModalProps> = ({
     isOpen,
@@ -251,7 +239,7 @@ const MissedTradeModal: React.FC<MissedTradeModalProps> = ({
                                     }))}
                                 >
                                     <option value="">Select setup type</option>
-                                    {SETUP_TYPES.map(setup => (
+                                    {SETUPS.map(setup => (
                                         <option key={setup} value={setup}>
                                             {setup}
                                         </option>

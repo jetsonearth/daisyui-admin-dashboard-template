@@ -109,11 +109,30 @@ function TradeJournal() {
 
     const handleJournalEntry = async (field: string, value: string) => {
         // First update the local state immediately for responsive UI
-        setCurrentEntry(prev => ({
-            ...prev,
-            [field]: value,
-            updated_at: new Date().toISOString()
-        }));
+        setCurrentEntry(prev => {
+            if (!prev) {
+                // If there's no previous entry, create a new one with required fields
+                return {
+                    id: '', // Will be set by the database
+                    date: format(selectedDate, 'yyyy-MM-dd'),
+                    market_summary: '',
+                    reflection: '',
+                    lessons_learned: '',
+                    emotions_rating: 0,
+                    focus_rating: 0,
+                    discipline_rating: 0,
+                    [field]: value,
+                    updated_at: new Date().toISOString()
+                };
+            }
+
+            // If there is a previous entry, update it
+            return {
+                ...prev,
+                [field]: value,
+                updated_at: new Date().toISOString()
+            };
+        });
 
         // Then save to database with debounce
         try {
@@ -238,7 +257,7 @@ function TradeJournal() {
                     >
                         <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
                             {/* Market Summary */}
-                            <div className="form-control w-full">
+                            {/* <div className="form-control w-full">
                                 <label className="label">
                                     <span className="label-text font-medium text-lg">Market Summary</span>
                                     <span className="label-text-alt text-base-content/60">
@@ -256,7 +275,7 @@ function TradeJournal() {
                                     value={currentEntry?.market_summary || ''}
                                     onChange={(e) => handleJournalEntry('market_summary', e.target.value)}
                                 />
-                            </div>
+                            </div> */}
 
                             {/* Daily Reflection */}
                             <div className="form-control w-full">
@@ -269,7 +288,7 @@ function TradeJournal() {
                                 <textarea
                                     className="textarea textarea-bordered min-h-[200px] w-full focus:textarea-primary
                                         bg-base-200/50 text-base
-                                        transition-all duration-200 ease-in-out
+                                        transition-all duration-250 ease-in-out
                                         hover:shadow-md hover:border-primary/50
                                         focus:shadow-lg focus:shadow-primary/20
                                         focus:bg-base-100"
@@ -288,7 +307,7 @@ function TradeJournal() {
                                     </span>
                                 </label>
                                 <textarea
-                                    className="textarea textarea-bordered min-h-[100px] w-full focus:textarea-primary
+                                    className="textarea textarea-bordered min-h-[150px] w-full focus:textarea-primary
                                         bg-base-200/50 text-base
                                         transition-all duration-200 ease-in-out
                                         hover:shadow-md hover:border-primary/50
