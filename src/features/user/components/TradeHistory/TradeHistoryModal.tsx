@@ -15,6 +15,11 @@ import { useDispatch, useSelector } from 'react-redux';
 import { fetchOHLCVData, selectOHLCVData } from '../../../marketData/ohlcvSlice';
 import { AppDispatch } from '../../../../app/store';
 import { motion, AnimatePresence } from 'framer-motion';
+import { XMarkIcon } from '@heroicons/react/24/outline';
+import { Tab } from '@headlessui/react';
+import { ChevronUpDownIcon, CheckIcon } from '@heroicons/react/20/solid';
+import { TrashIcon } from '@heroicons/react/24/outline';
+import { Combobox } from '@headlessui/react';
 
 interface TradeMarker {
     timestamp: number;
@@ -33,6 +38,7 @@ interface TradeHistoryModalProps {
     isOpen: boolean;
     onClose: () => void;
     onTradeAdded: () => void;
+    onSave?: () => void;
     existingTrade?: Trade;
 }
 
@@ -93,7 +99,7 @@ const initializeTradeDetails = (existingTrade: Trade): TradeDetails => {
     };
 };
 
-const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, onTradeAdded, existingTrade }) => {
+const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, onTradeAdded, onSave, existingTrade }) => {
     const [tradeDetails, setTradeDetails] = useState<TradeDetails>(
         existingTrade ? initializeTradeDetails(existingTrade) : defaultTradeDetails
     );
@@ -108,7 +114,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
         existingTrade?.setups || []
     );
 
-    const [activeTab, setActiveTab] = useState('general'); // 'general' or 'notes'
+    const [activeTab, setActiveTab] = useState('details'); // 'details' or 'notes'
     const [notes, setNotes] = useState(existingTrade?.notes || '');
     const [mistakes, setMistakes] = useState(existingTrade?.mistakes || '');
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -117,6 +123,39 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
     const ohlcvState = useSelector(state => selectOHLCVData(state, existingTrade?.id));
     const [chartData, setChartData] = useState<any[]>([]);
     const [isLoadingChart, setIsLoadingChart] = useState(false);
+
+    const [entryEfficiency, setEntryEfficiency] = useState(0);
+    const [exitEfficiency, setExitEfficiency] = useState(0);
+    const [totalEfficiency, setTotalEfficiency] = useState(0);
+    const [totalRisk, setTotalRisk] = useState(0);
+    const [riskPerShare, setRiskPerShare] = useState(0);
+    const [slDistance, setSlDistance] = useState(0);
+    const [rrr, setRRR] = useState(0);
+    const [realizedGain, setRealizedGain] = useState(0);
+    const [realizedPercentage, setRealizedPercentage] = useState(0);
+    const [availableTradeRange, setAvailableTradeRange] = useState(0);
+    const [atrR, setATRR] = useState(0);
+    const [atrPercentage, setATRPercentage] = useState(0);
+    const [endTradeDrawdown, setEndTradeDrawdown] = useState(0);
+    const [remainingDistanceToTarget, setRemainingDistanceToTarget] = useState(0);
+    const [mae, setMAE] = useState(0);
+    const [mfe, setMFE] = useState(0);
+    const [remainingDistanceToStop, setRemainingDistanceToStop] = useState(0);
+
+    const [strategyQuery, setStrategyQuery] = useState('');
+    const [setupsQuery, setSetupsQuery] = useState('');
+
+    const filteredStrategies = strategyQuery === ''
+        ? Object.values(STRATEGIES)
+        : Object.values(STRATEGIES).filter((strategy) =>
+            strategy.toLowerCase().includes(strategyQuery.toLowerCase())
+        );
+
+    const filteredSetups = setupsQuery === ''
+        ? Object.values(SETUPS)
+        : Object.values(SETUPS).filter((setup) =>
+            setup.toLowerCase().includes(setupsQuery.toLowerCase())
+        );
 
     useEffect(() => {
         if (existingTrade && isOpen) {
@@ -542,7 +581,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                     console.log('Performance Metrics:', performanceMetrics);
             
                     const streakMetrics = metricsService.calculateStreakMetrics(closedTrades);
-                    console.log('🚗🚗🚗🚗🚗🚗🚗🚗🚗🚗🚗🚗🚗 Streak Metrics:', streakMetrics);
+                    console.log('🚗🚗🚗🚗🚗🚗🚗🚗🚗🚗🚗🚗 Streak Metrics:', streakMetrics);
                     
                     const combinedMetrics = {
                         ...performanceMetrics,
@@ -647,315 +686,596 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
         setIsLoadingChart(ohlcvState?.loading || false);
     }, [ohlcvState?.loading]);
 
+    useEffect(() => {
+        if (!existingTrade) return;
+
+        const entryPrice = parseFloat(tradeDetails.actions[0]?.price || '0');
+        const exitPrice = parseFloat(tradeDetails.actions[tradeDetails.actions.length - 1]?.price || '0');
+        const stopLoss = parseFloat(tradeDetails.stopLossPrice || '0');
+        const maePrice = existingTrade.mae_price || 0;
+        const mfePrice = existingTrade.mfe_price || 0;
+
+        // Calculate Available Trade Range
+        const atr = Math.abs(mfePrice - maePrice);
+        setAvailableTradeRange(atr);
+        setATRR(atr / Math.abs(entryPrice - stopLoss));
+        setATRPercentage((atr / entryPrice) * 100);
+
+        // Calculate End Trade Drawdown
+        const etd = Math.abs(mfePrice - exitPrice);
+        setEndTradeDrawdown(etd);
+
+        // Calculate Remaining Distance to Target (using 5R)
+        const targetPrice = entryPrice + (5 * Math.abs(entryPrice - stopLoss));
+        const rdt = Math.abs(targetPrice - mfePrice);
+        setRemainingDistanceToTarget(rdt);
+
+        // Set MAE and MFE
+        setMAE(Math.abs(entryPrice - maePrice));
+        setMFE(Math.abs(entryPrice - mfePrice));
+
+        // Calculate Remaining Distance to Stop
+        const rds = Math.abs(maePrice - stopLoss);
+        setRemainingDistanceToStop(rds);
+
+        // Calculate Efficiencies
+        const entryEff = (Math.abs(mfePrice - entryPrice) / atr) * 100;
+        const exitEff = (Math.abs(exitPrice - entryPrice) / atr) * 100;
+        const totalEff = ((exitPrice - entryPrice) / atr) * 100;
+
+        setEntryEfficiency(Math.round(entryEff));
+        setExitEfficiency(Math.round(exitEff));
+        setTotalEfficiency(Math.round(totalEff));
+
+        // Calculate Risk Metrics
+        const shares = parseFloat(tradeDetails.actions[0]?.shares || '0');
+        const riskPerShare = Math.abs(entryPrice - stopLoss);
+        const totalRiskAmount = riskPerShare * shares;
+
+        setRiskPerShare(riskPerShare);
+        setTotalRisk(totalRiskAmount);
+        setSlDistance(riskPerShare);
+
+        // Calculate Profit Metrics
+        const realizedGainAmount = (exitPrice - entryPrice) * shares;
+        const realizedPercentageValue = ((exitPrice - entryPrice) / entryPrice) * 100;
+        const rrrValue = Math.abs((exitPrice - entryPrice) / riskPerShare);
+
+        setRealizedGain(realizedGainAmount);
+        setRealizedPercentage(realizedPercentageValue);
+        setRRR(rrrValue);
+
+    }, [existingTrade, tradeDetails]);
+
+    // Add this function to convert trade actions to chart actions
+    const convertActionsToChartFormat = (actions: Action[]) => {
+        return actions.map(action => ({
+            type: action.type,
+            price: parseFloat(action.price),
+            time: action.date.getTime() / 1000 as UTCTimestamp,
+            shares: parseFloat(action.shares)
+        }));
+    };
+
+    // Helper function to format date
+    const formatDateForInput = (date: Date | string) => {
+        if (!date) return { date: '', time: '' };
+        const d = typeof date === 'string' ? new Date(date) : date;
+        return {
+            date: d.toISOString().split('T')[0],
+            time: d.toTimeString().slice(0, 5)
+        };
+    };
+
+    const handleAddAction = () => {
+        const newAction = {
+            type: 'BUY',
+            date: new Date(),
+            shares: '',
+            price: ''
+        };
+        setTradeDetails(prev => ({
+            ...prev,
+            actions: [...prev.actions, newAction]
+        }));
+    };
+
+    const handleRemoveAction = (index: number) => {
+        setTradeDetails(prev => ({
+            ...prev,
+            actions: prev.actions.filter((_, i) => i !== index) // Remove the action at the specified index
+        }));
+    };
+
+    const handleSave = async () => {
+        try {
+            const tradeData = {
+                id: existingTrade?.id,
+                ticker: tradeDetails.ticker,
+                asset_type: tradeDetails.assetType,
+                direction: tradeDetails.direction,
+                strategy: tradeDetails.strategy,
+                setups: tradeDetails.setups,
+                stop_loss_price: parseFloat(tradeDetails.stopLossPrice),
+                trailing_stop_loss: parseFloat(tradeDetails.trailingStopLoss),
+                notes: notes,
+                mistakes: mistakes,
+                actions: tradeDetails.actions.map(action => ({
+                    type: action.type,
+                    datetime: action.date,
+                    shares: parseFloat(action.shares),
+                    price: parseFloat(action.price)
+                }))
+            };
+
+            let response;
+            if (existingTrade) {
+                response = await supabase
+                    .from('trades')
+                    .update(tradeData)
+                    .eq('id', existingTrade.id);
+            } else {
+                response = await supabase
+                    .from('trades')
+                    .insert([tradeData]);
+            }
+
+            if (response.error) throw response.error;
+            
+            // Show success toast
+            toast.success('Trade saved successfully!');
+            
+            // Close modal and refresh data
+            onClose();
+            if (onSave) onSave();
+        } catch (error) {
+            console.error('Error saving trade:', error);
+            toast.error('Failed to save trade. Please try again.');
+        }
+    };
+
     return (
         <AnimatePresence>
             {isOpen && (
-                <div className="modal modal-open">
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4"
+                >
                     <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 0.75 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.15 }}
-                        className="modal-backdrop"
-                        onClick={onClose}
-                    />
-                    <motion.div 
-                        className="modal-box max-w-[70vw] w-[1600px]"
-                        initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                        animate={{ scale: 1, opacity: 1, y: 0 }}
-                        exit={{ scale: 0.95, opacity: 0, y: 20 }}
-                        transition={{ 
-                            type: "spring",
-                            duration: 0.3,
-                            bounce: 0.1
-                        }}
+                        initial={{ scale: 0.95 }}
+                        animate={{ scale: 1 }}
+                        exit={{ scale: 0.95 }}
+                        className="relative w-[1800px] h-[1200px] bg-base-100 rounded-lg shadow-xl"
                     >
-                        <div className="tabs tabs-boxed mb-4">
-                            <a 
-                                className={`tab ${activeTab === 'general' ? 'tab-active' : ''}`}
-                                onClick={() => setActiveTab('general')}
-                            >
-                                General
-                            </a>
-                            <a 
-                                className={`tab ${activeTab === 'notes' ? 'tab-active' : ''}`}
-                                onClick={() => setActiveTab('notes')}
-                            >
-                                Trade Replay, Notes & Mistakes
-                            </a>  
-                        </div>
-
-                        {activeTab === 'general' ? (
-                            <>
-                                <h3 className="font-bold text-lg mb-4">Trade View</h3>
+                        <Tab.Group>
+                            {/* Modal Header */}
+                            <div className="bg-base-100 border-b border-base-200 px-6 py-4">
+                                <div className="flex justify-between items-center">
+                                    <h2 className="text-xl font-bold text-base-content">Trade History</h2>
+                                    <button onClick={onClose} className="btn btn-ghost btn-sm">
+                                        <XMarkIcon className="h-5 w-5" />
+                                    </button>
+                                </div>
                                 
-                                <div className="grid grid-cols-5 gap-4 mb-6">
-                                    <div>
-                                        <label className="label">Market</label>
-                                        <select
-                                            className="select select-bordered w-full"
-                                            value={tradeDetails.assetType}
-                                            onChange={e => setTradeDetails(prev => ({ ...prev, assetType: e.target.value }))}
-                                        >
-                                            <option value={ASSET_TYPES.STOCK}>STOCK</option>
-                                            <option value={ASSET_TYPES.OPTION}>OPTION</option>
-                                            <option value={ASSET_TYPES.CRYPTO}>CRYPTO</option>
-                                            <option value={ASSET_TYPES.FOREX}>FOREX</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="label">Ticker</label>
-                                        <input
-                                            type="text"
-                                            className="input input-bordered w-full"
-                                            value={tradeDetails.ticker}
-                                            onChange={e => setTradeDetails(prev => ({ ...prev, ticker: e.target.value.toUpperCase() }))}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="label">Initial Stoploss</label>
-                                        <input
-                                            type="number"
-                                            className="input input-bordered w-full"
-                                            value={tradeDetails.stopLossPrice}
-                                            onChange={e => setTradeDetails(prev => ({ ...prev, stopLossPrice: e.target.value }))}
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="label">Trailing Stoploss</label>
-                                        <input
-                                            type="number"
-                                            className="input input-bordered w-full"
-                                            value={tradeDetails.trailingStopLoss}
-                                            onChange={e => setTradeDetails(prev => ({ ...prev, trailingStopLoss: e.target.value }))}
-                                            placeholder="Set trailing SL"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="label">Direction</label>
-                                        <button 
-                                            className={`btn w-full ${tradeDetails.direction === DIRECTIONS.LONG ? 'btn-info' : 'btn-error'}`}
-                                            onClick={() => setTradeDetails(prev => ({
-                                                ...prev,
-                                                direction: prev.direction === DIRECTIONS.LONG ? DIRECTIONS.SHORT : DIRECTIONS.LONG
-                                            }))}
-                                        >
-                                            {tradeDetails.direction}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="flex gap-4 mb-6">
-                                    <div className="w-1/3">
-                                        <label className="label">Strategy:</label>
-                                        <div className="dropdown w-full">
-                                            <div tabIndex={0} role="button" className="btn select select-bordered w-full" onClick={() => {}}>
-                                                {tradeDetails.strategy || "Select Strategy"}
-                                            </div>
-                                            <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[1] w-full p-2 shadow">
-                                                {Object.values(STRATEGIES).map(strategy => (
-                                                    <li key={strategy} onClick={() => {
-                                                        setSelectedStrategy(strategy);
-                                                        setTradeDetails(prev => ({ ...prev, strategy }));
-                                                    }}>
-                                                        <a>{strategy}</a>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    </div>
-
-                                    <div className="w-2/3">
-                                        <label className="label">Setups:</label>
-                                        <div className="dropdown w-full" id="dropdown-id">
-                                            <div tabIndex={0} role="button" className="btn select select-bordered w-full" onClick={() => setIsDropdownOpen(prev => !prev)}>
-                                                {tradeDetails.setups.length > 0 ? tradeDetails.setups.join(', ') : "Select Setups"}
-                                            </div>
-                                            {isDropdownOpen && (
-                                                <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-box z-[1] w-full p-3 shadow grid grid-cols-5 gap-3">
-                                                    {SETUPS.map(setup => (
-                                                        <li key={setup}>
-                                                            <div className="form-control">
-                                                                <label className="label cursor-pointer flex items-center">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        value={setup}
-                                                                        checked={tradeDetails.setups.includes(setup)}
-                                                                        onChange={(e) => {
-                                                                            const value = e.target.value;
-                                                                            const newSetups = tradeDetails.setups.includes(value) 
-                                                                                ? tradeDetails.setups.filter(s => s !== value) 
-                                                                                : [...tradeDetails.setups, value];
-                                                                            setSelectedSetups(newSetups);
-                                                                            setTradeDetails(prev => ({ ...prev, setups: newSetups }));
-                                                                        }}
-                                                                        className="checkbox checkbox-primary mr-2"
-                                                                    />
-                                                                    <span className="label-text">{setup}</span>
-                                                                </label>
-                                                            </div>
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="overflow-x-auto mb-6">
-                                    <table className="table w-full">
-                                        <thead>
-                                            <tr>
-                                                <th>Action</th>
-                                                <th>Date/Time</th>
-                                                <th>Quantity</th>
-                                                <th>Price</th>
-                                                <th></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {tradeDetails.actions.map((action, index) => (
-                                                <tr key={index}>
-                                                    <td>
-                                                        <button
-                                                            onClick={() => toggleActionType(index)}
-                                                            className={`btn btn-sm w-24 ${action.type === 'BUY' ? 'btn-info' : 'btn-error'}`}
-                                                        >
-                                                            {action.type}
-                                                        </button>
-                                                    </td>
-                                                    <td>
-                                                        <DatePicker
-                                                            selected={action.date}
-                                                            onChange={date => {
-                                                                if (date) {
-                                                                    handleActionChange(index, 'date', date);
-                                                                }
-                                                            }}
-                                                            className="input input-bordered input-sm w-full"
-                                                            showTimeSelect
-                                                            dateFormat="MM/dd/yyyy, hh:mm aa"
-                                                        />
-                                                    </td>
-                                                    <td>
-                                                        <input
-                                                            type="number"
-                                                            className="input input-bordered input-sm w-24"
-                                                            value={action.shares}
-                                                            onChange={e => handleActionChange(index, 'shares', e.target.value)}
-                                                        />
-                                                    </td>
-                                                    <td>
-                                                        <input
-                                                            type="number"
-                                                            className="input input-bordered input-sm w-24"
-                                                            value={action.price}
-                                                            onChange={e => handleActionChange(index, 'price', e.target.value)}
-                                                        />
-                                                    </td>
-                                                    <td>
-                                                        <button
-                                                            className="btn btn-ghost btn-sm"
-                                                            onClick={() => removeAction(index)}
-                                                        >
-                                                            ×
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                                {/* <div className="flex justify-center mt-6 mb-6 gap-8">
-                                    {isLoadingChart ? (
-                                        <div className="h-[400px] w-full flex items-center justify-center">
-                                            <span className="loading loading-spinner loading-lg"></span>
-                                            <span className="ml-2">Loading chart data...</span>
-                                        </div>
-                                    ) : chartData ? (
-                                        <div className="w-full">
-                                            <h3 className="text-lg font-semibold mb-2">Price History</h3>
-                                            <TradeChart data={chartData.data} trades={chartData.trades} />
-                                        </div>
-                                    ) : (
-                                        <div className="h-[400px] w-full flex items-center justify-center text-gray-500">
-                                            No chart data available
-                                        </div>
-                                    )}
-                                </div> */}
-
-                                <div className="flex justify-center mt-6 mb-6 gap-8">
-                                    <button
-                                        onClick={addAction}
-                                        className="btn btn-danger btn-info"
+                                {/* Tabs */}
+                                <Tab.List className="flex space-x-4 mt-4">
+                                    <Tab
+                                        className={({ selected }) =>
+                                            `px-4 py-2 rounded-lg transition-colors duration-200 ${
+                                                selected ? 'bg-primary text-primary-content' : 'hover:bg-base-200'
+                                            }`
+                                        }
                                     >
-                                        Add Actions
-                                    </button>
-                                    <button onClick={handleDeleteTrade} className="btn btn-error">
-                                        Delete Trade
-                                    </button>
-                                </div>
-                            </>
-                        ) : (
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="label">Trade Replay</label>
-                                    <div className="h-[550px] w-full bg-base-200 rounded-lg overflow-hidden">
-                                        {isLoadingChart ? (
-                                            <div className="h-full w-full flex items-center justify-center">
-                                                <span className="loading loading-spinner loading-lg"></span>
+                                        Details
+                                    </Tab>
+                                    <Tab
+                                        className={({ selected }) =>
+                                            `px-4 py-2 rounded-lg transition-colors duration-200 ${
+                                                selected ? 'bg-primary text-primary-content' : 'hover:bg-base-200'
+                                            }`
+                                        }
+                                    >
+                                        Notes & Mistakes
+                                    </Tab>
+                                </Tab.List>
+                            </div>
+
+                            {/* Modal Content */}
+                            <div className="p-6">
+                                <Tab.Panels>
+                                    <Tab.Panel>
+                                        <div className="grid grid-cols-2 gap-8">
+                                            {/* Left Column - Trade Details */}
+                                            <div className="space-y-6">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    {/* Trade Details Fields */}
+                                                    <div>
+                                                        <label className="label">Ticker</label>
+                                                        <input
+                                                            type="text"
+                                                            className="input input-bordered w-full bg-base-200"
+                                                            value={tradeDetails.ticker}
+                                                            onChange={e => setTradeDetails(prev => ({ ...prev, ticker: e.target.value.toUpperCase() }))}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="label">Asset Type</label>
+                                                        <select
+                                                            className="select select-bordered w-full bg-base-200"
+                                                            value={tradeDetails.assetType}
+                                                            onChange={e => setTradeDetails(prev => ({ ...prev, assetType: e.target.value }))}
+                                                        >
+                                                            <option value={ASSET_TYPES.STOCK}>Stock</option>
+                                                            <option value={ASSET_TYPES.OPTION}>Option</option>
+                                                            <option value={ASSET_TYPES.CRYPTO}>Crypto</option>
+                                                            <option value={ASSET_TYPES.FOREX}>Forex</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-3 gap-4">
+                                                    <div>
+                                                        <label className="label">Initial SL</label>
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            className="input input-bordered w-full bg-base-200"
+                                                            value={tradeDetails.stopLossPrice}
+                                                            onChange={e => setTradeDetails(prev => ({ ...prev, stopLossPrice: e.target.value }))}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="label">Trailing SL</label>
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            className="input input-bordered w-full bg-base-200"
+                                                            value={tradeDetails.trailingStopLoss}
+                                                            onChange={e => setTradeDetails(prev => ({ ...prev, trailingStopLoss: e.target.value }))}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="label">Direction</label>
+                                                        <button 
+                                                            className={`btn w-full ${tradeDetails.direction === DIRECTIONS.LONG ? 'btn-info' : 'btn-error'}`}
+                                                            onClick={() => setTradeDetails(prev => ({
+                                                                ...prev,
+                                                                direction: prev.direction === DIRECTIONS.LONG ? DIRECTIONS.SHORT : DIRECTIONS.LONG
+                                                            }))}
+                                                        >
+                                                            {tradeDetails.direction}
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="label">Strategy</label>
+                                                        <Combobox
+                                                            value={tradeDetails.strategy}
+                                                            onChange={(value) => setTradeDetails(prev => ({ ...prev, strategy: value }))}
+                                                        >
+                                                            <div className="relative">
+                                                                <div className="relative w-full cursor-default overflow-hidden rounded-lg bg-base-200 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75 focus-visible:ring-offset-2 focus-visible:ring-offset-teal-300 sm:text-sm">
+                                                                    <Combobox.Input
+                                                                        className="w-full border-none py-2 pl-3 pr-10 text-sm leading-5 bg-base-200 focus:ring-0"
+                                                                        onChange={(event) => setStrategyQuery(event.target.value)}
+                                                                        displayValue={(strategy: string) => strategy}
+                                                                    />
+                                                                    <Combobox.Button className="absolute inset-y-0 right-0 flex items-center pr-2">
+                                                                        <ChevronUpDownIcon
+                                                                            className="h-5 w-5 text-gray-400"
+                                                                            aria-hidden="true"
+                                                                        />
+                                                                    </Combobox.Button>
+                                                                </div>
+                                                                <Combobox.Options className="absolute mt-1 max-h-60 w-full overflow-auto rounded-md bg-base-200 py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm z-50">
+                                                                    {filteredStrategies.map((strategy) => (
+                                                                        <Combobox.Option
+                                                                            key={strategy}
+                                                                            value={strategy}
+                                                                            className={({ active }) =>
+                                                                                `relative cursor-default select-none py-2 pl-10 pr-4 ${
+                                                                                    active ? 'bg-primary text-primary-content' : 'text-base-content'
+                                                                                }`
+                                                                            }
+                                                                        >
+                                                                            {({ selected, active }) => (
+                                                                                <>
+                                                                                    <span className={`block truncate ${selected ? 'font-medium' : 'font-normal'}`}>
+                                                                                        {strategy}
+                                                                                    </span>
+                                                                                    {selected ? (
+                                                                                        <span className={`absolute inset-y-0 left-0 flex items-center pl-3 ${active ? 'text-primary-content' : 'text-primary'}`}>
+                                                                                            <CheckIcon className="h-5 w-5" aria-hidden="true" />
+                                                                                        </span>
+                                                                                    ) : null}
+                                                                                </>
+                                                                            )}
+                                                                        </Combobox.Option>
+                                                                    ))}
+                                                                </Combobox.Options>
+                                                            </div>
+                                                        </Combobox>
+                                                    </div>
+                                                    <div>
+                                                        <label className="label">Setups</label>
+                                                        <Combobox
+                                                            value={tradeDetails.setups}
+                                                            onChange={(value) => setTradeDetails(prev => ({ ...prev, setups: Array.isArray(value) ? value : [value] }))}
+                                                            multiple
+                                                        >
+                                                            <div className="relative">
+                                                                <div className="relative w-full cursor-default overflow-hidden rounded-lg bg-base-200 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75 focus-visible:ring-offset-2 focus-visible:ring-offset-teal-300 sm:text-sm">
+                                                                    <Combobox.Input
+                                                                        className="w-full border-none py-2 pl-3 pr-10 text-sm leading-5 bg-base-200 focus:ring-0"
+                                                                        onChange={(event) => setSetupsQuery(event.target.value)}
+                                                                        displayValue={(setups: string[]) => setups.join(', ')}
+                                                                    />
+                                                                    <Combobox.Button className="absolute inset-y-0 right-0 flex items-center pr-2">
+                                                                        <ChevronUpDownIcon
+                                                                            className="h-5 w-5 text-gray-400"
+                                                                            aria-hidden="true"
+                                                                        />
+                                                                    </Combobox.Button>
+                                                                </div>
+                                                                <Combobox.Options className="absolute mt-1 max-h-60 w-full overflow-auto rounded-md bg-base-200 py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm z-50">
+                                                                    {filteredSetups.map((setup) => (
+                                                                        <Combobox.Option
+                                                                            key={setup}
+                                                                            value={setup}
+                                                                            className={({ active }) =>
+                                                                                `relative cursor-default select-none py-2 pl-10 pr-4 ${
+                                                                                    active ? 'bg-primary text-primary-content' : 'text-base-content'
+                                                                                }`
+                                                                            }
+                                                                        >
+                                                                            {({ selected, active }) => (
+                                                                                <>
+                                                                                    <span className={`block truncate ${selected ? 'font-medium' : 'font-normal'}`}>
+                                                                                        {setup}
+                                                                                    </span>
+                                                                                    {selected ? (
+                                                                                        <span className={`absolute inset-y-0 left-0 flex items-center pl-3 ${active ? 'text-primary-content' : 'text-primary'}`}>
+                                                                                            <CheckIcon className="h-5 w-5" aria-hidden="true" />
+                                                                                        </span>
+                                                                                    ) : null}
+                                                                                </>
+                                                                            )}
+                                                                        </Combobox.Option>
+                                                                    ))}
+                                                                </Combobox.Options>
+                                                            </div>
+                                                        </Combobox>
+                                                    </div>
+                                                </div>
+
+                                                {/* Trade Actions Table */}
+                                                <div className="mt-6">
+                                                    <div className="flex justify-between items-center mb-4">
+                                                        <h3 className="text-lg font-medium text-base-content">Trade Actions</h3>
+                                                        <button
+                                                            className="btn btn-primary btn-sm"
+                                                            onClick={handleAddAction}
+                                                        >
+                                                            Add Action
+                                                        </button>
+                                                    </div>
+                                                    <div className="overflow-x-auto">
+                                                        <table className="table w-full">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>Type</th>
+                                                                    <th>Date/Time</th>
+                                                                    <th>Shares</th>
+                                                                    <th>Price</th>
+                                                                    <th>Actions</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {tradeDetails.actions.map((action, index) => (
+                                                                    <tr key={index}>
+                                                                        <td>
+                                                                            <button
+                                                                                className={`badge ${action.type === 'BUY' ? 'badge-success' : 'badge-error'} p-4 cursor-pointer`}
+                                                                                onClick={() => toggleActionType(index)}
+                                                                            >
+                                                                                {action.type}
+                                                                            </button>
+                                                                        </td>
+                                                                        <td>
+                                                                            <DatePicker
+                                                                                selected={action.date}
+                                                                                onChange={(date) => handleActionChange(index, 'date', date)}
+                                                                                showTimeSelect
+                                                                                dateFormat="yyyy-MM-dd HH:mm"
+                                                                                className="input input-bordered input-sm w-full max-w-xs bg-base-200"
+                                                                            />
+                                                                        </td>
+                                                                        <td>
+                                                                            <input
+                                                                                type="number"
+                                                                                value={action.shares}
+                                                                                onChange={(e) => handleActionChange(index, 'shares', e.target.value)}
+                                                                                className="input input-bordered input-sm w-full max-w-xs bg-base-200"
+                                                                            />
+                                                                        </td>
+                                                                        <td>
+                                                                            <input
+                                                                                type="number"
+                                                                                step="0.01"
+                                                                                value={action.price}
+                                                                                onChange={(e) => handleActionChange(index, 'price', e.target.value)}
+                                                                                className="input input-bordered input-sm w-full max-w-xs bg-base-200"
+                                                                            />
+                                                                        </td>
+                                                                        <td>
+                                                                            <button
+                                                                                onClick={() => removeAction(index)}
+                                                                                className="btn btn-ghost btn-sm"
+                                                                            >
+                                                                                <TrashIcon className="h-5 w-5 text-error" />
+                                                                            </button>
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        ) : chartData.length > 0 ? (
-                                            <TradeReplayChart
-                                                data={chartData}
-                                                actions={tradeDetails.actions.map(action => ({
-                                                    type: action.type,
-                                                    time: action.date.getTime() / 1000 as UTCTimestamp,
-                                                    price: parseFloat(action.price),
-                                                    shares: parseFloat(action.shares)
-                                                }))}
-                                                stopLossPrice={parseFloat(tradeDetails.stopLossPrice)}
-                                                maePrice={existingTrade?.mae_price}
-                                                mfePrice={existingTrade?.mfe_price}
-                                            />
-                                        ) : (
-                                            <div className="h-full w-full flex items-center justify-center text-gray-500">
-                                                No chart data available
+
+                                            {/* Right Column - Trade Analytics */}
+                                            <div className="space-y-6">
+                                                {/* Efficiency Metrics */}
+                                                <div className="grid grid-cols-3 gap-4">
+                                                    <div className="bg-base-200 p-4 rounded-lg">
+                                                        <div className="text-sm opacity-70 mb-1">Entry Efficiency</div>
+                                                        <div className="text-3xl font-bold text-info">{entryEfficiency}%</div>
+                                                    </div>
+                                                    <div className="bg-base-200 p-4 rounded-lg">
+                                                        <div className="text-sm opacity-70 mb-1">Exit Efficiency</div>
+                                                        <div className="text-3xl font-bold text-success">{exitEfficiency}%</div>
+                                                    </div>
+                                                    <div className="bg-base-200 p-4 rounded-lg">
+                                                        <div className="text-sm opacity-70 mb-1">Total Efficiency</div>
+                                                        <div className="text-3xl font-bold text-primary">{totalEfficiency}%</div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Risk and Profit Metrics */}
+                                                <div className="grid grid-cols-2 gap-6">
+                                                    <div className="bg-base-200 p-4 rounded-lg">
+                                                        <h4 className="font-medium mb-4">Risk Metrics</h4>
+                                                        <div className="space-y-2">
+                                                            <div className="flex justify-between">
+                                                                <span className="opacity-70">Total Risk</span>
+                                                                <span>${totalRisk.toFixed(2)}</span>
+                                                            </div>
+                                                            <div className="flex justify-between">
+                                                                <span className="opacity-70">Risk Per Share</span>
+                                                                <span>${riskPerShare.toFixed(2)}</span>
+                                                            </div>
+                                                            <div className="flex justify-between">
+                                                                <span className="opacity-70">SL Distance</span>
+                                                                <span>${slDistance.toFixed(2)}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="bg-base-200 p-4 rounded-lg">
+                                                        <h4 className="font-medium mb-4">Profit Metrics</h4>
+                                                        <div className="space-y-2">
+                                                            <div className="flex justify-between">
+                                                                <span className="opacity-70">Realized Gain</span>
+                                                                <span>${realizedGain.toFixed(2)}</span>
+                                                            </div>
+                                                            <div className="flex justify-between">
+                                                                <span className="opacity-70">Realized %</span>
+                                                                <span>{realizedPercentage.toFixed(2)}%</span>
+                                                            </div>
+                                                            <div className="flex justify-between">
+                                                                <span className="opacity-70">R:R Ratio</span>
+                                                                <span>{rrr.toFixed(2)}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Trade Range Metrics */}
+                                                <div className="space-y-4">
+                                                    <div className="bg-base-200 p-4 rounded-lg flex justify-between items-center">
+                                                        <span className="opacity-70">Available Trade Range</span>
+                                                        <span>${availableTradeRange.toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="bg-base-200 p-4 rounded-lg flex justify-between items-center">
+                                                        <span className="opacity-70">End Trade Drawdown</span>
+                                                        <span>${endTradeDrawdown.toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="bg-base-200 p-4 rounded-lg flex justify-between items-center">
+                                                        <span className="opacity-70">Remaining Distance to Target</span>
+                                                        <span>${remainingDistanceToTarget.toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="bg-base-200 p-4 rounded-lg flex justify-between items-center">
+                                                        <span className="opacity-70">Maximum Adverse Excursion</span>
+                                                        <span>${mae.toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="bg-base-200 p-4 rounded-lg flex justify-between items-center">
+                                                        <span className="opacity-70">Maximum Favorable Excursion</span>
+                                                        <span>${mfe.toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="bg-base-200 p-4 rounded-lg flex justify-between items-center">
+                                                        <span className="opacity-70">Remaining Distance to Stop</span>
+                                                        <span>${remainingDistanceToStop.toFixed(2)}</span>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        )}
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="label">Trade Notes</label>
-                                    <textarea
-                                        className="textarea textarea-bordered w-full h-32"
-                                        placeholder="Enter your trade notes here..."
-                                        value={notes}
-                                        onChange={(e) => setNotes(e.target.value)}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="label">Mistakes & Lessons</label>
-                                    <textarea
-                                        className="textarea textarea-bordered w-full h-32"
-                                        placeholder="Document any mistakes or lessons learned..."
-                                        value={mistakes}
-                                        onChange={(e) => setMistakes(e.target.value)}
-                                    />
+                                        </div>
+                                    </Tab.Panel>
+
+                                    <Tab.Panel>
+                                        {/* Notes Tab Content */}
+                                        <div className="space-y-6">
+                                            {/* Chart Replay Section */}
+                                            <div>
+                                                <h3 className="text-lg font-medium text-base-content mb-4">Chart Replay</h3>
+                                                <div className="h-[500px] bg-base-200 rounded-lg">
+                                                    {isLoadingChart ? (
+                                                        <div className="flex items-center justify-center h-full">
+                                                            <span className="loading loading-spinner loading-lg"></span>
+                                                        </div>
+                                                    ) : (
+                                                        <TradeReplayChart 
+                                                            data={chartData}
+                                                            actions={convertActionsToChartFormat(tradeDetails.actions)}
+                                                            stopLossPrice={parseFloat(tradeDetails.stopLossPrice)}
+                                                            maePrice={tradeDetails.mae_price}
+                                                            mfePrice={tradeDetails.mfe_price}
+                                                        />
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Notes and Mistakes Grid */}
+                                            <div className="grid grid-cols-2 gap-8">
+                                                {/* Notes Section */}
+                                                <div>
+                                                    <h3 className="text-lg font-medium text-base-content mb-4">Trade Notes</h3>
+                                                    <textarea
+                                                        className="textarea textarea-bordered w-full h-40 bg-base-200"
+                                                        placeholder="Write your trade notes here..."
+                                                        value={notes}
+                                                        onChange={(e) => setNotes(e.target.value)}
+                                                    />
+                                                </div>
+
+                                                {/* Mistakes Section */}
+                                                <div>
+                                                    <h3 className="text-lg font-medium text-base-content mb-4">Mistakes & Lessons</h3>
+                                                    <textarea
+                                                        className="textarea textarea-bordered w-full h-40 bg-base-200"
+                                                        placeholder="Document any mistakes or lessons learned..."
+                                                        value={mistakes}
+                                                        onChange={(e) => setMistakes(e.target.value)}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </Tab.Panel>
+                                </Tab.Panels>
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="bg-base-100 border-t border-base-200 px-6 py-4">
+                                <div className="flex justify-end gap-2">
+                                    <button className="btn" onClick={onClose}>Close</button>
+                                    <button className="btn btn-primary" onClick={handleSave}>Save</button>
                                 </div>
                             </div>
-                        )}
-
-                        <div className="modal-action">
-                            <button className="btn" onClick={onClose} disabled={loading}>Close</button>
-                            <button className="btn btn-primary" onClick={handleSubmit} disabled={loading}>
-                                {loading ? 'Saving...' : 'Save'}
-                            </button>
-                        </div>
+                        </Tab.Group>
                     </motion.div>
-                </div>
+                </motion.div>
             )}
         </AnimatePresence>
     );

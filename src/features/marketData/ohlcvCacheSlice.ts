@@ -49,19 +49,18 @@ const ohlcvCacheSlice = createSlice({
         }
       });
       
-      // If we have too many entries, remove the least recently accessed ones
-      const cacheKeys = Object.keys(state.cache);
-      if (cacheKeys.length >= MAX_CACHE_ENTRIES) {
-        const sortedKeys = cacheKeys
-          .sort((a, b) => state.cache[a].lastAccessed - state.cache[b].lastAccessed)
-          .slice(0, cacheKeys.length - MAX_CACHE_ENTRIES + 1);
-        
-        sortedKeys.forEach(key => delete state.cache[key]);
+      // If we're at max capacity, remove least recently used entry
+      const cacheSize = Object.keys(state.cache).length;
+      if (cacheSize >= MAX_CACHE_ENTRIES) {
+        const oldestKey = Object.entries(state.cache)
+          .sort(([, a], [, b]) => a.lastAccessed - b.lastAccessed)[0][0];
+        delete state.cache[oldestKey];
+        console.log('🗑️ Removed oldest cache entry:', oldestKey);
       }
       
-      // Store a new copy of the data to ensure it's mutable
+      // Add new entry
       state.cache[key] = {
-        data: [...data],  // Create a new array with spread operator
+        data,
         timestamp: now,
         expiryTime: now + CACHE_EXPIRY,
         lastAccessed: now

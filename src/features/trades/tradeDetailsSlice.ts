@@ -17,9 +17,23 @@ const initialState: TradeDetailsState = {
     trades: {}
 };
 
+// Add cache duration constant
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
 export const fetchTradeDetails = createAsyncThunk(
     'tradeDetails/fetchData',
-    async (tradeId: string) => {
+    async (tradeId: string, { getState }) => {
+        // Check if we have cached data
+        const state = getState() as any;
+        const cachedTrade = state.tradeDetails.trades[tradeId];
+        const now = Date.now();
+
+        if (cachedTrade && cachedTrade.data && (now - cachedTrade.lastUpdated) < CACHE_DURATION) {
+            console.log('📦 Using cached trade data for', tradeId);
+            return cachedTrade.data;
+        }
+
+        console.log('🔄 Fetching fresh trade data for', tradeId);
         const { data, error } = await supabase
             .from('trades')
             .select('*, action_types, action_datetimes, action_prices, action_shares, notes, mistakes')
@@ -39,12 +53,19 @@ const tradeDetailsSlice = createSlice({
     reducers: {
         clearTradeDetails: (state, action) => {
             if (action.payload) {
-                // Clear specific trade data
                 delete state.trades[action.payload];
             } else {
-                // Clear all data
                 state.trades = {};
             }
+        },
+        clearExpiredCache: (state) => {
+            const now = Date.now();
+            Object.keys(state.trades).forEach(tradeId => {
+                const trade = state.trades[tradeId];
+                if (now - trade.lastUpdated > CACHE_DURATION) {
+                    delete state.trades[tradeId];
+                }
+            });
         }
     },
     extraReducers: (builder) => {
@@ -54,7 +75,7 @@ const tradeDetailsSlice = createSlice({
                 state.trades[tradeId] = {
                     ...state.trades[tradeId],
                     loading: true,
-                    error: null
+                    error: null,
                 };
             })
             .addCase(fetchTradeDetails.fulfilled, (state, action) => {
@@ -63,7 +84,7 @@ const tradeDetailsSlice = createSlice({
                     loading: false,
                     data: action.payload,
                     error: null,
-                    lastUpdated: Date.now()
+                    lastUpdated: Date.now(),
                 };
             })
             .addCase(fetchTradeDetails.rejected, (state, action) => {
@@ -77,7 +98,7 @@ const tradeDetailsSlice = createSlice({
     }
 });
 
-export const { clearTradeDetails } = tradeDetailsSlice.actions;
+export const { clearTradeDetails, clearExpiredCache } = tradeDetailsSlice.actions;
 
 // Selectors
 export const selectTradeDetails = (state: any, tradeId: string) => state.tradeDetails.trades[tradeId];
