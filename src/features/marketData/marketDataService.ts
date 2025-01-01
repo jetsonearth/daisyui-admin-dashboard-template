@@ -216,9 +216,8 @@ class MarketDataService {
             // Check cache first
             const cachedData = selectCachedOHLCV(store.getState(), cacheKey);
             if (cachedData) {
-                // console.log('📊 Using cached OHLCV data for:', ticker);
-                // Ensure data is sorted before returning from cache
-                return cachedData.sort((a, b) => a.time - b.time);
+                // Create a new array before sorting to avoid mutating the cached data
+                return [...cachedData].sort((a, b) => a.time - b.time);
             }
 
             const userId = await this.getUserId();
