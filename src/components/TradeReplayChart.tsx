@@ -1,17 +1,69 @@
-import React, { useEffect, useRef } from 'react';
 import { 
     createChart, 
-    ColorType, 
-    CrosshairMode, 
-    UTCTimestamp, 
+    IChartApi, 
+    UTCTimestamp,
+    ColorType,
+    CrosshairMode,
     SeriesMarkerPosition,
     SeriesMarkerShape,
-    IChartApi,
     ISeriesApi,
-    HistogramData 
+    HistogramData
 } from 'lightweight-charts';
+import React, { useEffect, useRef } from 'react';
+import { formatInTimeZone } from 'date-fns-tz';
 import { OHLCVData } from '../features/marketData/marketDataService';
 import { EMA } from '@debut/indicators';
+
+// Convert NY market time (4pm) to China local time (next day 5am)
+const convertNYMarketTimeToLocal = (nyTimestamp: number): number => {
+    const date = new Date(nyTimestamp * 1000);
+    // NY market close at 4pm = next day 5am China time
+    // Add 13 hours to convert 4pm NY to 5am China
+    const localDate = new Date(date.getTime() + 13 * 60 * 60 * 1000);
+    
+    console.log('🕒 Market time conversion:', {
+        original: date.toISOString(),
+        localTime: localDate.toISOString(),
+        timestamp: Math.floor(localDate.getTime() / 1000)
+    });
+    
+    return Math.floor(localDate.getTime() / 1000);
+};
+
+// Convert local time to NY time and align with trading day
+const alignTradeTimeToNYTradingDay = (timestamp: number): number => {
+    const localDate = new Date(timestamp * 1000);
+    
+    // Convert local time to NY time by subtracting 13 hours
+    // If it's 11pm China time on Dec 4, this becomes 10am NY time on Dec 4
+    const nyDate = new Date(localDate.getTime() - 13 * 60 * 60 * 1000);
+    
+    // In NY time: if before 4pm, it belongs to current trading day
+    // If after 4pm, it belongs to next trading day
+    const nyHours = nyDate.getHours();
+    const marketDate = new Date(nyDate);
+    
+    if (nyHours >= 16) { // After 4pm NY
+        marketDate.setDate(marketDate.getDate() + 1);
+    }
+    
+    // Set to market open (we'll display this as 5am China time)
+    marketDate.setHours(16, 0, 0, 0);
+    
+    // Convert back to local display time
+    const localDisplayTime = new Date(marketDate.getTime() + 13 * 60 * 60 * 1000);
+    
+    console.log('🎯 Trade time alignment:', {
+        localTime: localDate.toISOString(),
+        nyTime: nyDate.toISOString(),
+        nyHour: nyHours,
+        marketDayNY: marketDate.toISOString(),
+        displayTime: localDisplayTime.toISOString(),
+        timestamp: Math.floor(localDisplayTime.getTime() / 1000)
+    });
+    
+    return Math.floor(localDisplayTime.getTime() / 1000);
+};
 
 interface TradeAction {
     type: 'BUY' | 'SELL';
@@ -49,32 +101,31 @@ export const TradeReplayChart: React.FC<TradeReplayChartProps> = ({
     useEffect(() => {
         if (!chartContainerRef.current || !data || data.length === 0) return;
 
+        // Convert market data times
+        const localData = data.map(item => ({
+            ...item,
+            time: convertNYMarketTimeToLocal(item.time)
+        }));
+
+        // Sort data by time
+        const sortedData = [...localData].sort((a, b) => a.time - b.time);
+
+        // Align trade action times with NY trading days
+        const alignedActions = actions.map(action => ({
+            ...action,
+            time: alignTradeTimeToNYTradingDay(action.time)
+        }));
+
         console.log('📊 Rendering chart with data:', {
-            dataPoints: data.length,
-            firstDate: new Date(data[0].time * 1000).toISOString(),
-            lastDate: new Date(data[data.length - 1].time * 1000).toISOString(),
-            actions: actions.map(a => ({
+            dataPoints: sortedData.length,
+            firstDate: new Date(sortedData[0].time * 1000).toISOString(),
+            lastDate: new Date(sortedData[sortedData.length - 1].time * 1000).toISOString(),
+            actions: alignedActions.map(a => ({
                 type: a.type,
                 time: new Date(a.time * 1000).toISOString(),
-                price: a.price,
-                shares: a.shares
+                price: a.price
             }))
         });
-
-        // Sort data by time in ascending order
-        const sortedData = [...data].sort((a, b) => a.time - b.time);
-
-        // Validate data is properly sorted
-        for (let i = 1; i < sortedData.length; i++) {
-            if (sortedData[i].time < sortedData[i-1].time) {
-                console.error('❌ Data ordering error:', {
-                    index: i,
-                    currentTime: new Date(sortedData[i].time * 1000).toISOString(),
-                    prevTime: new Date(sortedData[i-1].time * 1000).toISOString()
-                });
-                return;
-            }
-        }
 
         // Create chart
         const chart = createChart(chartContainerRef.current, {
@@ -187,8 +238,8 @@ export const TradeReplayChart: React.FC<TradeReplayChartProps> = ({
         });
 
         // Add markers for trade actions
-        const markers = actions.map(action => ({
-            time: action.time,
+        const markers = alignedActions.map(action => ({
+            time: action.time as UTCTimestamp,
             position: (action.type === 'BUY' ? 'belowBar' : 'aboveBar') as SeriesMarkerPosition,
             color: action.type === 'BUY' ? '#26a69a' : '#ef5350',
             shape: (action.type === 'BUY' ? 'arrowUp' : 'arrowDown') as SeriesMarkerShape,
@@ -300,7 +351,7 @@ export const TradeReplayChart: React.FC<TradeReplayChartProps> = ({
         const ema21Data = [];
         const ema50Data = [];
 
-        // Set data
+        // Map data to chart format with NY timezone
         const chartData = sortedData.map(item => ({
             ...item,
             time: item.time as UTCTimestamp
@@ -377,7 +428,7 @@ export const TradeReplayChart: React.FC<TradeReplayChartProps> = ({
                 }
             }
         };
-    }, [data, actions, stopLossPrice]);
+    }, [data, actions, stopLossPrice, maePrice, mfePrice]);
 
     // Handle resize
     useEffect(() => {
