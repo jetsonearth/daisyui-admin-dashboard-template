@@ -107,7 +107,20 @@ function TradeLog(){
     
             if (error) throw error;
     
-            setTrades(data);
+            // Preserve the original data from Supabase for closed trades
+            const tradesWithPreservedValues = data.map(trade => {
+                if (trade.status === TRADE_STATUS.CLOSED) {
+                    // For closed trades, keep all original values including realized PnL
+                    return {
+                        ...trade,
+                        unrealized_pnl: 0,
+                        unrealized_pnl_percentage: 0
+                    };
+                }
+                return trade;
+            });
+    
+            setTrades(tradesWithPreservedValues);
             setInitialLoading(false);
     
             // Call updateMarketData after setting trades
@@ -167,7 +180,15 @@ function TradeLog(){
             });
             
             // Combine updated active trades with unchanged closed trades
-            const allUpdatedTrades = [...tradesWithMetrics, ...closedTrades];
+            const allUpdatedTrades = trades.map(trade => {
+                // If it's a closed trade, preserve its original values
+                if (trade.status === 'Closed') {
+                    return trade;
+                }
+                // Otherwise use the updated metrics
+                const updatedTrade = tradesWithMetrics.find(t => t.id === trade.id);
+                return updatedTrade || trade;
+            });
             
             setTrades(allUpdatedTrades);
             setLastUpdate(new Date().toLocaleTimeString());
@@ -410,13 +431,13 @@ function TradeLog(){
                                                     text-center font-semibold tabular-nums
                                                     ${trade.unrealized_pnl_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}
                                                 `}>
-                                                    {trade.unrealized_pnl === 0 ? (
-                                                        <span className="text-white">-</span>
-                                                    ) : (
+                                                    {trade.status === TRADE_STATUS.OPEN ? (
                                                         <>
                                                             {trade.unrealized_pnl_percentage > 0 ? '+' : ''}
                                                             {safeToFixed(trade.unrealized_pnl_percentage)}%
                                                         </>
+                                                    ) : (
+                                                        <span className="text-white">-</span>
                                                     )}
                                                 </td>
                                                 
@@ -424,13 +445,13 @@ function TradeLog(){
                                                     text-center font-semibold tabular-nums
                                                     ${trade.unrealized_pnl > 0 ? 'text-emerald-400' : 'text-rose-400'}
                                                 `}>
-                                                    {trade.unrealized_pnl === 0 ? (
-                                                        <span className="text-white">-</span>
-                                                    ) : (
+                                                    {trade.status === TRADE_STATUS.OPEN ? (
                                                         <>
                                                             {trade.unrealized_pnl > 0 ? '+' : ''}
                                                             {formatCurrency(trade.unrealized_pnl)}
                                                         </>
+                                                    ) : (
+                                                        <span className="text-white">-</span>
                                                     )}
                                                 </td>
 
@@ -438,16 +459,28 @@ function TradeLog(){
                                                     text-center font-semibold tabular-nums
                                                     ${trade.realized_pnl_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}
                                                 `}>
-                                                    {trade.realized_pnl_percentage > 0 ? '+' : ''}
-                                                    {safeToFixed(trade.realized_pnl_percentage)}%
+                                                    {trade.status === TRADE_STATUS.CLOSED ? (
+                                                        <>
+                                                            {trade.realized_pnl_percentage > 0 ? '+' : ''}
+                                                            {safeToFixed(trade.realized_pnl_percentage)}%
+                                                        </>
+                                                    ) : (
+                                                        <span className="text-white">-</span>
+                                                    )}
                                                 </td>
 
                                                 <td className={`
                                                     text-center font-semibold tabular-nums
                                                     ${trade.realized_pnl > 0 ? 'text-emerald-400' : 'text-rose-400'}
                                                 `}>
-                                                    {trade.realized_pnl > 0 ? '+' : ''}
-                                                    {formatCurrency(trade.realized_pnl)}
+                                                    {trade.status === TRADE_STATUS.CLOSED ? (
+                                                        <>
+                                                            {trade.realized_pnl > 0 ? '+' : ''}
+                                                            {formatCurrency(trade.realized_pnl)}
+                                                        </>
+                                                    ) : (
+                                                        <span className="text-white">-</span>
+                                                    )}
                                                 </td>
 
                                                 {/* Risk Metrics */}
