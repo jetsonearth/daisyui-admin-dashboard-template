@@ -173,24 +173,41 @@ export class MetricsService {
     private calculateCurrentRiskAmount(trade: Trade, currentPrice: number): number {
         if (trade.status === TRADE_STATUS.CLOSED) return 0;
         
-        // Use remaining shares from trade, which is now required
+        // Use remaining shares from trade
         const remainingShares = trade.remaining_shares;
+        // console.log("Trade Risk Calculation:", {
+        //     ticker: trade.ticker,
+        //     remainingShares,
+        //     currentPrice,
+        //     direction: trade.direction,
+        //     trailingStop: trade.trailing_stoploss,
+        //     openRisk: trade.open_risk,
+        //     entryPrice: trade.entry_price
+        // });
         
         // If trailing stop is set
         if (trade.trailing_stoploss) {
-            return trade.direction === 'LONG'
+            const riskAmount = trade.direction === 'LONG'
                 ? (currentPrice - trade.trailing_stoploss) * remainingShares
                 : (trade.trailing_stoploss - currentPrice) * remainingShares;
+            // console.log("Risk Amount (Trailing Stop):", riskAmount);
+            return riskAmount;
         }
         
         // If no trailing stop, use original stop based on open_risk
         const stopPrice = trade.direction === 'LONG'
-            ? trade.entry_price * (1 - trade.open_risk / 100)
-            : trade.entry_price * (1 + trade.open_risk / 100);
+            ? trade.entry_price * (1 - trade.open_risk)
+            : trade.entry_price * (1 + trade.open_risk);
         
-        return trade.direction === 'LONG'
+        const riskAmount = trade.direction === 'LONG'
             ? (currentPrice - stopPrice) * remainingShares
             : (stopPrice - currentPrice) * remainingShares;
+            
+        // console.log("Risk Amount (Fixed Stop):", {
+        //     stopPrice,
+        //     riskAmount
+        // });
+        return riskAmount;
     }
 
     public async calculateTradeMetrics(
@@ -310,40 +327,53 @@ export class MetricsService {
     public calculateStreakMetrics(trades: Trade[]): StreakMetrics {
         const closedTrades = trades
             .filter(t => t.status === TRADE_STATUS.CLOSED)
-            .sort((a, b) => new Date(a.exit_datetime!).getTime() - new Date(b.exit_datetime!).getTime());
+            .sort((a, b) => new Date(b.exit_datetime!).getTime() - new Date(a.exit_datetime!).getTime()); // Sort by most recent first
     
         let currentStreak = 0;
         let longestWinStreak = 0;
         let longestLossStreak = 0;
         let currentStreakType: 'win' | 'loss' | null = null;
     
-        closedTrades.forEach(trade => {
+        // Process trades from most recent to oldest
+        for (const trade of closedTrades) {
             const isWin = trade.realized_pnl > 0;
             
             if (currentStreakType === null) {
+                // First trade sets the streak
                 currentStreakType = isWin ? 'win' : 'loss';
-                currentStreak = 1;
-            } else if ((isWin && currentStreakType === 'win') || 
-                       (!isWin && currentStreakType === 'loss')) {
-                currentStreak++;
+                currentStreak = isWin ? 1 : -1;
+            } else if ((isWin && currentStreakType === 'win') || (!isWin && currentStreakType === 'loss')) {
+                // Continuing the streak
+                currentStreak = currentStreakType === 'win' ? currentStreak + 1 : currentStreak - 1;
             } else {
                 // Streak broken
                 if (currentStreakType === 'win') {
                     longestWinStreak = Math.max(longestWinStreak, currentStreak);
                 } else {
-                    longestLossStreak = Math.max(longestLossStreak, currentStreak);
+                    longestLossStreak = Math.max(longestLossStreak, Math.abs(currentStreak));
                 }
                 currentStreakType = isWin ? 'win' : 'loss';
-                currentStreak = 1;
+                currentStreak = isWin ? 1 : -1;
             }
-        });
+        }
     
         // Update longest streaks one final time
         if (currentStreakType === 'win') {
             longestWinStreak = Math.max(longestWinStreak, currentStreak);
         } else if (currentStreakType === 'loss') {
-            longestLossStreak = Math.max(longestLossStreak, currentStreak);
+            longestLossStreak = Math.max(longestLossStreak, Math.abs(currentStreak));
         }
+    
+        console.log("Streak Calculation:", {
+            closedTrades: closedTrades.map(t => ({
+                ticker: t.ticker,
+                exitDate: t.exit_datetime,
+                pnl: t.realized_pnl
+            })),
+            currentStreak,
+            longestWinStreak,
+            longestLossStreak
+        });
     
         return {
             currentStreak,
@@ -533,13 +563,29 @@ export class MetricsService {
             }, 0);
     
             // 3. Open Exposure
-            const oer = activeTrades.reduce((sum, trade) => 
-                sum + (trade.initial_position_risk ?? 0), 0);
-            
+            console.log("Calculating OER with current capital:", currentCapital);
+            const oer = activeTrades.reduce((sum, trade) => {
+                const currentPrice = trade.entry_price;
+                const currentRiskAmount = this.calculateCurrentRiskAmount(trade, currentPrice);
+                const positionRisk = (currentRiskAmount / currentCapital) * 100; // Convert to percentage
+                // console.log("Trade OER Component:", {
+                //     ticker: trade.ticker,
+                //     currentRiskAmount,
+                //     currentCapital,
+                //     positionRisk,
+                //     runningSum: sum + positionRisk
+                // });
+                return sum + positionRisk;
+            }, 0);
+
+            // console.log("Final OER:", oer);
+
             const oep = activeTrades.reduce((sum, trade) => {
                 const totalPnL = (trade.unrealized_pnl ?? 0) + (trade.realized_pnl ?? 0);
                 return sum + (totalPnL / currentCapital * 100);
             }, 0);
+
+            // console.log("Final OEP:", oep);
     
             // Delta calculations
             const deltaDE = dep - der;

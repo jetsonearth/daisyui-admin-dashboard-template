@@ -206,17 +206,17 @@ class MarketDataService {
         try {
             // Generate cache key
             const cacheKey = generateOHLCVCacheKey(ticker, startTime, endTime);
-            console.log('🔑 Cache key generated:', {
-                ticker,
-                startTime: startTime.toISOString(),
-                endTime: endTime.toISOString(),
-                key: cacheKey
-            });
+            // console.log('🔑 Cache key generated:', {
+            //     ticker,
+            //     startTime: startTime.toISOString(),
+            //     endTime: endTime.toISOString(),
+            //     key: cacheKey
+            // });
             
             // Check cache first
             const cachedData = selectCachedOHLCV(store.getState(), cacheKey);
             if (cachedData) {
-                console.log('📊 Using cached OHLCV data for:', ticker);
+                // console.log('📊 Using cached OHLCV data for:', ticker);
                 // Ensure data is sorted before returning from cache
                 return cachedData.sort((a, b) => a.time - b.time);
             }

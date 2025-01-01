@@ -17,6 +17,8 @@ import { DeltaSparkline } from '../../components/charts/DeltaSparkline';
 import TradeCalendar from '../../components/calendar/TradeCalendar';
 import EquityMetricsChart from '../../components/charts/EquityMetricsChart';
 import ReactApexChart from 'react-apexcharts';
+import debounce from 'lodash/debounce';
+import { fetchTradeDetails, selectTradeDetails } from '../../features/trades/tradeDetailsSlice';
 
 // Time filter buttons configuration
 const timeFilters = [
@@ -30,6 +32,7 @@ const timeFilters = [
 function PortfolioOverview() {
     const dispatch = useDispatch()
     const allTrades = useSelector(state => state.trades.trades)
+    const tradeDetails = useSelector(state => state.tradeDetails.trades);
     const [trades, setTrades] = useState([])
     const [activeTrades, setActiveTrades] = useState([])
     const [closedTrades, setClosedTrades] = useState([])
@@ -184,38 +187,34 @@ function PortfolioOverview() {
         setIsTradeModalOpen(true);
     };
 
-    const handleTradeClick = async (trade) => {
-        console.log('Trade clicked:', trade);
-        
-        try {
-            const { data: fullTrade, error } = await supabase
-                .from('trades')
-                .select(`
-                    *,
-                    action_types,
-                    action_datetimes,
-                    action_prices,
-                    action_shares,
-                    notes,
-                    mistakes
-                `)
-                .eq('id', trade.id)
-                .single();
-
-            if (error) {
-                console.error('Error fetching trade details:', error);
-                toast.error('Failed to fetch trade details');
+    const handleTradeClick = useCallback(
+        debounce(async (trade) => {
+            // Check cache
+            const cachedTrade = tradeDetails[trade.id];
+            
+            // If we have cached data and it's less than 5 minutes old, use it
+            const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+            if (cachedTrade?.data && Date.now() - cachedTrade.lastUpdated < CACHE_TTL) {
+                setSelectedTrade(cachedTrade.data);
+                setIsTradeModalOpen(true);
                 return;
             }
 
-            console.log('Fetched trade details:', fullTrade);
-            setSelectedTrade(fullTrade);
-            setIsTradeModalOpen(true);
-        } catch (error) {
-            console.error('Error fetching trade details:', error);
-            toast.error('Failed to fetch trade details');
-        }
-    };
+            try {
+                const resultAction = await dispatch(fetchTradeDetails(trade.id));
+                if (fetchTradeDetails.fulfilled.match(resultAction)) {
+                    setSelectedTrade(resultAction.payload);
+                    setIsTradeModalOpen(true);
+                } else if (fetchTradeDetails.rejected.match(resultAction)) {
+                    toast.error('Failed to load trade details. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error fetching trade details:', error);
+                toast.error('Failed to load trade details. Please try again.');
+            }
+        }, 300),
+        [dispatch, tradeDetails]
+    );
 
     // Fetch trades
     const fetchTrades = useCallback(async () => {

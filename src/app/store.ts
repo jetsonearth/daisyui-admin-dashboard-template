@@ -7,6 +7,7 @@ import leadsSlice from '../features/leads/leadSlice';
 import tradesSlice from '../features/trades/tradesSlice';
 import ohlcvCacheReducer from '../features/marketData/ohlcvCacheSlice';
 import ohlcvReducer from '../features/marketData/ohlcvSlice';
+import tradeDetailsReducer from '../features/trades/tradeDetailsSlice';
 import { persistStore, persistReducer } from 'redux-persist';
 import storage from 'redux-persist/lib/storage';
 
@@ -23,6 +24,12 @@ const ohlcvPersistConfig = {
   whitelist: ['data', 'lastUpdated'], // Only persist data and lastUpdated
 };
 
+const tradeDetailsPersistConfig = {
+  key: 'tradeDetails',
+  storage,
+  whitelist: ['trades'] // only persist trades
+};
+
 const combinedReducer = {
   header: headerSlice,
   rightDrawer: rightDrawerSlice,
@@ -30,7 +37,8 @@ const combinedReducer = {
   lead: leadsSlice,
   trades: tradesSlice,
   ohlcvCache: persistReducer(ohlcvCachePersistConfig, ohlcvCacheReducer),
-  ohlcv: persistReducer(ohlcvPersistConfig, ohlcvReducer)
+  ohlcv: persistReducer(ohlcvPersistConfig, ohlcvReducer),
+  tradeDetails: persistReducer(tradeDetailsPersistConfig, tradeDetailsReducer)
 };
 
 const storeConfig: ConfigureStoreOptions = {

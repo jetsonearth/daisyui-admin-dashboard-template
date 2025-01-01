@@ -385,7 +385,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                         unrealizedPnl = 0;
                         unrealizedPnlPercentage = 0;
 
-                        rrr = realizedPnl / currentRiskAmount;
+                        rrr = realizedPnl / initialRiskAmount;
                         market_value = totalCost + realizedPnl;
                     }
                 }

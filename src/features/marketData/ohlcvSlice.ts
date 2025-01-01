@@ -25,12 +25,12 @@ export const fetchOHLCVData = createAsyncThunk(
         endTime: Date;
         tradeId: string;
     }) => {
-        console.log('🔄 Fetching OHLCV data for trade:', {
-            tradeId,
-            ticker,
-            startTime: startTime.toISOString(),
-            endTime: endTime.toISOString()
-        });
+        // console.log('🔄 Fetching OHLCV data for trade:', {
+        //     tradeId,
+        //     ticker,
+        //     startTime: startTime.toISOString(),
+        //     endTime: endTime.toISOString()
+        // });
         
         const data = await marketDataService.getOHLCVData(ticker, startTime, endTime);
         return { data, tradeId };

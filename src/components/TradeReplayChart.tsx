@@ -21,11 +21,11 @@ const convertNYMarketTimeToLocal = (nyTimestamp: number): number => {
     // Add 13 hours to convert 4pm NY to 5am China
     const localDate = new Date(date.getTime() + 13 * 60 * 60 * 1000);
     
-    console.log('🕒 Market time conversion:', {
-        original: date.toISOString(),
-        localTime: localDate.toISOString(),
-        timestamp: Math.floor(localDate.getTime() / 1000)
-    });
+    // console.log('🕒 Market time conversion:', {
+    //     original: date.toISOString(),
+    //     localTime: localDate.toISOString(),
+    //     timestamp: Math.floor(localDate.getTime() / 1000)
+    // });
     
     return Math.floor(localDate.getTime() / 1000);
 };
@@ -53,14 +53,14 @@ const alignTradeTimeToNYTradingDay = (timestamp: number): number => {
     // Convert back to local display time
     const localDisplayTime = new Date(marketDate.getTime() + 13 * 60 * 60 * 1000);
     
-    console.log('🎯 Trade time alignment:', {
-        localTime: localDate.toISOString(),
-        nyTime: nyDate.toISOString(),
-        nyHour: nyHours,
-        marketDayNY: marketDate.toISOString(),
-        displayTime: localDisplayTime.toISOString(),
-        timestamp: Math.floor(localDisplayTime.getTime() / 1000)
-    });
+    // console.log('🎯 Trade time alignment:', {
+    //     localTime: localDate.toISOString(),
+    //     nyTime: nyDate.toISOString(),
+    //     nyHour: nyHours,
+    //     marketDayNY: marketDate.toISOString(),
+    //     displayTime: localDisplayTime.toISOString(),
+    //     timestamp: Math.floor(localDisplayTime.getTime() / 1000)
+    // });
     
     return Math.floor(localDisplayTime.getTime() / 1000);
 };
@@ -116,16 +116,16 @@ export const TradeReplayChart: React.FC<TradeReplayChartProps> = ({
             time: alignTradeTimeToNYTradingDay(action.time)
         }));
 
-        console.log('📊 Rendering chart with data:', {
-            dataPoints: sortedData.length,
-            firstDate: new Date(sortedData[0].time * 1000).toISOString(),
-            lastDate: new Date(sortedData[sortedData.length - 1].time * 1000).toISOString(),
-            actions: alignedActions.map(a => ({
-                type: a.type,
-                time: new Date(a.time * 1000).toISOString(),
-                price: a.price
-            }))
-        });
+        // console.log('📊 Rendering chart with data:', {
+        //     dataPoints: sortedData.length,
+        //     firstDate: new Date(sortedData[0].time * 1000).toISOString(),
+        //     lastDate: new Date(sortedData[sortedData.length - 1].time * 1000).toISOString(),
+        //     actions: alignedActions.map(a => ({
+        //         type: a.type,
+        //         time: new Date(a.time * 1000).toISOString(),
+        //         price: a.price
+        //     }))
+        // });
 
         // Create chart
         const chart = createChart(chartContainerRef.current, {
