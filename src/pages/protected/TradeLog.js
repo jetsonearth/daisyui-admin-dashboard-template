@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../config/supabaseClient'
 import TitleCard from '../../components/Cards/TitleCard'
-import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from '../../types/index'; 
+import { Trade, TRADE_STATUS, DIRECTIONS, ASSET_TYPES, STRATEGIES, SETUPS } from '../../types/index';
 import { metricsService } from '../../features/metrics/metricsService';
 import { marketDataService } from '../../features/marketData/marketDataService';
 import { capitalService } from '../../services/capitalService';
@@ -10,7 +10,7 @@ import { toast } from 'react-toastify'
 import TradeHistoryModal from '../../features/user/components/TradeHistory/TradeHistoryModal'; // Import the modal
 import './TradeLog.css';
 
-function TradeLog(){
+function TradeLog() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedTrade, setSelectedTrade] = useState(null);
 
@@ -21,6 +21,10 @@ function TradeLog(){
     const [isAutoRefresh, setIsAutoRefresh] = useState(true)
     const [lastUpdate, setLastUpdate] = useState(null)
     const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+    const [sortConfig, setSortConfig] = useState({
+        key: 'exit_datetime',
+        direction: 'desc'
+    });
 
     // Fetch additional trade info when selectedTrade changes
     useEffect(() => {
@@ -92,21 +96,21 @@ function TradeLog(){
         try {
             setInitialLoading(true);
             const { data: { user }, error: userError } = await supabase.auth.getUser();
-            
+
             if (userError || !user) {
                 toast.error('Please log in to view trades');
                 setInitialLoading(false);
                 return;
             }
-    
+
             const { data, error } = await supabase
                 .from('trades')
                 .select('*')
                 .eq('user_id', user.id)
                 .order('entry_datetime', { ascending: false });
-    
+
             if (error) throw error;
-    
+
             // Preserve the original data from Supabase for closed trades
             const tradesWithPreservedValues = data.map(trade => {
                 if (trade.status === TRADE_STATUS.CLOSED) {
@@ -119,10 +123,10 @@ function TradeLog(){
                 }
                 return trade;
             });
-    
+
             setTrades(tradesWithPreservedValues);
             setInitialLoading(false);
-    
+
             // Call updateMarketData after setting trades
             await updateMarketData();
         } catch (err) {
@@ -136,19 +140,19 @@ function TradeLog(){
         const activeTrades = trades.filter(trade => trade.status === TRADE_STATUS.OPEN);
         const closedTrades = trades.filter(trade => trade.status === TRADE_STATUS.CLOSED);
         console.log("Update Market Data in Tradelog ---------------- Open Trades: ", activeTrades);
-        
+
         if (!activeTrades || activeTrades.length === 0) {
             return trades;
         }
 
         try {
             setUpdatingMarketData(true);
-            
+
             // Clear cache for closed trades to prevent them from showing up in logs
             await marketDataService.clearCacheForClosedTrades(trades);
-            
+
             const quotes = await marketDataService.getBatchQuotes(activeTrades.map(trade => trade.ticker));
-            
+
             // Update active trades with current market data
             const updatedActiveTrades = activeTrades.map(trade => {
                 const quote = quotes[trade.ticker];
@@ -156,7 +160,7 @@ function TradeLog(){
                     console.warn(`No market data available for ${trade.ticker}`);
                     return trade;
                 }
-                
+
                 return {
                     ...trade,
                     currentPrice: quote.price,
@@ -166,7 +170,7 @@ function TradeLog(){
 
             // Update only active trades with detailed metrics
             const tradesWithMetrics = await metricsService.updateTradesWithDetailedMetrics(quotes, updatedActiveTrades);
-            
+
             // Calculate and record capital changes with the updated trade metrics
             const freshCapital = await capitalService.calculateCurrentCapital();
             console.log('------ 📈 Calculating capital changes...', freshCapital);
@@ -178,7 +182,7 @@ function TradeLog(){
                     unrealized_pnl: trade.unrealized_pnl
                 }))
             });
-            
+
             // Combine updated active trades with unchanged closed trades
             const allUpdatedTrades = trades.map(trade => {
                 // If it's a closed trade, preserve its original values
@@ -189,11 +193,11 @@ function TradeLog(){
                 const updatedTrade = tradesWithMetrics.find(t => t.id === trade.id);
                 return updatedTrade || trade;
             });
-            
+
             setTrades(allUpdatedTrades);
             setLastUpdate(new Date().toLocaleTimeString());
             return allUpdatedTrades;
-            
+
         } catch (error) {
             console.error('Error updating market data:', error);
             toast.error(error.message || 'Failed to update market data');
@@ -203,6 +207,58 @@ function TradeLog(){
         }
     };
 
+    const sortData = (data, key, direction) => {
+        return [...data].sort((a, b) => {
+            // Handle numeric values
+            if (typeof a[key] === 'number' && typeof b[key] === 'number') {
+                return direction === 'asc' ? a[key] - b[key] : b[key] - a[key];
+            }
+
+            // Handle dates
+            if (key === 'exit_datetime' || key === 'entry_datetime') {
+                return direction === 'asc'
+                    ? new Date(a[key]) - new Date(b[key])
+                    : new Date(b[key]) - new Date(a[key]);
+            }
+
+            // Handle strings
+            if (typeof a[key] === 'string' && typeof b[key] === 'string') {
+                return direction === 'asc'
+                    ? a[key].localeCompare(b[key])
+                    : b[key].localeCompare(a[key]);
+            }
+
+            return 0;
+        });
+    };
+
+    const handleSort = (key) => {
+        let direction = 'asc';
+        if (sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+        setTrades(sortData(trades, key, direction));
+    };
+
+    const getSortIcon = (key) => {
+        if (sortConfig.key !== key) return '↕️';
+        return sortConfig.direction === 'asc' ? '↑' : '↓';
+    };
+
+    const renderSortableHeader = (key, label) => (
+        <th
+            onClick={() => handleSort(key)}
+            className="px-4 py-2 bg-gray-800 text-gray-200 cursor-pointer hover:bg-gray-700 transition-colors duration-150"
+            style={{ whiteSpace: 'nowrap' }}
+        >
+            <div className="flex items-center justify-center gap-2">
+                {label}
+                <span className="text-gray-400">{getSortIcon(key)}</span>
+            </div>
+        </th>
+    );
+
     // Auto-refresh logic
     useEffect(() => {
         let intervalId;
@@ -211,7 +267,7 @@ function TradeLog(){
                 const updatedTrades = await updateMarketData(); // Fetch market data
                 setTrades(updatedTrades); // Update state with the new trades
             };
-    
+
             fetchData(); // Initial fetch
             intervalId = setInterval(fetchData, 900000); // 30 minutes
         }
@@ -234,10 +290,10 @@ function TradeLog(){
         try {
             // Set manual refresh state to true
             setIsManualRefreshing(true);
-            
+
             // Call update market data and get the updated trades
             const updatedTrades = await updateMarketData(); // Fetch market data and return updated trades
-            
+
             // Update state with the newly computed trades
             setTrades(updatedTrades);
 
@@ -261,21 +317,21 @@ function TradeLog(){
         <div className="p-4">
             <TitleCard title="Trade Log" topMargin="mt-2">
                 <div className="flex flex-col">
-                <div className="flex items-center gap-6 mb-5">
-                        <button 
-                            onClick={openNewTradeModal} 
+                    <div className="flex items-center gap-6 mb-5">
+                        <button
+                            onClick={openNewTradeModal}
                             className="btn btn-secondary"
                         >
                             🌟 Log Historical Trades
                         </button>
                         {/* Auto-refresh Button */}
-                        <button 
+                        <button
                             onClick={toggleAutoRefresh}
                             className={`btn ${isAutoRefresh ? 'btn-error' : 'btn-success'}`}
                         >
                             {isAutoRefresh ? 'Stop Auto-Sync' : 'Start Auto-Sync'}
                         </button>
-                        <button 
+                        <button
                             onClick={handleRefreshNow}
                             className={`btn btn-primary ${updatingMarketData ? 'loading' : ''}`}
                         >
@@ -312,61 +368,61 @@ function TradeLog(){
                             </div>
                             <h3 className="text-xl font-semibold mb-2">No Trades Recorded</h3>
                             <p className="text-gray-400 mb-6">Start tracking your trading journey by adding your first trade.</p>
-                            <button 
-                                onClick={() => navigate('/app/planner')}  
+                            <button
+                                onClick={() => navigate('/app/planner')}
                                 className="btn btn-primary"
                             >
                                 Add First Trade
                             </button>
                         </div>
                     ) : (
-                            <div className="overflow-x-auto w-full">
-                                <table className="table table-s table-zebra table-pin-rows">
-                                    <thead>
-                                        <tr>
-                                        <th className="text-center whitespace-nowrap">Ticker</th>
-                                        <th className="text-center whitespace-nowrap">Type</th>
-                                        <th className="text-center whitespace-nowrap">Direction</th>
-                                        <th className="text-center whitespace-nowrap">Status</th>
-                                        <th className="text-center whitespace-nowrap">Entry Date</th>
-                                        <th className="text-center whitespace-nowrap">Avg Cost</th>
+                        <div className="overflow-x-auto w-full">
+                            <table className="table table-s table-zebra table-pin-rows">
+                                <thead>
+                                    <tr>
+                                        {renderSortableHeader('ticker', 'Ticker')}
+                                        {renderSortableHeader('type', 'Type')}
+                                        {renderSortableHeader('direction', 'Direction')}
+                                        {renderSortableHeader('status', 'Status')}
+                                        {renderSortableHeader('entry_datetime', 'Entry Date')}
+                                        {renderSortableHeader('avg_cost', 'Avg Cost')}
                                         {/* <th className="text-center whitespace-nowrap">Exit Price</th> */}
-                                        <th className="text-center whitespace-nowrap">Unrealized PnL%</th>
-                                        <th className="text-center whitespace-nowrap">Unrealized PnL</th>
-                                        <th className="text-center whitespace-nowrap">Realized PnL%</th>
-                                        <th className="text-center whitespace-nowrap">Realized PnL</th>
-                                        <th className="text-center whitespace-nowrap">RRR</th>
-                                        <th className="text-center whitespace-nowrap">Current Price</th>
-                                        <th className="text-center whitespace-nowrap">Strategy</th>
-                                        <th className="text-center whitespace-nowrap">Setups</th>
-                                        <th className="text-center whitespace-nowrap">33% SL</th>
-                                        <th className="text-center whitespace-nowrap">66% SL</th>
-                                        <th className="text-center whitespace-nowrap">Final SL</th>
-                                        <th className="text-center whitespace-nowrap">Total Shares</th>
-                                        <th className="text-center whitespace-nowrap">Remaining Shares</th>
-                                        <th className="text-center whitespace-nowrap">Total Cost</th>
-                                        <th className="text-center whitespace-nowrap">Market Value</th>
-                                        <th className="text-center whitespace-nowrap">Weight %</th>
-                                        <th className="text-center whitespace-nowrap">Trimmed %</th>
-                                        <th className="text-center whitespace-nowrap">SL Distance</th>
-                                        <th className="text-center whitespace-nowrap">Position Risk</th>
-                                        <th className="text-center whitespace-nowrap">Portfolio Impact</th>
-                                        <th className="text-center whitespace-nowrap">MAE</th>
-                                        <th className="text-center whitespace-nowrap">MFE</th>
-                                        <th className="text-center whitespace-nowrap">MAE $</th>
-                                        <th className="text-center whitespace-nowrap">MFE $</th>
-                                        <th className="text-center whitespace-nowrap">MAE-R</th>
-                                        <th className="text-center whitespace-nowrap">MFE-R</th>
-                                        <th className="text-center whitespace-nowrap">Exit Date</th>
-                                        <th className="text-center whitespace-nowrap">Exit Price</th>
-                                        <th className="text-center whitespace-nowrap">% From Entry</th>
+                                        {renderSortableHeader('unrealized_pnl_percentage', 'Unrealized PnL%')}
+                                        {renderSortableHeader('unrealized_pnl', 'Unrealized PnL')}
+                                        {renderSortableHeader('realized_pnl_percentage', 'Realized PnL%')}
+                                        {renderSortableHeader('realized_pnl', 'Realized PnL')}
+                                        {renderSortableHeader('risk_reward_ratio', 'RRR')}
+                                        {renderSortableHeader('currentPrice', 'Current Price')}
+                                        {renderSortableHeader('strategy', 'Strategy')}
+                                        {renderSortableHeader('setups', 'Setups')}
+                                        {renderSortableHeader('stop_loss_33_percent', '33% SL')}
+                                        {renderSortableHeader('stop_loss_66_percent', '66% SL')}
+                                        {renderSortableHeader('stop_loss_price', 'Final SL')}
+                                        {renderSortableHeader('total_shares', 'Total Shares')}
+                                        {renderSortableHeader('remaining_shares', 'Remaining Shares')}
+                                        {renderSortableHeader('total_cost', 'Total Cost')}
+                                        {renderSortableHeader('market_value', 'Market Value')}
+                                        {renderSortableHeader('portfolio_weight', 'Weight %')}
+                                        {renderSortableHeader('trimmed_percentage', 'Trimmed %')}
+                                        {renderSortableHeader('open_risk', 'SL Distance')}
+                                        {renderSortableHeader('position_risk', 'Position Risk')}
+                                        {renderSortableHeader('portfolio_impact', 'Portfolio Impact')}
+                                        {renderSortableHeader('mae', 'MAE')}
+                                        {renderSortableHeader('mfe', 'MFE')}
+                                        {renderSortableHeader('mae_dollars', 'MAE $')}
+                                        {renderSortableHeader('mfe_dollars', 'MFE $')}
+                                        {renderSortableHeader('mae_r', 'MAE-R')}
+                                        {renderSortableHeader('mfe_r', 'MFE-R')}
+                                        {renderSortableHeader('exit_datetime', 'Exit Date')}
+                                        {renderSortableHeader('exit_price', 'Exit Price')}
+                                        {renderSortableHeader('percent_from_entry', '% From Entry')}
                                         {/* <th className="text-center whitespace-nowrap">Commission</th> */}
-                                        <th className="text-center whitespace-nowrap">Holding Period</th>
+                                        {renderSortableHeader('holding_period', 'Holding Period')}
                                         {/* <th className="text-center whitespace-nowrap">Mistakes</th>
                                         <th className="text-center whitespace-nowrap">Notes</th> */}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
+                                    </tr>
+                                </thead>
+                                <tbody>
                                     {trades.map((trade) => {
                                         // Calculate profitability outside JSX
                                         const totalCost = trade.total_cost;
@@ -375,21 +431,21 @@ function TradeLog(){
                                         const isProfitable = (totalCost + unrealizedPnL + realizedPnL) > totalCost;
 
                                         return (
-                                            <tr 
-                                                key={trade.id} 
+                                            <tr
+                                                key={trade.id}
                                                 className="hover cursor-pointer"
                                                 onClick={() => handleTradeClick(trade.id)}
                                             >
                                                 <td className="text-center font-medium">
                                                     {trade.ticker || 'N/A'}
-                                                    <span 
+                                                    <span
                                                         className={`indicator ${isProfitable ? 'bg-green-500' : 'bg-red-500'}`}
-                                                        style={{ 
-                                                            width: '12px', 
-                                                            height: '12px', 
-                                                            borderRadius: '50%', 
-                                                            display: 'inline-block', 
-                                                            marginLeft: '8px' 
+                                                        style={{
+                                                            width: '12px',
+                                                            height: '12px',
+                                                            borderRadius: '50%',
+                                                            display: 'inline-block',
+                                                            marginLeft: '8px'
                                                         }}
                                                     />
                                                 </td>
@@ -410,8 +466,13 @@ function TradeLog(){
                                                 {/* Status */}
                                                 <td className="text-center">
                                                     <span className={`
-                                                        badge badge-pill 
-                                                        ${trade.status === TRADE_STATUS.OPEN ? 'bg-emerald-500 text-white' : 'bg-amber-400 text-black'}
+                                                            badge badge-pill 
+                                                            ${trade.status === TRADE_STATUS.OPEN
+                                                            ? 'bg-emerald-500 text-white'
+                                                            : trade.status === TRADE_STATUS.CLOSED
+                                                                ? 'bg-amber-400 text-black'
+                                                                : 'bg-indigo-500 text-white'  // Planned trades get a unique color
+                                                        }
                                                     `}>
                                                         {trade.status || 'N/A'}
                                                     </span>
@@ -419,7 +480,7 @@ function TradeLog(){
 
                                                 {/* Dates and Numbers */}
                                                 <td className="text-center whitespace-nowrap">
-                                                    {trade.entry_datetime ? 
+                                                    {trade.entry_datetime ?
                                                         new Date(trade.entry_datetime).toISOString().split('T')[0] : ''}
                                                 </td>
                                                 <td className="text-center">
@@ -440,7 +501,7 @@ function TradeLog(){
                                                         <span className="text-white">-</span>
                                                     )}
                                                 </td>
-                                                
+
                                                 <td className={`
                                                     text-center font-semibold tabular-nums
                                                     ${trade.unrealized_pnl > 0 ? 'text-emerald-400' : 'text-rose-400'}
@@ -486,7 +547,7 @@ function TradeLog(){
                                                 {/* Risk Metrics */}
                                                 <td className={`
                                                     text-center font-semibold tabular-nums
-                                                    ${trade.risk_reward_ratio > 1 ? 'text-emerald-400' : 'text-rose-400'}
+                                                    ${trade.risk_reward_ratio > 0 ? 'text-emerald-400' : 'text-rose-400'}
                                                 `}>
                                                     {safeToFixed(trade.risk_reward_ratio, 1)}
                                                 </td>
@@ -507,8 +568,8 @@ function TradeLog(){
                                                     {trade.setups ? (
                                                         <div className="flex flex-nowrap gap-1 justify-center">
                                                             {trade.setups.map((setup, index) => (
-                                                                <span 
-                                                                    key={index} 
+                                                                <span
+                                                                    key={index}
                                                                     className="badge badge-pill bg-indigo-500 text-white"
                                                                 >
                                                                     {setup}
@@ -579,7 +640,7 @@ function TradeLog(){
                                                             {trade.portfolio_impact > 0 ? '+' : ''}
                                                             {safeToFixed(trade.portfolio_impact)}%
                                                         </>
-                                                    )}  
+                                                    )}
                                                 </td>
 
                                                 {/* Percentage MAE/MFE */}
@@ -634,10 +695,10 @@ function TradeLog(){
 
                                                 {/* Trade Details */}
                                                 <td className="text-center whitespace-nowrap">
-                                                    {trade.exit_datetime ? 
+                                                    {trade.exit_datetime ?
                                                         new Date(trade.exit_datetime).toISOString().split('T')[0] : ''}
                                                 </td>
-                                                
+
                                                 <td className="text-center">
                                                     {formatCurrency(trade.exit_price)}
                                                 </td>
@@ -668,7 +729,7 @@ function TradeLog(){
                     )}
                 </div>
 
-                <TradeHistoryModal 
+                <TradeHistoryModal
                     isOpen={isModalOpen}
                     onClose={closeModal}
                     onTradeAdded={() => {

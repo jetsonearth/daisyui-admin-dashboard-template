@@ -93,12 +93,12 @@ const initializeTradeDetails = (existingTrade: Trade): TradeDetails => {
 };
 
 const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, onTradeAdded, existingTrade }) => {
-    const [tradeDetails, setTradeDetails] = useState<TradeDetails>(() => {
-        if (existingTrade) {
-            return initializeTradeDetails(existingTrade);
-        }
-        return defaultTradeDetails;
-    });
+    const [tradeDetails, setTradeDetails] = useState<TradeDetails>(
+        existingTrade ? initializeTradeDetails(existingTrade) : defaultTradeDetails
+    );
+
+    // Add this state to track the reference datetime
+    const [referenceDateTime, setReferenceDateTime] = useState<Date | null>(null);
 
     const [selectedStrategy, setSelectedStrategy] = useState<STRATEGIES | undefined>(
         existingTrade?.strategy as STRATEGIES || undefined
@@ -170,15 +170,41 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
     const [loading, setLoading] = useState(false);
 
     const addAction = () => {
-        setTradeDetails(prev => ({
-            ...prev,
-            actions: [...prev.actions, {
-                type: 'SELL',
-                date: new Date(),
-                shares: '',
-                price: '',
-            }]
-        }));
+        const newAction: Action = {
+            type: 'BUY',
+            // If we have a reference time and there are existing actions, use reference time
+            // Otherwise use current time
+            date: referenceDateTime || new Date(),
+            shares: '',
+            price: ''
+        };
+
+        const updatedActions = [...tradeDetails.actions, newAction];
+        setTradeDetails({ ...tradeDetails, actions: updatedActions });
+
+        // If this is the first action, set it as the reference time
+        if (updatedActions.length === 1) {
+            setReferenceDateTime(newAction.date);
+        }
+    };
+
+    // Update action handler to maintain reference time
+    const handleActionChange = (index: number, field: keyof Action, value: any) => {
+        const updatedActions = [...tradeDetails.actions];
+        const action = { ...updatedActions[index] };
+
+        if (field === 'date') {
+            action[field] = new Date(value);
+            // If this is the first action, update reference time
+            if (index === 0) {
+                setReferenceDateTime(action.date);
+            }
+        } else {
+            action[field] = value;
+        }
+
+        updatedActions[index] = action;
+        setTradeDetails({ ...tradeDetails, actions: updatedActions });
     };
 
     const toggleActionType = (index: number) => {
@@ -188,15 +214,6 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                 i === index 
                     ? { ...action, type: action.type === 'BUY' ? 'SELL' : 'BUY' }
                     : action
-            )
-        }));
-    };
-
-    const handleActionChange = (index: number, field: keyof Action, value: any) => {
-        setTradeDetails(prev => ({
-            ...prev,
-            actions: prev.actions.map((action, i) => 
-                i === index ? { ...action, [field]: value } : action
             )
         }));
     };
@@ -385,7 +402,16 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                         unrealizedPnl = 0;
                         unrealizedPnlPercentage = 0;
 
-                        rrr = realizedPnl / initialRiskAmount;
+                        // Use metricsService for consistent RRR calculation
+                        const tempTrade = {
+                            status: TRADE_STATUS.CLOSED,
+                            entry_price: entryPrice,
+                            total_shares: totalShares,
+                            open_risk: slDistance,
+                            realized_pnl: realizedPnl
+                        } as Trade;
+                        
+                        rrr = metricsService.calculateRiskRewardRatio(tempTrade);
                         market_value = totalCost + realizedPnl;
                     }
                 }
@@ -515,7 +541,7 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
                     console.log('Performance Metrics:', performanceMetrics);
             
                     const streakMetrics = metricsService.calculateStreakMetrics(closedTrades);
-                    console.log('Streak Metrics:', streakMetrics);
+                    console.log('🚗🚗🚗🚗🚗🚗🚗🚗🚗🚗🚗🚗🚗 Streak Metrics:', streakMetrics);
                     
                     const combinedMetrics = {
                         ...performanceMetrics,

@@ -210,6 +210,62 @@ export class MetricsService {
         return riskAmount;
     }
 
+    public calculateRiskRewardRatio(trade: Trade): number {
+        try {
+            if (!trade.open_risk || !trade.entry_price || !trade.total_shares) {
+                console.log('Missing required fields for RRR calculation:', {
+                    ticker: trade.ticker,
+                    open_risk: trade.open_risk,
+                    entry_price: trade.entry_price,
+                    total_shares: trade.total_shares
+                });
+                return 0;
+            }
+
+            // Calculate risk per share using open_risk percentage and entry price
+            const riskPerShare = trade.entry_price * trade.open_risk;
+            
+            // Calculate total risk for the position
+            const totalRisk = riskPerShare * trade.total_shares;
+
+            // For closed trades, use realized PnL
+            if (trade.status === TRADE_STATUS.CLOSED) {
+                const rrr = trade.realized_pnl / totalRisk;
+                console.log('RRR Calculation (Closed Trade):', {
+                    ticker: trade.ticker,
+                    entry_price: trade.entry_price,
+                    open_risk_percent: trade.open_risk,
+                    risk_per_share: riskPerShare,
+                    total_risk: totalRisk,
+                    realized_pnl: trade.realized_pnl,
+                    rrr
+                });
+                return rrr;
+            }
+
+            // For open trades, use realized + unrealized PnL
+            const totalPnL = (trade.realized_pnl || 0) + (trade.unrealized_pnl || 0);
+            const rrr = totalPnL / totalRisk;
+            
+            console.log('RRR Calculation (Open Trade):', {
+                ticker: trade.ticker,
+                entry_price: trade.entry_price,
+                open_risk_percent: trade.open_risk,
+                risk_per_share: riskPerShare,
+                total_risk: totalRisk,
+                realized_pnl: trade.realized_pnl,
+                unrealized_pnl: trade.unrealized_pnl,
+                total_pnl: totalPnL,
+                rrr
+            });
+            
+            return rrr;
+        } catch (error) {
+            console.error('Error calculating RRR:', error);
+            return 0;
+        }
+    }
+
     public async calculateTradeMetrics(
         trade: Trade, 
         quotes: Record<string, Quote>, 
@@ -232,6 +288,8 @@ export class MetricsService {
     }> {
         // For closed trades, use stored values and skip market data
         if (trade.status === TRADE_STATUS.CLOSED) {
+            const riskRewardRatio = this.calculateRiskRewardRatio(trade);
+            
             return {
                 lastPrice: trade.exit_price || 0,
                 marketValue: 0,
@@ -245,7 +303,7 @@ export class MetricsService {
                 current_risk_amount: 0,
                 initial_position_risk: 0,
                 current_var: 0,
-                riskRewardRatio: trade.realized_pnl ? trade.realized_pnl / trade.initial_risk_amount! : 0
+                riskRewardRatio
             };
         }
 
@@ -275,7 +333,7 @@ export class MetricsService {
                 current_risk_amount: currentRiskAmount,
                 initial_position_risk: initialPositionRisk,
                 current_var: currentVar,
-                riskRewardRatio: ((trade.unrealized_pnl + trade.realized_pnl) / (currentRiskAmount || 1))
+                riskRewardRatio: this.calculateRiskRewardRatio(trade)
             };
         }
 
@@ -304,7 +362,7 @@ export class MetricsService {
         const current_var = (currentRiskAmount / currentCapital) * 100;
         // console.log('------------------------ Current VAR:', current_var);
         // Risk reward ratio using current risk amount
-        const riskRewardRatio = (unrealizedPnL + realizedPnL) / (trade.initial_risk_amount!);
+        const riskRewardRatio = this.calculateRiskRewardRatio(trade);
 
         return {
             lastPrice: currentPrice,
@@ -346,37 +404,44 @@ export class MetricsService {
                 // Continuing the streak
                 currentStreak = currentStreakType === 'win' ? currentStreak + 1 : currentStreak - 1;
             } else {
-                // Streak broken
+                // Streak broken, update longest streaks
                 if (currentStreakType === 'win') {
                     longestWinStreak = Math.max(longestWinStreak, currentStreak);
                 } else {
                     longestLossStreak = Math.max(longestLossStreak, Math.abs(currentStreak));
                 }
+                // Start new streak
                 currentStreakType = isWin ? 'win' : 'loss';
                 currentStreak = isWin ? 1 : -1;
             }
         }
     
-        // Update longest streaks one final time
+        // Don't forget to update longest streaks one final time for the last streak
         if (currentStreakType === 'win') {
             longestWinStreak = Math.max(longestWinStreak, currentStreak);
         } else if (currentStreakType === 'loss') {
             longestLossStreak = Math.max(longestLossStreak, Math.abs(currentStreak));
         }
     
+        // For display, currentStreak should be positive for wins, negative for losses
+        const displayCurrentStreak = currentStreakType === 'loss' ? -Math.abs(currentStreak) : Math.abs(currentStreak);
+    
         console.log("Streak Calculation:", {
             closedTrades: closedTrades.map(t => ({
                 ticker: t.ticker,
                 exitDate: t.exit_datetime,
-                pnl: t.realized_pnl
+                pnl: t.realized_pnl,
+                isWin: t.realized_pnl > 0
             })),
-            currentStreak,
+            rawCurrentStreak: currentStreak,
+            displayCurrentStreak,
+            currentStreakType,
             longestWinStreak,
             longestLossStreak
         });
     
         return {
-            currentStreak,
+            currentStreak: displayCurrentStreak,
             longestWinStreak,
             longestLossStreak
         };
@@ -446,7 +511,7 @@ export class MetricsService {
     
         const avgRRR = closedTrades.length > 0
             ? closedTrades.reduce((sum, trade) => 
-                sum + this.safeNumeric(trade.risk_reward_ratio), 0) / closedTrades.length
+                sum + (trade.risk_reward_ratio || 0), 0) / closedTrades.length
             : 0;
     
         const avgWinR = profitableTrades.length > 0
