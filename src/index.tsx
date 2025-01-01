@@ -1,19 +1,24 @@
-import React, { Suspense } from 'react';
+import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
-import App from './App';  // Ensure this is correct
-import reportWebVitals from './reportWebVitals';
-import store from './app/store';
+import App from './App';
+import { store, persistor } from './app/store';
 import { Provider } from 'react-redux';
-import SuspenseContent from './containers/SuspenseContent';
+import { PersistGate } from 'redux-persist/integration/react';
+import reportWebVitals from './reportWebVitals';
 
-const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
+const root = ReactDOM.createRoot(
+  document.getElementById('root') as HTMLElement
+);
+
 root.render(
-  <Suspense fallback={<SuspenseContent />}>
+  <React.StrictMode>
     <Provider store={store}>
-      <App />
+      <PersistGate loading={null} persistor={persistor}>
+        <App />
+      </PersistGate>
     </Provider>
-  </Suspense>
+  </React.StrictMode>
 );
 
 reportWebVitals();

@@ -47,7 +47,7 @@ export const TradeReplayChart: React.FC<TradeReplayChartProps> = ({
     const volumeChartRef = useRef<IChartApi | null>(null);
 
     useEffect(() => {
-        if (!chartContainerRef.current || !data.length) return;
+        if (!chartContainerRef.current || !data || data.length === 0) return;
 
         console.log('📊 Rendering chart with data:', {
             dataPoints: data.length,
@@ -60,6 +60,21 @@ export const TradeReplayChart: React.FC<TradeReplayChartProps> = ({
                 shares: a.shares
             }))
         });
+
+        // Sort data by time in ascending order
+        const sortedData = [...data].sort((a, b) => a.time - b.time);
+
+        // Validate data is properly sorted
+        for (let i = 1; i < sortedData.length; i++) {
+            if (sortedData[i].time < sortedData[i-1].time) {
+                console.error('❌ Data ordering error:', {
+                    index: i,
+                    currentTime: new Date(sortedData[i].time * 1000).toISOString(),
+                    prevTime: new Date(sortedData[i-1].time * 1000).toISOString()
+                });
+                return;
+            }
+        }
 
         // Create chart
         const chart = createChart(chartContainerRef.current, {
@@ -286,7 +301,7 @@ export const TradeReplayChart: React.FC<TradeReplayChartProps> = ({
         const ema50Data = [];
 
         // Set data
-        const chartData = data.map(item => ({
+        const chartData = sortedData.map(item => ({
             ...item,
             time: item.time as UTCTimestamp
         }));

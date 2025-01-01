@@ -32,9 +32,10 @@ function PortfolioOverview() {
     const allTrades = useSelector(state => state.trades.trades)
     const [trades, setTrades] = useState([])
     const [activeTrades, setActiveTrades] = useState([])
+    const [closedTrades, setClosedTrades] = useState([])
     const [currentDate] = useState(dayjs().format('MMMM D, YYYY'))
     const [selectedTimeFilter, setSelectedTimeFilter] = useState(timeFilters[0])
-    const [selectedTradeDetails, setSelectedTradeDetails] = useState(null)
+    const [selectedTrade, setSelectedTrade] = useState(null)
     const [isAutoRefresh, setIsAutoRefresh] = useState(true)
     const [lastUpdate, setLastUpdate] = useState(null)
     const [startingCapital, setStartingCapital] = useState(0)
@@ -45,7 +46,6 @@ function PortfolioOverview() {
     const [capitalHistory, setCapitalHistory] = useState([])
     const [isTradeModalOpen, setIsTradeModalOpen] = useState(false)
     const [selectedDayTrades, setSelectedDayTrades] = useState([])
-    const [selectedTrade, setSelectedTrade] = useState(null)
     const [capitalComposition, setCapitalComposition] = useState({
         startingCapital: 0,
         realizedPnL: 0,
@@ -184,31 +184,11 @@ function PortfolioOverview() {
         setIsTradeModalOpen(true);
     };
 
-    const handleTradeClick = (trade) => {
+    const handleTradeClick = async (trade) => {
         console.log('Trade clicked:', trade);
-        setSelectedTrade(trade);
-    };
-
-    const closeTradeModal = () => {
-        setIsTradeModalOpen(false);
-        setSelectedDayTrades([]);
-        setSelectedTrade(null);
-    };
-
-    // Modified useEffect
-    useEffect(() => {
-        if (selectedTrade) {
-            console.log('In Overview, Fetching selected trade info for', selectedTrade);
-            fetchTradeDetails(selectedTrade.id);
-        }
-    }, [selectedTrade?.id]); // Only depend on the ID
-
-    // Function to fetch the details of a specific trade to display in a modal, usually when a trade is clicked 
-    const fetchTradeDetails = async (tradeId) => {
-        console.log(`----- Processing fetchTradeDetails for trade ID ----- : ${tradeId}`); // Noticeable log statement
-
+        
         try {
-            const { data: trade, error } = await supabase
+            const { data: fullTrade, error } = await supabase
                 .from('trades')
                 .select(`
                     *,
@@ -219,7 +199,7 @@ function PortfolioOverview() {
                     notes,
                     mistakes
                 `)
-                .eq('id', tradeId)
+                .eq('id', trade.id)
                 .single();
 
             if (error) {
@@ -228,8 +208,9 @@ function PortfolioOverview() {
                 return;
             }
 
-            console.log('Fetched trade details:', trade);
-            setSelectedTradeDetails(trade);
+            console.log('Fetched trade details:', fullTrade);
+            setSelectedTrade(fullTrade);
+            setIsTradeModalOpen(true);
         } catch (error) {
             console.error('Error fetching trade details:', error);
             toast.error('Failed to fetch trade details');
@@ -278,9 +259,11 @@ function PortfolioOverview() {
                 toast.info('No trades found')
             }
 
-            setTrades(data || [])
             const active = data.filter(trade => trade.status === 'Open')
+            const closed = data.filter(trade => trade.status !== 'Open')
             setActiveTrades(active)
+            setClosedTrades(closed)
+            setTrades(data || [])
         } catch (error) {
             console.error('Unexpected error fetching trades:', error)
             toast.error('Unexpected error occurred')
@@ -377,7 +360,7 @@ function PortfolioOverview() {
                 console.log('----------- Latest Portfolio Metrics Fetched: -----------', latestMetrics);
 
                 // Calculate fresh exposure metrics
-                const freshExposureMetrics = await metricsService.calculateExposureMetrics(openTrades || [], currentCapital);
+                const freshExposureMetrics = await metricsService.calculateExposureMetrics(allTrades || [], currentCapital);
                 console.log('----------- Fresh Exposure Metrics Calculated: -----------', freshExposureMetrics);
 
                 // Merge fresh exposure metrics into latestMetrics
@@ -470,7 +453,7 @@ function PortfolioOverview() {
                     const totalAllocation = updatedTrades.reduce((sum, trade) => {
                         return sum + (trade.currentPrice * trade.remaining_shares);
                     }, 0);
-                    
+
                     const portfolioAllocation = (totalAllocation / currentCapital) * 100;
 
                     setMetrics(prevMetrics => ({
@@ -573,10 +556,12 @@ function PortfolioOverview() {
             setLoading(true);
             setMetricsLoading(true);
 
-            // Get fresh market data
+            // Get fresh market data for active trades only
             const quotes = await marketDataService.getBatchQuotes(activeTrades.map(trade => trade.ticker));
-            const updatedTrades = await metricsService.updateTradesWithDetailedMetrics(quotes, activeTrades);
-            setActiveTrades(updatedTrades);
+            
+            // Update market data only for active trades
+            const updatedActiveTrades = await metricsService.updateTradesWithDetailedMetrics(quotes, activeTrades);
+            setActiveTrades(updatedActiveTrades);
             setLastUpdate(new Date().toLocaleTimeString());
 
             // Update metrics with loading state
@@ -589,23 +574,25 @@ function PortfolioOverview() {
                 // Record capital snapshot with trade details
                 await capitalService.recordCapitalChange(freshCapital, {
                     type: 'interim_snapshot',
-                    trades_count: updatedTrades.length,
-                    trade_details: updatedTrades.map(trade => ({
+                    trades_count: updatedActiveTrades.length,
+                    trade_details: updatedActiveTrades.map(trade => ({
                         ticker: trade.ticker,
                         unrealized_pnl: trade.unrealized_pnl || 0
                     })),
                     high_watermark: freshCapital
                 });
 
-                // Calculate exposure metrics with updated market prices
+                // Combine updated active trades with closed trades for exposure calculation
+                const allUpdatedTrades = [...updatedActiveTrades, ...closedTrades];
+
+                // Calculate exposure metrics with all trades (both active and closed)
                 const exposureMetrics = await metricsService.calculateExposureMetrics(
-                    updatedTrades,
-                    freshCapital,
-                    quotes
+                    allUpdatedTrades,
+                    freshCapital
                 );
 
                 // Calculate portfolio allocation
-                const portfolioAllocation = updatedTrades.reduce((sum, trade) => 
+                const portfolioAllocation = updatedActiveTrades.reduce((sum, trade) =>
                     sum + (trade.remaining_shares * (quotes[trade.ticker]?.price || trade.currentPrice || 0)), 0) / freshCapital * 100;
 
                 // Upsert exposure metrics
@@ -669,7 +656,7 @@ function PortfolioOverview() {
                         timestamp: Date.now(),
                         data: {
                             currentCapital: freshCapital,
-                            activeTrades: updatedTrades,
+                            activeTrades: updatedActiveTrades,
                             metrics: {
                                 ...metrics,
                                 profitFactor: latestMetrics.profit_factor,
@@ -737,7 +724,7 @@ function PortfolioOverview() {
             const updateCapitalComposition = () => {
                 // Use metrics.totalProfits and metrics.totalLosses as source of truth
                 const totalRealizedPnL = (metrics.totalProfits || 0) + (metrics.totalLosses || 0);
-                
+
                 // Calculate unrealized PnL from active trades
                 const totalUnrealizedPnL = activeTrades?.reduce((sum, trade) =>
                     sum + (trade.unrealized_pnl || 0), 0) || 0;
@@ -799,13 +786,13 @@ function PortfolioOverview() {
 
     useEffect(() => {
         if (!capitalHistory.length || !capitalChartRef.current) return;
-    
+
         if (capitalChartInstance.current) {
             capitalChartInstance.current.destroy();
         }
-    
+
         const ctx = capitalChartRef.current.getContext('2d');
-    
+
         // Calculate percentage changes and determine colors
         const percentageChanges = capitalHistory.map((item, index) => {
             if (index === 0) return 0;
@@ -813,17 +800,17 @@ function PortfolioOverview() {
             const currentCapital = item.capital_amount;
             return ((currentCapital - prevCapital) / prevCapital) * 100;
         });
-    
+
         // Generate color array based on price movement
         const lineColors = capitalHistory.map((item, index) => {
             if (index === 0) return '#34d399'; // emerald-400 default for first point
             return item.capital_amount >= capitalHistory[index - 1].capital_amount ? '#34d399' : '#fb7185'; // emerald-400 : rose-400
         });
-    
+
         // Find highest and lowest points
         const maxCapital = Math.max(...capitalHistory.map(item => item.capital_amount));
         const minCapital = Math.min(...capitalHistory.map(item => item.capital_amount));
-    
+
         capitalChartInstance.current = new Chart(ctx, {
             type: 'line',
             data: {
@@ -851,7 +838,7 @@ function PortfolioOverview() {
                         const lastValue = capitalHistory[capitalHistory.length - 1].capital_amount;
                         const firstValue = capitalHistory[0].capital_amount;
                         const isOverallPositive = lastValue >= firstValue;
-                        
+
                         if (isOverallPositive) {
                             gradient.addColorStop(0, 'rgba(52, 211, 153, 0.25)'); // emerald-400
                             gradient.addColorStop(1, 'rgba(52, 211, 153, 0)');
@@ -909,7 +896,7 @@ function PortfolioOverview() {
                                         maximumFractionDigits: 0
                                     })}`
                                 ];
-    
+
                                 // Add percentage change with color-coded arrows
                                 if (context.dataIndex > 0) {
                                     const change = percentageChanges[context.dataIndex];
@@ -918,14 +905,14 @@ function PortfolioOverview() {
                                     lines.push(`${changeText} from previous`);
                                     // lines.push(`color: ${changeColor}`);
                                 }
-    
+
                                 // Add all-time high/low indicator
                                 // if (context.raw === maxCapital) {
                                 //     lines.push('All-Time High 🔥');
                                 // } else if (context.raw === minCapital) {
                                 //     lines.push('All-Time Low');
                                 // }
-    
+
                                 return lines;
                             }
                         }
@@ -936,9 +923,9 @@ function PortfolioOverview() {
                                 type: 'line',
                                 yMin: capitalHistory[capitalHistory.length - 1].capital_amount,
                                 yMax: capitalHistory[capitalHistory.length - 1].capital_amount,
-                                borderColor: capitalHistory[capitalHistory.length - 1].capital_amount >= 
-                                           capitalHistory[capitalHistory.length - 2].capital_amount ? 
-                                           'rgba(52, 211, 153, 0.5)' : 'rgba(251, 113, 133, 0.5)', // emerald-400 : rose-400
+                                borderColor: capitalHistory[capitalHistory.length - 1].capital_amount >=
+                                    capitalHistory[capitalHistory.length - 2].capital_amount ?
+                                    'rgba(52, 211, 153, 0.5)' : 'rgba(251, 113, 133, 0.5)', // emerald-400 : rose-400
                                 borderWidth: 1,
                                 borderDash: [5, 5],
                                 label: {
@@ -966,14 +953,14 @@ function PortfolioOverview() {
                 }
             }
         });
-    
+
         return () => {
             if (capitalChartInstance.current) {
                 capitalChartInstance.current.destroy();
             }
         };
     }, [capitalHistory]);
-    
+
     useEffect(() => {
         if (lastUpdate) {
             const fetchCapitalHistory = async () => {
@@ -1135,245 +1122,185 @@ function PortfolioOverview() {
 
     return (
         <div>
-            {isTradeModalOpen && selectedDayTrades && selectedDayTrades.length > 0 && (
-                <div className="fixed inset-0 z-[9999] overflow-y-auto">
-                    <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                        <div className="fixed inset-0 transition-opacity" aria-hidden="true">
-                            <div className="absolute inset-0 bg-base-300 opacity-75"></div>
+            {selectedTrade && isTradeModalOpen && (
+                <div className="modal modal-open">
+                    <div className="modal-box w-11/12 max-w-7xl bg-base-200">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-bold text-lg">
+                                Trades for {selectedDayTrades[0]?.entry_datetime ?
+                                    dayjs(selectedDayTrades[0].entry_datetime).format('MMMM D, YYYY') :
+                                    'Selected Date'}
+                            </h3>
+                            <button className="btn btn-sm btn-circle btn-ghost" onClick={() => {
+                                setIsTradeModalOpen(false);
+                                // Only clear selectedTrade after modal is closed
+                                setTimeout(() => setSelectedTrade(null), 100);
+                            }}>✕</button>
                         </div>
 
-                        <div className="inline-block align-bottom bg-base-100 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-7xl sm:w-full">
-                            <div className="bg-base-100 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-lg font-medium">Trade History</h3>
-                                    <button 
-                                        onClick={closeTradeModal}
-                                        className="btn btn-sm btn-ghost"
-                                    >
-                                        ×
-                                    </button>
-                                </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            {selectedDayTrades.map((trade) => (
+                                <div key={trade.id}
+                                    className={`card bg-base-100 shadow-xl hover:shadow-primary/10 
+                                              ${trade.realized_pnl > 0 ? 'hover:shadow-emerald-500/10' :
+                                            trade.realized_pnl < 0 ? 'hover:shadow-rose-500/10' : ''}`}>
+                                    <div className="card-body p-6">
+                                        {/* Header */}
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <h2 className="card-title text-2xl">{trade.ticker}</h2>
+                                                <div className="flex gap-2 mt-1">
+                                                    <span className="badge badge-outline">{trade.asset_type}</span>
+                                                    <span className="badge badge-primary">{trade.strategy}</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col items-end">
+                                                <div className={`badge ${trade.direction === 'LONG' ?
+                                                    'badge-primary' : 'badge-secondary'} mb-2`}>
+                                                    {trade.direction}
+                                                </div>
+                                                <div className={`badge ${trade.status === 'OPEN' ?
+                                                    'badge-success' : 'badge-warning'}`}>
+                                                    {trade.status}
+                                                </div>
+                                            </div>
+                                        </div>
 
-                                <div className="overflow-x-auto w-full">
-                                    <table className="table table-xs table-zebra table-pin-rows">
-                                        <thead>
-                                            <tr>
-                                                <th className="text-center whitespace-nowrap">Ticker</th>
-                                                <th className="text-center whitespace-nowrap">Type</th>
-                                                <th className="text-center whitespace-nowrap">Direction</th>
-                                                <th className="text-center whitespace-nowrap">Status</th>
-                                                <th className="text-center whitespace-nowrap">Entry Date</th>
-                                                <th className="text-center whitespace-nowrap">Avg Cost</th>
-                                                <th className="text-center whitespace-nowrap">Unrealized PnL%</th>
-                                                <th className="text-center whitespace-nowrap">Unrealized PnL</th>
-                                                <th className="text-center whitespace-nowrap">Realized PnL%</th>
-                                                <th className="text-center whitespace-nowrap">Realized PnL</th>
-                                                <th className="text-center whitespace-nowrap">RRR</th>
-                                                <th className="text-center whitespace-nowrap">Current Price</th>
-                                                <th className="text-center whitespace-nowrap">Strategy</th>
-                                                <th className="text-center whitespace-nowrap">Setups</th>
-                                                <th className="text-center whitespace-nowrap">Total Shares</th>
-                                                <th className="text-center whitespace-nowrap">Remaining Shares</th>
-                                                <th className="text-center whitespace-nowrap">Total Cost</th>
-                                                <th className="text-center whitespace-nowrap">Market Value</th>
-                                                <th className="text-center whitespace-nowrap">Weight %</th>
-                                                <th className="text-center whitespace-nowrap">Trimmed %</th>
-                                                <th className="text-center whitespace-nowrap">SL Distance</th>
-                                                <th className="text-center whitespace-nowrap">Position Risk</th>
-                                                <th className="text-center whitespace-nowrap">Portfolio Impact</th>
-                                                <th className="text-center whitespace-nowrap">MAE</th>
-                                                <th className="text-center whitespace-nowrap">MFE</th>
-                                                <th className="text-center whitespace-nowrap">MAE $</th>
-                                                <th className="text-center whitespace-nowrap">MFE $</th>
-                                                <th className="text-center whitespace-nowrap">MAE-R</th>
-                                                <th className="text-center whitespace-nowrap">MFE-R</th>
-                                                <th className="text-center whitespace-nowrap">Exit Date</th>
-                                                <th className="text-center whitespace-nowrap">Exit Price</th>
-                                                <th className="text-center whitespace-nowrap">% From Entry</th>
-                                                <th className="text-center whitespace-nowrap">Holding Period</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {selectedDayTrades.map((trade) => {
-                                                const totalCost = trade.total_cost;
-                                                const unrealizedPnL = trade.unrealized_pnl || 0;
-                                                const realizedPnL = trade.realized_pnl || 0;
-                                                const isProfitable = (totalCost + unrealizedPnL + realizedPnL) > totalCost;
+                                        {/* Main Stats Grid */}
+                                        <div className="grid grid-cols-3 gap-4 mb-4">
+                                            {/* Entry Section */}
+                                            <div className="col-span-1 space-y-2">
+                                                <div>
+                                                    <div className="text-xs opacity-70">Average Cost</div>
+                                                    <div className="font-medium">${trade.entry_price}</div>
+                                                </div>
 
-                                                return (
-                                                    <tr 
-                                                        key={trade.id} 
-                                                        className="hover cursor-pointer"
-                                                        onClick={() => handleTradeClick(trade)}
-                                                    >
-                                                        <td className="text-center font-medium">
-                                                            {trade.ticker || 'N/A'}
-                                                            <span 
-                                                                className={`indicator ${isProfitable ? 'bg-green-500' : 'bg-red-500'}`}
-                                                                style={{ 
-                                                                    width: '12px', 
-                                                                    height: '12px', 
-                                                                    borderRadius: '50%', 
-                                                                    display: 'inline-block', 
-                                                                    marginLeft: '8px' 
-                                                                }}
-                                                            />
-                                                        </td>
-                                                        <td className="text-center">{trade.asset_type || 'N/A'}</td>
-                                                        <td className="text-center">
-                                                            <span className={`badge badge-pill ${trade.direction === 'LONG' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}`}>
-                                                                {trade.direction || 'N/A'}
-                                                            </span>
-                                                        </td>
-                                                        <td className="text-center">
-                                                            <span className={`badge badge-pill ${trade.status === 'OPEN' ? 'bg-emerald-500 text-white' : 'bg-amber-400 text-black'}`}>
-                                                                {trade.status || 'N/A'}
-                                                            </span>
-                                                        </td>
-                                                        <td className="text-center whitespace-nowrap">
-                                                            {trade.entry_datetime ? new Date(trade.entry_datetime).toISOString().split('T')[0] : ''}
-                                                        </td>
-                                                        <td className="text-center">{formatCurrency(trade.entry_price)}</td>
-                                                        <td className={`text-center font-semibold ${trade.unrealized_pnl_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                                            {trade.unrealized_pnl === 0 ? (
-                                                                <span className="text-white">-</span>
-                                                            ) : (
-                                                                <>
-                                                                    {trade.unrealized_pnl_percentage > 0 ? '+' : ''}
-                                                                    {safeToFixed(trade.unrealized_pnl_percentage)}%
-                                                                </>
-                                                            )}
-                                                        </td>
-                                                        <td className={`text-center font-semibold ${trade.unrealized_pnl > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                                            {trade.unrealized_pnl === 0 ? (
-                                                                <span className="text-white">-</span>
-                                                            ) : (
-                                                                <>
-                                                                    {trade.unrealized_pnl > 0 ? '+' : ''}
-                                                                    {formatCurrency(trade.unrealized_pnl)}
-                                                                </>
-                                                            )}
-                                                        </td>
-                                                        <td className={`text-center font-semibold ${trade.realized_pnl_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                                            {trade.realized_pnl_percentage > 0 ? '+' : ''}
-                                                            {safeToFixed(trade.realized_pnl_percentage)}%
-                                                        </td>
-                                                        <td className={`text-center font-semibold ${trade.realized_pnl > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                                            {trade.realized_pnl > 0 ? '+' : ''}
-                                                            {formatCurrency(trade.realized_pnl)}
-                                                        </td>
-                                                        <td className={`text-center font-semibold ${trade.risk_reward_ratio > 1 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                                            {safeToFixed(trade.risk_reward_ratio, 1)}
-                                                        </td>
-                                                        <td className="text-center font-medium">
-                                                            {formatCurrency(trade.last_price)}
-                                                        </td>
-                                                        <td className="text-center">
-                                                            {trade.strategy ? (
-                                                                <span className="badge badge-pill bg-purple-500 text-white">
-                                                                    {trade.strategy}
-                                                                </span>
-                                                            ) : 'N/A'}
-                                                        </td>
-                                                        <td className="text-center">
-                                                            {trade.setups ? (
-                                                                <div className="flex flex-nowrap gap-1 justify-center">
-                                                                    {trade.setups.map((setup, index) => (
-                                                                        <span key={index} className="badge badge-pill bg-indigo-500 text-white">
-                                                                            {setup}
-                                                                        </span>
-                                                                    ))}
-                                                                </div>
-                                                            ) : 'N/A'}
-                                                        </td>
-                                                        <td className="text-center">{safeToFixed(trade.total_shares)}</td>
-                                                        <td className="text-center">{safeToFixed(trade.remaining_shares)}</td>
-                                                        <td className="text-center">{formatCurrency(trade.total_cost)}</td>
-                                                        <td className="text-center">{formatCurrency(trade.market_value)}</td>
-                                                        <td className="text-center">{safeToFixed(trade.portfolio_weight)}%</td>
-                                                        <td className="text-center">{safeToFixed(trade.trimmed_percentage)}%</td>
-                                                        <td className={`text-center font-semibold ${trade.open_risk > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                                                            {trade.open_risk > 0 ? '-' : ''}{safeToFixed(trade.open_risk, 2)}%
-                                                        </td>
-                                                        <td className={`text-center font-semibold ${trade.position_risk > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                                                            {trade.position_risk === 0 ? (
-                                                                <span className="text-white">-</span>
-                                                            ) : (
-                                                                <>
-                                                                    {trade.position_risk > 0 ? '-' : ''}
-                                                                    {safeToFixed(trade.position_risk)}%
-                                                                </>
-                                                            )}
-                                                        </td>
-                                                        <td className={`text-center font-semibold ${trade.portfolio_impact > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                                            {trade.portfolio_impact > 0 ? '+' : ''}{safeToFixed(trade.portfolio_impact, 2)}%
-                                                        </td>
-                                                        <td className="text-center font-semibold text-rose-400">
-                                                            {trade.mae === 0 ? (
-                                                                <span className="text-white">-</span>
-                                                            ) : (
-                                                                `${safeToFixed(trade.mae, 1)}%`
-                                                            )}
-                                                        </td>
-                                                        <td className="text-center font-semibold text-emerald-400">
-                                                            {trade.mfe === 0 ? (
-                                                                <span className="text-white">-</span>
-                                                            ) : (
-                                                                `${safeToFixed(trade.mfe, 1)}%`
-                                                            )}
-                                                        </td>
-                                                        <td className="text-center font-semibold text-rose-400">
-                                                            {trade.mae_dollars === 0 ? (
-                                                                <span className="text-white">-</span>
-                                                            ) : (
-                                                                formatCurrency(trade.mae_dollars, 0)
-                                                            )}
-                                                        </td>
-                                                        <td className="text-center font-semibold text-emerald-400">
-                                                            {trade.mfe_dollars === 0 ? (
-                                                                <span className="text-white">-</span>
-                                                            ) : (
-                                                                formatCurrency(trade.mfe_dollars, 0)
-                                                            )}
-                                                        </td>
-                                                        <td className="text-center font-semibold text-rose-400">
-                                                            {trade.mae_r === 0 ? (
-                                                                <span className="text-white">-</span>
-                                                            ) : (
-                                                                `${safeToFixed(trade.mae_r, 2)}R`
-                                                            )}
-                                                        </td>
-                                                        <td className="text-center font-semibold text-emerald-400">
-                                                            {trade.mfe_r === 0 ? (
-                                                                <span className="text-white">-</span>
-                                                            ) : (
-                                                                `${safeToFixed(trade.mfe_r, 2)}R`
-                                                            )}
-                                                        </td>
-                                                        <td className="text-center whitespace-nowrap">
-                                                            {trade.exit_datetime ? new Date(trade.exit_datetime).toISOString().split('T')[0] : ''}
-                                                        </td>
-                                                        <td className="text-center">{formatCurrency(trade.exit_price)}</td>
-                                                        <td className={`text-center font-semibold ${trade.percent_from_entry > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                                            {trade.unrealized_pnl === 0 ? (
-                                                                <span className="text-white">-</span>
-                                                            ) : (
-                                                                <>
-                                                                    {trade.percent_from_entry > 0 ? '+' : ''}
-                                                                    {safeToFixed(trade.percent_from_entry)}%
-                                                                </>
-                                                            )}
-                                                        </td>
-                                                        <td className="text-center">
-                                                            {trade.holding_period ? `${trade.holding_period} days` : 'N/A'}
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
+                                            </div>
+
+                                            <div className="col-span-1 space-y-2">
+                                                <div>
+                                                    <div className="text-xs opacity-70">Entry Date</div>
+                                                    <div className="font-medium">
+                                                        {dayjs(trade.entry_datetime).format('MM/DD/YY HH:mm')}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="col-span-1 space-y-2">
+                                                <div>
+                                                    <div className="text-xs opacity-70">Total Cost</div>
+                                                    <div className="font-medium">${trade.total_cost?.toLocaleString()}</div>
+                                                </div>
+                                            </div>                                 
+                                        </div>
+
+
+                                        <div className="grid grid-cols-3 gap-4 mb-4">
+                                            {/* Exit Section */}
+                                            <div className="col-span-1 space-y-2">
+                                                <div>
+                                                    <div className="text-xs opacity-70">Exit Price</div>
+                                                    <div className="font-medium">${trade.exit_price}</div>
+                                                </div>
+
+                                            </div>
+
+                                            <div className="col-span-1 space-y-2">
+                                                <div>
+                                                    <div className="text-xs opacity-70">Exit Date</div>
+                                                    <div className="font-medium">
+                                                        {trade.exit_datetime ? 
+                                                            dayjs(trade.exit_datetime).format('MM/DD/YY HH:mm') : '-'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                
+                                        </div>
+
+                                        {/* Risk Management */}
+                                        <div className="grid grid-cols-3 gap-4 mb-4">
+                                            <div>
+                                                <div className="text-xs opacity-70">SL Distance</div>
+                                                <div className="font-medium text-rose-400">
+                                                    {trade.open_risk > 0 ? '-' : ''}{trade.open_risk?.toFixed(2)}%
+                                                </div>
+                                            </div>
+                                            <div>
+                                                    <div className="text-xs opacity-70">MAE/MFE</div>
+                                                    <div className="flex gap-2">
+                                                        <span className="text-rose-400">{trade.mae?.toFixed(1)}%</span>
+                                                        <span>/</span>
+                                                        <span className="text-emerald-400">{trade.mfe?.toFixed(1)}%</span>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-xs opacity-70">MAE/MFE (R)</div>
+                                                    <div className="flex gap-2">
+                                                        <span className="text-rose-400">{trade.mae_r?.toFixed(2)}R</span>
+                                                        <span>/</span>
+                                                        <span className="text-emerald-400">{trade.mfe_r?.toFixed(2)}R</span>
+                                                    </div>
+                                                </div>
+                                        </div>
+
+                                        {/* Bottom Stats */}
+                                        <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-base-300">
+                                            <div>
+                                                <div className="text-sm opacity-70">% Since Entry</div>
+                                                <div className={`flex flex-col ${
+                                                    ((trade.exit_price - trade.entry_price) / trade.entry_price * 100) > 0 
+                                                    ? 'text-emerald-400' : 'text-rose-400'
+                                                }`}>
+                                                    <span className="text-lg font-bold">
+                                                        {((trade.exit_price - trade.entry_price) / trade.entry_price * 100)?.toFixed(2)}%
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* Unrealized P&L */}
+                                            <div>
+                                                <div className="text-sm opacity-70">Realized RRR</div>
+                                                <div className={`flex flex-col ${trade.risk_reward_ratio > 0 ? 'text-emerald-400' :
+                                                        trade.risk_reward_ratio < 0 ? 'text-rose-400' : ''
+                                                    }`}>
+                                                    <span className="text-lg font-bold">
+                                                        {trade.risk_reward_ratio?.toLocaleString() || '-'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            {/* Realized P&L */}
+                                            <div>
+                                                <div className="text-sm opacity-70">Realized P&L</div>
+                                                <div className={`flex flex-col ${trade.realized_pnl > 0 ? 'text-emerald-400' :
+                                                        trade.realized_pnl < 0 ? 'text-rose-400' : ''
+                                                    }`}>
+                                                    <span className="text-lg font-bold">
+                                                        ${trade.realized_pnl?.toLocaleString() || '-'}
+                                                    </span>
+                                                    <span className="text-sm">
+                                                        {trade.realized_pnl_percentage > 0 ? '+' : ''}
+                                                        {trade.realized_pnl_percentage?.toFixed(2)}%
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Setups */}
+                                        {trade.setups && trade.setups.length > 0 && (
+                                            <div className="mt-4 pt-4 border-t border-base-300">
+                                                <div className="text-xs opacity-70 mb-2">Setups</div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {trade.setups.map((setup, index) => (
+                                                        <span key={index} className="badge badge-outline badge-sm">
+                                                            {setup}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
+                            ))}
                         </div>
                     </div>
                 </div>
@@ -1613,39 +1540,24 @@ function PortfolioOverview() {
                                                         {safeToFixed(trade.trimmed_percentage)}%
                                                     </td>
 
-                                                    <td className={`
-                                                        text-center font-semibold tabular-nums
-                                                        ${trade.unrealized_pnl_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}
-                                                    `}>
+                                                    <td className="text-center font-semibold tabular-nums">
                                                         {trade.unrealized_pnl_percentage > 0 ? '+' : ''}{safeToFixed(trade.unrealized_pnl_percentage)}%
                                                     </td>
 
 
-                                                    <td className={`
-                                                        text-center font-semibold tabular-nums
-                                                        ${trade.realized_pnl_percentage > 0 ? 'text-emerald-400' : 'text-rose-400'}
-                                                    `}>
+                                                    <td className="text-center font-semibold tabular-nums">
                                                         {trade.realized_pnl_percentage > 0 ? '+' : ''}{safeToFixed(trade.realized_pnl_percentage)}%
                                                     </td>
 
-                                                    <td className={`
-                                                            text-center font-semibold tabular-nums
-                                                            ${trade.risk_reward_ratio > 1 ? 'text-emerald-400' : 'text-rose-400'}
-                                                        `}>
+                                                    <td className="text-center font-semibold tabular-nums">
                                                         {safeToFixed(trade.risk_reward_ratio, 1)}
                                                     </td>
 
-                                                    {/* <td className={`
-                                                            text-center font-semibold tabular-nums
-                                                            ${trade.open_risk > 0 ? 'text-rose-400' : 'text-emerald-400'}
-                                                        `}>
+                                                    {/* <td className="text-center font-semibold tabular-nums">
                                                             {trade.open_risk > 0 ? '-' : ''}{safeToFixed(trade.open_risk, 2)}%
                                                     </td> */}
 
-                                                    <td className={`
-                                                        text-center font-semibold tabular-nums
-                                                        ${trade.initial_position_risk > 0 ? 'text-rose-400' : 'text-emerald-400'}
-                                                    `}>
+                                                    <td className="text-center font-semibold tabular-nums">
                                                         {trade.initial_position_risk > 0 ? '-' : ''}{safeToFixed(trade.initial_position_risk, 3)}%
                                                     </td>
 
@@ -1653,10 +1565,7 @@ function PortfolioOverview() {
                                                         {trade.current_var > 0 ? `${safeToFixed(trade.current_var, 3)}%` : '-'}
                                                     </td>
 
-                                                    <td className={`
-                                                        text-center font-semibold tabular-nums
-                                                        ${trade.portfolio_impact > 0 ? 'text-emerald-400' : 'text-rose-400'}
-                                                    `}>
+                                                    <td className="text-center font-semibold tabular-nums">
                                                         {trade.portfolio_impact > 0 ? '+' : ''}{safeToFixed(trade.portfolio_impact, 2)}%
                                                     </td>
 
@@ -1697,11 +1606,18 @@ function PortfolioOverview() {
                     </div>
 
                     <TradeHistoryModal
-                        isOpen={!!selectedTrade}
-                        onClose={() => setSelectedTrade(null)}
+                        isOpen={isTradeModalOpen}
+                        onClose={() => {
+                            setIsTradeModalOpen(false);
+                            // Only clear selectedTrade after modal is closed
+                            setTimeout(() => setSelectedTrade(null), 100);
+                        }}
                         onTradeAdded={() => {
-                            setSelectedTrade(null);
-                            fetchTrades();
+                            setIsTradeModalOpen(false);
+                            setTimeout(() => {
+                                setSelectedTrade(null);
+                                fetchTrades();
+                            }, 100);
                         }}
                         existingTrade={selectedTrade}
                     />
@@ -1802,82 +1718,6 @@ function PortfolioOverview() {
                                 </div>
                             </div>
                         </div> */}
-
-                        <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
-                            <div className="text-primary text-sm font-semibold mb-4">Average Trade Performance</div>
-                            <div className="flex-1 flex flex-col">
-                                <div className="flex justify-between text-sm text-gray-400 mb-1">
-                                    <span>Dollar Value</span>
-                                    <span>Return %</span>
-                                </div>
-                                {/* Win Row */}
-                                <div className="flex justify-between mb-3">
-                                    <span className="text-base font-medium text-emerald-400">
-                                        <span className="text-xs mr-2">WIN</span>
-                                        ${metrics.avgWin?.toLocaleString(undefined, {
-                                            minimumFractionDigits: 0,
-                                            maximumFractionDigits: 0
-                                        }) || '0'}
-                                    </span>
-                                    <span className="text-base font-medium text-emerald-400">
-                                        +{metrics.avgGainPercentage?.toFixed(2) || '0.00'}%
-                                    </span>
-                                </div>
-                                {/* Loss Row */}
-                                <div className="flex justify-between mb-4">
-                                    <span className="text-base font-medium text-rose-400">
-                                        <span className="text-xs mr-2">LOSS</span>
-                                        ${metrics.avgLoss?.toLocaleString(undefined, {
-                                            minimumFractionDigits: 0,
-                                            maximumFractionDigits: 0
-                                        }) || '0'}
-                                    </span>
-                                    <span className="text-base font-medium text-rose-400">
-                                        -{Math.abs(metrics.avgLossPercentage)?.toFixed(2) || '0.00'}%
-                                    </span>
-                                </div>
-
-                                {/* Bar Chart */}
-                                <div className="h-16">
-                                    <ReactApexChart
-                                        options={{
-                                            chart: {
-                                                type: 'bar',
-                                                toolbar: { show: false },
-                                                sparkline: { enabled: true }
-                                            },
-                                            colors: ['#34d399', '#fb7185'],
-                                            plotOptions: {
-                                                bar: {
-                                                    borderRadius: 4,
-                                                    columnWidth: '40%',
-                                                }
-                                            },
-                                            grid: { show: false },
-                                            tooltip: { enabled: false },
-                                            xaxis: {
-                                                labels: { show: false },
-                                                axisBorder: { show: false },
-                                                axisTicks: { show: false }
-                                            },
-                                            yaxis: { show: false }
-                                        }}
-                                        series={[
-                                            {
-                                                name: 'Average Win',
-                                                data: [Math.abs(metrics.avgWin || 0)]
-                                            },
-                                            {
-                                                name: 'Average Loss',
-                                                data: [Math.abs(metrics.avgLoss || 0)]
-                                            }
-                                        ]}
-                                        type="bar"
-                                        height={64}
-                                    />
-                                </div>
-                            </div>
-                        </div>
 
                         <div className="h-48 bg-base-100 p-4 rounded-lg hover:shadow-lg hover:shadow-primary/10 shadow flex flex-col">
                             <div className="text-primary text-sm font-semibold">Open Exposure</div>

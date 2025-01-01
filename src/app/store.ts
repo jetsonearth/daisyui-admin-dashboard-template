@@ -5,20 +5,46 @@ import modalSlice from '../features/common/modalSlice';
 import rightDrawerSlice from '../features/common/rightDrawerSlice';
 import leadsSlice from '../features/leads/leadSlice';
 import tradesSlice from '../features/trades/tradesSlice';
+import ohlcvCacheReducer from '../features/marketData/ohlcvCacheSlice';
+import ohlcvReducer from '../features/marketData/ohlcvSlice';
+import { persistStore, persistReducer } from 'redux-persist';
+import storage from 'redux-persist/lib/storage';
+
+// Configure persistence for OHLCV cache
+const ohlcvCachePersistConfig = {
+  key: 'ohlcvCache',
+  storage,
+  whitelist: ['cache'], // Only persist the cache field
+};
+
+const ohlcvPersistConfig = {
+  key: 'ohlcv',
+  storage,
+  whitelist: ['data', 'lastUpdated'], // Only persist data and lastUpdated
+};
 
 const combinedReducer = {
   header: headerSlice,
   rightDrawer: rightDrawerSlice,
   modal: modalSlice,
   lead: leadsSlice,
-  trades: tradesSlice
+  trades: tradesSlice,
+  ohlcvCache: persistReducer(ohlcvCachePersistConfig, ohlcvCacheReducer),
+  ohlcv: persistReducer(ohlcvPersistConfig, ohlcvReducer)
 };
 
 const storeConfig: ConfigureStoreOptions = {
-  reducer: combinedReducer
+  reducer: combinedReducer,
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware({
+      serializableCheck: {
+        ignoredActions: ['persist/PERSIST', 'persist/REHYDRATE'],
+      },
+    }),
 };
 
-const store = configureStore(storeConfig);
+export const store = configureStore(storeConfig);
+export const persistor = persistStore(store);
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;

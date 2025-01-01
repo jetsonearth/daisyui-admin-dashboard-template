@@ -2,6 +2,8 @@
 import { Trade } from '../../types';
 import { supabase } from '../../config/supabaseClient'
 import { TRADE_STATUS } from '../../types';
+import store from '../../app/store';
+import { cacheOHLCV, generateOHLCVCacheKey, selectCachedOHLCV, accessCache } from './ohlcvCacheSlice';
 
 export interface Quote {
     price: number;
@@ -33,8 +35,8 @@ export interface OHLCVResponse {
     startDate: string;
     endDate: string;
     status: string;
-    error?: string;  // Add this line
-    message?: string; // Add this line for error messages
+    error?: string;  
+    message?: string; 
 }
 
 export interface CachedQuote {
@@ -200,10 +202,27 @@ class MarketDataService {
         }
     }
 
-    async getOHLCVData(ticker: string, entryDate: Date, exitDate: Date): Promise<OHLCVData[]> {
+    async getOHLCVData(ticker: string, startTime: Date, endTime: Date): Promise<OHLCVData[]> {
         try {
+            // Generate cache key
+            const cacheKey = generateOHLCVCacheKey(ticker, startTime, endTime);
+            console.log('🔑 Cache key generated:', {
+                ticker,
+                startTime: startTime.toISOString(),
+                endTime: endTime.toISOString(),
+                key: cacheKey
+            });
+            
+            // Check cache first
+            const cachedData = selectCachedOHLCV(store.getState(), cacheKey);
+            if (cachedData) {
+                console.log('📊 Using cached OHLCV data for:', ticker);
+                // Ensure data is sorted before returning from cache
+                return cachedData.sort((a, b) => a.time - b.time);
+            }
+
             const userId = await this.getUserId();
-            console.log(`🔄 Fetching OHLCV data for ${ticker} from ${entryDate} to ${exitDate}`);
+            console.log('🔄 Fetching OHLCV data for', ticker);
 
             const response = await fetch(this.appScriptUrl, {
                 redirect: "follow",
@@ -215,8 +234,8 @@ class MarketDataService {
                     type: 'ohlcv',
                     userId,
                     ticker,
-                    entryDate: entryDate.toISOString(),
-                    exitDate: exitDate.toISOString()
+                    entryDate: startTime.toISOString(),
+                    exitDate: endTime.toISOString()
                 })
             });
 
@@ -230,7 +249,18 @@ class MarketDataService {
                 }
             
                 console.log('✅ OHLCV data fetched successfully');
-                return data.ohlcv;
+
+                // Ensure data is sorted before caching
+                const sortedData = data.ohlcv.sort((a, b) => a.time - b.time);
+
+                // Cache the data before returning
+                console.log('💾 Caching OHLCV data with key:', cacheKey);
+                store.dispatch(cacheOHLCV({
+                    key: cacheKey,
+                    data: sortedData
+                }));
+
+                return sortedData;
             } catch (error: any) {
                 console.error('Error parsing OHLCV data response:', textResponse);
                 throw new Error(`Failed to parse OHLCV data: ${error.message}`);

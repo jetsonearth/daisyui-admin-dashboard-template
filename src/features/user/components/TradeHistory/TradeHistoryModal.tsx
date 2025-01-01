@@ -11,6 +11,9 @@ import { capitalService } from '../../../../services/capitalService';
 import dayjs from 'dayjs';
 import { marketDataService } from '../../../marketData/marketDataService';
 import { TradeReplayChart } from '../../../../components/TradeReplayChart';
+import { useDispatch, useSelector } from 'react-redux';
+import { fetchOHLCVData, selectOHLCVData } from '../../../marketData/ohlcvSlice';
+import { AppDispatch } from '../../../../app/store';
 
 interface TradeMarker {
     timestamp: number;
@@ -94,7 +97,6 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
         if (existingTrade) {
             return initializeTradeDetails(existingTrade);
         }
-
         return defaultTradeDetails;
     });
 
@@ -110,8 +112,16 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
     const [mistakes, setMistakes] = useState(existingTrade?.mistakes || '');
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
+    const dispatch = useDispatch<AppDispatch>();
+    const ohlcvState = useSelector(state => selectOHLCVData(state, existingTrade?.id));
     const [chartData, setChartData] = useState<any[]>([]);
     const [isLoadingChart, setIsLoadingChart] = useState(false);
+
+    useEffect(() => {
+        if (existingTrade && isOpen) {
+            setTradeDetails(initializeTradeDetails(existingTrade));
+        }
+    }, [existingTrade?.id, isOpen]);
 
     const handleStrategyChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
         setSelectedStrategy(event.target.value as STRATEGIES);
@@ -567,111 +577,48 @@ const TradeHistoryModal: React.FC<TradeHistoryModalProps> = ({ isOpen, onClose, 
     };
 
     useEffect(() => {
-        const fetchChartData = async () => {
-            if (!existingTrade || !existingTrade.ticker || !existingTrade.entry_datetime) {
-                console.log('❌ Missing required trade data for chart:', { 
-                    existingTrade: !!existingTrade,
-                    ticker: existingTrade?.ticker,
-                    entryDatetime: existingTrade?.entry_datetime
-                });
-                return;
-            }
-            
-            setIsLoadingChart(true);
-            try {
-                // Use exact entry and exit datetimes from the trade
-                const entryDate = new Date(existingTrade.entry_datetime);
-                const exitDate = existingTrade.exit_datetime 
-                    ? new Date(existingTrade.exit_datetime) 
-                    : new Date();
-    
-                console.log('🔍 Fetching OHLCV data:', {
-                    ticker: existingTrade.ticker,
-                    entryDatetime: entryDate.toISOString(),
-                    exitDatetime: exitDate.toISOString()
-                });
-                
-                const data = await marketDataService.getOHLCVData(existingTrade.ticker, entryDate, exitDate);
-                
-                console.log('📊 OHLCV data received:', {
-                    dataPoints: data.length,
-                    firstDataPoint: data.length > 0 ? {
-                        time: new Date(data[0].time * 1000).toISOString(),
-                        open: data[0].open,
-                        close: data[0].close
-                    } : null,
-                    lastDataPoint: data.length > 0 ? {
-                        time: new Date(data[data.length - 1].time * 1000).toISOString(),
-                        open: data[data.length - 1].open,
-                        close: data[data.length - 1].close
-                    } : null
-                });
-    
-                setChartData(data);
-                
-                // Log trade actions
-                const tradeActions = existingTrade.action_types?.map((type, index) => ({
-                    type: type as 'BUY' | 'SELL',
-                    price: Number(existingTrade.action_prices?.[index]) || 0,
-                    time: Math.floor(new Date(existingTrade.action_datetimes?.[index] || '').getTime() / 1000) as UTCTimestamp,
-                    shares: Number(existingTrade.action_shares?.[index]) || 0
-                })) || [];
-    
-                console.log('🎯 Trade actions prepared:', tradeActions.map(action => ({
-                    type: action.type,
-                    price: action.price,
-                    time: new Date(action.time * 1000).toISOString(),
-                    shares: action.shares
-                })));
-                
-            } catch (error) {
-                console.error('❌ Error fetching chart data:', {
-                    error,
-                    trade: existingTrade
-                });
-                setChartData([]);
-            } finally {
-                setIsLoadingChart(false);
-            }
-        };
-    
-        fetchChartData();
-    }, [existingTrade]);
-    
-    
-    useEffect(() => {
-        if (existingTrade) {
-            const actions = existingTrade.action_types?.map((type, index) => ({
-                type: type as 'BUY' | 'SELL',
-                date: new Date(existingTrade.action_datetimes?.[index] || Date.now()),
-                shares: existingTrade.action_shares?.[index]?.toString() || '',
-                price: existingTrade.action_prices?.[index]?.toString() || ''
-            })) || [{
-                type: 'BUY',
-                date: new Date(),
-                shares: '',
-                price: ''
-            }];
-
-            setTradeDetails({
-                ticker: existingTrade.ticker,
-                direction: existingTrade.direction,
-                assetType: existingTrade.asset_type,
-                stopLossPrice: existingTrade.stop_loss_price?.toString() || '',
-                trailingStopLoss: existingTrade.trailing_stoploss?.toString() || '',
-                actions,
-                strategy: existingTrade.strategy || '',
-                setups: existingTrade.setups || [],
-                mae_price: existingTrade.mae_price,
-                mfe_price: existingTrade.mfe_price
-            });
-
-            const strategy = existingTrade.strategy as STRATEGIES; // Ensure it's of type STRATEGIES
-            // Set the selected strategy and setups
-            setSelectedStrategy(strategy || undefined);
-            setSelectedSetups(existingTrade.setups || []);
+        if (!isOpen || !existingTrade?.id || !existingTrade.ticker || !existingTrade.entry_datetime) {
+            return;
         }
-    }, [existingTrade]);
+
+        // Don't fetch if we already have data and it's less than 5 minutes old
+        if (ohlcvState?.data && ohlcvState.lastUpdated && 
+            Date.now() - ohlcvState.lastUpdated < 5 * 60 * 1000) {
+            console.log('📊 Using cached OHLCV data:', {
+                tradeId: existingTrade.id,
+                ticker: existingTrade.ticker,
+                dataPoints: ohlcvState.data.length
+            });
+            setChartData(ohlcvState.data);
+            return;
+        }
+
+        // Use exact entry and exit datetimes from the trade
+        const entryDate = new Date(existingTrade.entry_datetime);
+        const exitDate = existingTrade.exit_datetime 
+            ? new Date(existingTrade.exit_datetime) 
+            : new Date();
+
+        dispatch(fetchOHLCVData({
+            ticker: existingTrade.ticker,
+            startTime: entryDate,
+            endTime: exitDate,
+            tradeId: existingTrade.id
+        }));
+
+    }, [existingTrade?.id, isOpen]);
+
+    // Update chart data when OHLCV data changes
+    useEffect(() => {
+        if (ohlcvState?.data && isOpen) {
+            setChartData(ohlcvState.data);
+        }
+    }, [ohlcvState?.data, isOpen]);
+
+    // Show loading state
+    useEffect(() => {
+        setIsLoadingChart(ohlcvState?.loading || false);
+    }, [ohlcvState?.loading]);
 
     return (
         isOpen ? (
