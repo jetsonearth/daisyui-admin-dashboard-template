@@ -95,7 +95,35 @@ export interface Trade {
     mfe_r?: number;
     mae_price?: number;
     mfe_price?: number;
-  
+
+    // Available Trade Range metrics
+    atr_dollars?: number;  // Dollar value of the range
+    atr_percent?: number;  // Percentage of range relative to entry
+    atr_r?: number;       // Range in terms of R
+
+    // End Trade Drawdown metrics
+    etd_dollars?: number;  // Dollar value of drawdown
+    etd_percent?: number;  // Percentage drawdown from MFE
+    etd_r?: number;       // Drawdown in terms of R
+
+    // Remaining Distance to Target metrics
+    rdt_dollars?: number;  // Dollar value to target
+    rdt_percent?: number;  // Percentage to target
+    rdt_r?: number;       // Distance to target in R
+
+    // Remaining Distance to Stop metrics
+    rds_dollars?: number;  // Dollar value to stop
+    rds_percent?: number;  // Percentage to stop
+    rds_r?: number;       // Distance to stop in R
+
+    // Trade efficiency metrics
+    entry_efficiency?: number;
+    exit_efficiency?: number;
+    total_efficiency?: number;
+
+    // Risk per share
+    risk_per_share?: number;
+
     // Portfolio Metrics
     portfolio_weight?: number; // the weight of the trade in the portfolio
     portfolio_impact?: number;
@@ -105,6 +133,7 @@ export interface Trade {
     // Additional Metrics
     r_target_2?: number;
     r_target_3?: number;
+    r_target_5?: number;  // 5R target price
     pnl?: number;
     r_multiple?: number;
     commission?: number;

@@ -8,12 +8,16 @@ import { marketDataService } from '../../features/marketData/marketDataService';
 import { capitalService } from '../../services/capitalService';
 import { toast } from 'react-toastify'
 import TradeHistoryModal from '../../features/user/components/TradeHistory/TradeHistoryModal'; // Import the modal
+import { Combobox } from '@headlessui/react';
+import { ChevronUpDownIcon } from '@heroicons/react/20/solid';
+import { motion, AnimatePresence } from 'framer-motion';
 import './TradeLog.css';
 
 function TradeLog() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedTrade, setSelectedTrade] = useState(null);
-
+    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedTicker, setSelectedTicker] = useState('');
     const navigate = useNavigate()
     const [trades, setTrades] = useState([])
     const [initialLoading, setInitialLoading] = useState(true);
@@ -312,6 +316,20 @@ function TradeLog() {
         setLastUpdate(null);
     };
 
+    // Get unique tickers from trades
+    const uniqueTickers = [...new Set(trades.map(trade => trade.ticker))].sort();
+
+    // Filter trades based on selected ticker
+    const filteredTrades = trades.filter(trade => 
+        !selectedTicker || trade.ticker === selectedTicker
+    );
+
+    // Filter tickers for combobox based on search query
+    const filteredTickers = searchQuery === ''
+        ? uniqueTickers
+        : uniqueTickers.filter((ticker) =>
+            ticker.toLowerCase().includes(searchQuery.toLowerCase())
+        );
 
     return (
         <div className="p-4">
@@ -354,12 +372,99 @@ function TradeLog() {
                         </button> */}
                     </div>
 
+                    {/* Combobox Search */}
+                    <div className="mb-6 relative w-72">
+                        <Combobox value={selectedTicker} onChange={setSelectedTicker}>
+                            <motion.div 
+                                className="relative mt-1"
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.3 }}
+                            >
+                                <div className="relative w-full">
+                                    <Combobox.Input
+                                        className="input input-bordered w-full"
+                                        displayValue={(ticker) => ticker || ''}
+                                        onChange={(event) => setSearchQuery(event.target.value)}
+                                        placeholder="Search ticker..."
+                                    />
+                                    <Combobox.Button className="absolute inset-y-0 right-0 flex items-center pr-2">
+                                        <ChevronUpDownIcon
+                                            className="h-5 w-5 text-gray-400"
+                                            aria-hidden="true"
+                                        />
+                                    </Combobox.Button>
+                                </div>
+                                <AnimatePresence>
+                                    {(filteredTickers.length > 0 || searchQuery) && (
+                                        <Combobox.Options 
+                                            as={motion.ul}
+                                            initial={{ opacity: 0, y: -10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: -10 }}
+                                            transition={{ duration: 0.2 }}
+                                            className="absolute mt-1 max-h-60 w-full overflow-auto rounded-lg bg-base-200 py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-10"
+                                        >
+                                            {filteredTickers.length === 0 && searchQuery !== '' ? (
+                                                <div className="relative cursor-default select-none py-2 px-4 text-base-content">
+                                                    Nothing found.
+                                                </div>
+                                            ) : (
+                                                filteredTickers.map((ticker) => (
+                                                    <Combobox.Option
+                                                        key={ticker}
+                                                        className={({ active }) =>
+                                                            `relative cursor-pointer select-none py-2 pl-10 pr-4 ${
+                                                                active ? 'bg-primary text-primary-content' : 'text-base-content'
+                                                            }`
+                                                        }
+                                                        value={ticker}
+                                                    >
+                                                        {({ selected, active }) => (
+                                                            <>
+                                                                <span className={`block truncate ${selected ? 'font-medium' : 'font-normal'}`}>
+                                                                    {ticker}
+                                                                </span>
+                                                                {selected && (
+                                                                    <span className={`absolute inset-y-0 left-0 flex items-center pl-3 ${
+                                                                        active ? 'text-primary-content' : 'text-primary'
+                                                                    }`}>
+                                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                                        </svg>
+                                                                    </span>
+                                                                )}
+                                                            </>
+                                                        )}
+                                                    </Combobox.Option>
+                                                ))
+                                            )}
+                                        </Combobox.Options>
+                                    )}
+                                </AnimatePresence>
+                            </motion.div>
+                        </Combobox>
+                        {selectedTicker && (
+                            <motion.button
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.8 }}
+                                onClick={() => setSelectedTicker('')}
+                                className="btn btn-circle btn-ghost btn-xs absolute right-0 top-0 mt-3 mr-8"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                </svg>
+                            </motion.button>
+                        )}
+                    </div>
+
                     {initialLoading ? (
                         <div className="w-full h-48 flex items-center justify-center">
                             <span className="loading loading-ring loading-lg"></span>
                             <span className="ml-4">Loading trades...</span>
                         </div>
-                    ) : trades.length === 0 ? (
+                    ) : filteredTrades.length === 0 ? (
                         <div className="text-center py-10 text-gray-500">
                             <div className="mb-4">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -423,7 +528,7 @@ function TradeLog() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {trades.map((trade) => {
+                                    {filteredTrades.map((trade) => {
                                         // Calculate profitability outside JSX
                                         const totalCost = trade.total_cost;
                                         const unrealizedPnL = trade.unrealized_pnl || 0;
